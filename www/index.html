@@ -6,33 +6,84 @@
   <title>Spoon Browser</title>
 
   <style>
-    body{
-      margin:0;
-      background:#111;
-      color:white;
-      font-family:sans-serif;
-      display:flex;
-      justify-content:center;
-      align-items:center;
-      height:100vh;
-      flex-direction:column;
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #111;
     }
 
-    h1{
-      font-size:32px;
-      margin-bottom:10px;
+    #bar {
+      display: flex;
+      padding: 8px;
+      background: #1a1a1a;
     }
 
-    p{
-      opacity:0.7;
+    input {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      outline: none;
+    }
+
+    button {
+      margin-left: 6px;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #333;
+      color: white;
+    }
+
+    iframe {
+      flex: 1;
+      border: none;
+      width: 100%;
+      background: white;
     }
   </style>
 </head>
 
 <body>
 
-<h1>Spoon Browser</h1>
-<p>Your browser project has started.</p>
+<div id="bar">
+  <input id="url" placeholder="Search or enter URL" />
+  <button onclick="go()">Go</button>
+  <button onclick="back()">←</button>
+  <button onclick="forward()">→</button>
+  <button onclick="reload()">⟳</button>
+</div>
+
+<iframe id="web"></iframe>
+
+<script>
+  const frame = document.getElementById("web");
+
+  function go() {
+    let url = document.getElementById("url").value;
+
+    if (!url.startsWith("http")) {
+      url = "https://" + url;
+    }
+
+    frame.src = url;
+  }
+
+  function back() {
+    frame.contentWindow.history.back();
+  }
+
+  function forward() {
+    frame.contentWindow.history.forward();
+  }
+
+  function reload() {
+    frame.src = frame.src;
+  }
+</script>
 
 </body>
 </html>
