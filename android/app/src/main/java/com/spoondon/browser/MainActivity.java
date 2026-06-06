@@ -1,9 +1,12 @@
 package com.spoondon.browser;
 
 import android.annotation.SuppressLint;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -27,33 +30,48 @@ public class MainActivity extends BridgeActivity {
         settings.setDomStorageEnabled(true);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
-        settings.setBuiltInZoomControls(true);
-        settings.setDisplayZoomControls(false);
 
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onReceivedTitle(WebView view, String title) {
-                super.onReceivedTitle(view, title);
-                setTitle(title);
-            }
-        });
+        // Privacy-friendly defaults (no Google integration at app level)
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(true);
+
+        webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
 
             @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                view.loadUrl(request.getUrl().toString());
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                view.loadUrl(url);
                 return true;
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
             }
         });
 
-        // Smart start page
-        webView.loadUrl("https://www.google.com");
+        // ---------------- DOWNLOAD HANDLING ----------------
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent,
+                                        String contentDisposition,
+                                        String mimeType,
+                                        long contentLength) {
+
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setData(Uri.parse(url));
+                    startActivity(intent);
+                } catch (ActivityNotFoundException e) {
+                    // fallback: open in system browser if no downloader exists
+                    Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    startActivity(fallback);
+                }
+            }
+        });
+
+        // ---------------- DEFAULT START PAGE ----------------
+        webView.loadUrl(buildDuckDuckGoHome());
+    }
+
+    private String buildDuckDuckGoHome() {
+        return "https://duckduckgo.com/";
     }
 
     @Override
