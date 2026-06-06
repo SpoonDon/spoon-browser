@@ -43,6 +43,13 @@
       border: none;
       background: white;
     }
+
+    #status {
+      font-size: 12px;
+      color: #aaa;
+      padding: 4px 8px;
+      background: #0f0f0f;
+    }
   </style>
 </head>
 
@@ -57,11 +64,14 @@
   <button onclick="go()">Go</button>
 </div>
 
+<div id="status">Ready</div>
+
 <iframe id="web"></iframe>
 
 <script>
   const frame = document.getElementById("web");
   const urlBar = document.getElementById("url");
+  const status = document.getElementById("status");
 
   function isURL(text) {
     return text.includes(".") && !text.includes(" ");
@@ -71,22 +81,29 @@
     return "https://duckduckgo.com/?q=" + encodeURIComponent(query);
   }
 
-  function normalize(input) {
+  function resolveInput(input) {
+    input = input.trim();
+
+    if (!input) return "";
+
     if (isURL(input)) {
       if (!input.startsWith("http")) {
         return "https://" + input;
       }
       return input;
-    } else {
-      return buildSearch(input);
     }
+
+    return buildSearch(input);
   }
 
   function go() {
-    let input = urlBar.value.trim();
-    if (!input) return;
+    const input = urlBar.value;
+    const target = resolveInput(input);
 
-    frame.src = normalize(input);
+    if (!target) return;
+
+    frame.src = target;
+    status.innerText = "Loading...";
   }
 
   function back() {
@@ -106,6 +123,10 @@
       go();
     }
   }
+
+  frame.onload = () => {
+    status.innerText = "Loaded";
+  };
 </script>
 
 </body>
