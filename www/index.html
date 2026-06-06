@@ -38,13 +38,6 @@
       color: white;
     }
 
-    #status {
-      color: #aaa;
-      font-size: 12px;
-      padding: 4px 8px;
-      background: #0f0f0f;
-    }
-
     iframe {
       flex: 1;
       border: none;
@@ -60,18 +53,15 @@
   <button onclick="forward()">→</button>
   <button onclick="reload()">⟳</button>
 
-  <input id="url" placeholder="Search or enter URL" />
+  <input id="url" placeholder="Search or enter URL" onkeydown="handleKey(event)" />
   <button onclick="go()">Go</button>
 </div>
-
-<div id="status">Ready</div>
 
 <iframe id="web"></iframe>
 
 <script>
   const frame = document.getElementById("web");
   const urlBar = document.getElementById("url");
-  const status = document.getElementById("status");
 
   function isURL(text) {
     return text.includes(".") && !text.includes(" ");
@@ -96,9 +86,7 @@
     let input = urlBar.value.trim();
     if (!input) return;
 
-    const target = normalize(input);
-    frame.src = target;
-    status.innerText = "Loading...";
+    frame.src = normalize(input);
   }
 
   function back() {
@@ -113,14 +101,11 @@
     frame.src = frame.src;
   }
 
-  frame.onload = () => {
-    status.innerText = "Loaded";
-    try {
-      urlBar.value = frame.contentWindow.location.href;
-    } catch (e) {
-      urlBar.value = frame.src;
+  function handleKey(event) {
+    if (event.key === "Enter") {
+      go();
     }
-  };
+  }
 </script>
 
 </body>
