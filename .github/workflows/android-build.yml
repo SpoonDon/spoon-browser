@@ -2,7 +2,8 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build:
@@ -17,21 +18,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
-     - name: Enable Corepack
-       run: corepack enable
+
       - name: Enable Corepack
         run: corepack enable
+
       - name: Install dependencies
         run: npm ci || npm install
 
       - name: Install Capacitor CLI
         run: npm install @capacitor/cli
 
-      - name: Build web assets
-        run: |
-          npm run build || echo "No build step"
-      - name: Verify Capacitor CLI
+      - name: Verify Capacitor
         run: npx cap --version
+
+      - name: Build web assets
+        run: npm run build || echo "No build step"
+
       - name: Sync Capacitor
         run: npx cap sync android
 
