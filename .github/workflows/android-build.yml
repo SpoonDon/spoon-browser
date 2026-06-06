@@ -13,6 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ---------------- NODE ----------------
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -22,6 +23,7 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      # ---------------- INSTALL ----------------
       - name: Install dependencies
         run: npm ci || npm install
 
@@ -31,25 +33,34 @@ jobs:
       - name: Verify Capacitor
         run: npx cap --version
 
+      # ---------------- BUILD WEB ----------------
       - name: Build web assets
-        run: npm run build || echo "No build step"
+        run: npm run build || echo "No build step found"
 
+      # ---------------- ANDROID SYNC ----------------
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Setup Java
+      # ---------------- JAVA ----------------
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
+          cache: gradle
 
-      - name: Build APK
+      - name: Force Gradle Java Home
+        run: echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
+
+      # ---------------- BUILD APK ----------------
+      - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Upload APK
+      # ---------------- UPLOAD APK ----------------
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoon-browser-apk
