@@ -73,16 +73,31 @@
   const urlBar = document.getElementById("url");
   const status = document.getElementById("status");
 
-  function normalize(url) {
-    if (!url.startsWith("http")) {
-      return "https://" + url;
+  function isURL(text) {
+    return text.includes(".") && !text.includes(" ");
+  }
+
+  function buildSearch(query) {
+    return "https://duckduckgo.com/?q=" + encodeURIComponent(query);
+  }
+
+  function normalize(input) {
+    if (isURL(input)) {
+      if (!input.startsWith("http")) {
+        return "https://" + input;
+      }
+      return input;
+    } else {
+      return buildSearch(input);
     }
-    return url;
   }
 
   function go() {
-    let url = normalize(urlBar.value);
-    frame.src = url;
+    let input = urlBar.value.trim();
+    if (!input) return;
+
+    const target = normalize(input);
+    frame.src = target;
     status.innerText = "Loading...";
   }
 
