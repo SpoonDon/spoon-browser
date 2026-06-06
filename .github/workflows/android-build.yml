@@ -16,11 +16,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
+          cache: npm
+     - name: Enable Corepack
+       run: corepack enable
       - name: Enable Corepack
         run: corepack enable
       - name: Install dependencies
-        run: npm install
+        run: npm ci || npm install
 
       - name: Install Capacitor CLI
         run: npm install @capacitor/cli
@@ -28,7 +30,8 @@ jobs:
       - name: Build web assets
         run: |
           npm run build || echo "No build step"
-
+      - name: Verify Capacitor CLI
+        run: npx cap --version
       - name: Sync Capacitor
         run: npx cap sync android
 
