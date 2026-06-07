@@ -1,0 +1,200 @@
+        nextTab.setOnClickListener(v -> {
+
+            if (tabs.size() > 1) {
+
+                int next = (currentTab + 1) % tabs.size();
+
+                switchToTab(next);
+            }
+        });
+
+        getOnBackPressedDispatcher().addCallback(this,
+                new OnBackPressedCallback(true) {
+
+                    @Override
+                    public void handleOnBackPressed() {
+
+                        WebView webView = getCurrentWebView();
+
+                        if (webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            finish();
+                        }
+                    }
+                });
+    }
+
+    private Button makeButton(String text) {
+
+        Button button = new Button(this);
+
+        button.setText(text);
+        button.setTextColor(Color.WHITE);
+        button.setAllCaps(false);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#2a2a2a"));
+        bg.setCornerRadius(dp(12));
+
+        button.setBackground(bg);
+
+        LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(
+                        dp(46),
+                        dp(46)
+                );
+
+        params.setMargins(dp(3), 0, dp(3), 0);
+
+        button.setLayoutParams(params);
+
+        return button;
+    }
+
+    private int dp(int value) {
+
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                value,
+                getResources().getDisplayMetrics()
+        );
+    }
+
+    private WebView createConfiguredWebView() {
+
+        WebView webView = new WebView(this);
+
+        LinearLayout.LayoutParams webParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1
+                );
+
+        webView.setLayoutParams(webParams);
+
+        WebSettings s = webView.getSettings();
+
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
+        s.setBuiltInZoomControls(true);
+        s.setDisplayZoomControls(false);
+
+        webView.setWebChromeClient(new WebChromeClient());
+
+        webView.setWebViewClient(new WebViewClient() {
+
+            @Override
+            public void onPageStarted(WebView view,
+                                      String url,
+                                      Bitmap favicon) {
+
+                addressBar.setText(url);
+            }
+        });
+
+        return webView;
+    }
+
+    private void createNewTab() {
+
+        WebView webView = createConfiguredWebView();
+
+        tabs.add(webView);
+
+        switchToTab(tabs.size() - 1);
+    }
+
+    private void switchToTab(int index) {
+
+        if (index < 0 || index >= tabs.size()) return;
+
+        currentTab = index;
+
+        updateTabIndicator();
+
+        if (root.getChildCount() > 1) {
+            root.removeViewAt(1);
+        }
+
+        root.addView(getCurrentWebView());
+    }
+
+    private void updateTabIndicator() {
+
+        tabIndicator.setText(
+                (currentTab + 1) + "/" + tabs.size()
+        );
+    }
+
+    private WebView getCurrentWebView() {
+        return tabs.get(currentTab);
+    }
+
+    private void showHome() {
+
+        String homePage =
+                "<html>" +
+                "<body style='margin:0;background:#000;color:white;" +
+                "font-family:sans-serif;text-align:center;'>" +
+
+                "<div style='padding-top:20%;'>" +
+
+                "<h1 style='font-size:48px;margin-bottom:40px;'>" +
+                "Spoon Browser</h1>" +
+
+                "<input id='q' type='text' " +
+                "placeholder='Search privately...' " +
+
+                "style='width:72%;padding:20px;border:none;" +
+                "border-radius:18px;background:#1f1f1f;" +
+                "color:white;font-size:18px;outline:none;'/>" +
+
+                "<br><br>" +
+
+                "<button onclick='goSearch()' " +
+                "style='padding:14px 32px;border:none;" +
+                "border-radius:14px;background:#333;" +
+                "color:white;font-size:16px;'>" +
+
+                "Search</button>" +
+
+                "</div>" +
+
+                "<script>" +
+
+                "function goSearch(){" +
+                "var q=document.getElementById(\"q\").value;" +
+                "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
+                "}" +
+
+                "document.getElementById('q').addEventListener('keydown',function(e){" +
+                "if(e.key==='Enter'){goSearch();}" +
+                "});" +
+
+                "</script>" +
+
+                "</body></html>";
+
+        getCurrentWebView().loadDataWithBaseURL(
+                null,
+                homePage,
+                "text/html",
+                "UTF-8",
+                null
+        );
+    }
+
+    private void navigate() {
+
+        String input = addressBar.getText().toString().trim();
+
+        if (input.isEmpty()) return;
+
+        String url;
+
+        if (input.contains(".") && !input.contains(" ")) {
+
