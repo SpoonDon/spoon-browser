@@ -9,13 +9,13 @@
     body {
       margin: 0;
       font-family: sans-serif;
-      height: 100vh;
       display: flex;
       flex-direction: column;
+      height: 100vh;
       background: #111;
     }
 
-    #topbar {
+    #bar {
       display: flex;
       padding: 8px;
       background: #1a1a1a;
@@ -25,8 +25,8 @@
     input {
       flex: 1;
       padding: 10px;
-      border-radius: 6px;
       border: none;
+      border-radius: 6px;
       outline: none;
     }
 
@@ -43,67 +43,42 @@
       border: none;
       background: white;
     }
-
-    #status {
-      font-size: 12px;
-      color: #aaa;
-      padding: 4px 8px;
-      background: #0f0f0f;
-    }
   </style>
 </head>
 
 <body>
 
-<div id="topbar">
+<div id="bar">
   <button onclick="back()">←</button>
   <button onclick="forward()">→</button>
   <button onclick="reload()">⟳</button>
 
-  <input id="url" placeholder="Search or enter URL" onkeydown="handleKey(event)" />
+  <input id="url" placeholder="Search or enter URL" onkeydown="if(event.key==='Enter') go()" />
   <button onclick="go()">Go</button>
 </div>
-
-<div id="status">Ready</div>
 
 <iframe id="web"></iframe>
 
 <script>
   const frame = document.getElementById("web");
-  const urlBar = document.getElementById("url");
-  const status = document.getElementById("status");
 
-  function isURL(text) {
-    return text.includes(".") && !text.includes(" ");
+  function isURL(t) {
+    return t.includes(".") && !t.includes(" ");
   }
 
-  function buildSearch(query) {
-    return "https://duckduckgo.com/?q=" + encodeURIComponent(query);
-  }
-
-  function resolveInput(input) {
-    input = input.trim();
-
+  function resolve(input) {
     if (!input) return "";
 
     if (isURL(input)) {
-      if (!input.startsWith("http")) {
-        return "https://" + input;
-      }
+      if (!input.startsWith("http")) return "https://" + input;
       return input;
     }
 
-    return buildSearch(input);
+    return "https://duckduckgo.com/?q=" + encodeURIComponent(input);
   }
 
   function go() {
-    const input = urlBar.value;
-    const target = resolveInput(input);
-
-    if (!target) return;
-
-    frame.src = target;
-    status.innerText = "Loading...";
+    frame.src = resolve(document.getElementById("url").value);
   }
 
   function back() {
@@ -117,16 +92,6 @@
   function reload() {
     frame.src = frame.src;
   }
-
-  function handleKey(event) {
-    if (event.key === "Enter") {
-      go();
-    }
-  }
-
-  frame.onload = () => {
-    status.innerText = "Loaded";
-  };
 </script>
 
 </body>
