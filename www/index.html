@@ -15,16 +15,16 @@
 
     #bar {
       display: flex;
+      gap: 6px;
       padding: 8px;
       background: #1a1a1a;
-      gap: 6px;
     }
 
     input {
       flex: 1;
       padding: 10px;
-      border-radius: 6px;
       border: none;
+      border-radius: 6px;
       outline: none;
     }
 
@@ -36,11 +36,10 @@
       color: white;
     }
 
-    #view {
-      width: 100%;
-      height: calc(100vh - 60px);
-      border: none;
-      background: white;
+    #status {
+      padding: 6px 10px;
+      font-size: 12px;
+      opacity: 0.7;
     }
   </style>
 </head>
@@ -50,14 +49,15 @@
 <div id="bar">
   <button onclick="back()">←</button>
   <button onclick="forward()">→</button>
-  <input id="url" placeholder="Search or URL" onkeydown="if(event.key==='Enter') go()" />
+  <input id="url" placeholder="Enter URL or search" onkeydown="if(event.key==='Enter') go()" />
   <button onclick="go()">Go</button>
 </div>
 
-<iframe id="view"></iframe>
+<div id="status">Ready</div>
 
 <script>
-  const view = document.getElementById("view");
+  let historyStack = [];
+  let index = -1;
 
   function resolve(input) {
     input = input.trim();
@@ -73,16 +73,34 @@
   }
 
   function go() {
-    const input = document.getElementById("url").value;
-    view.src = resolve(input);
+    const url = resolve(document.getElementById("url").value);
+
+    if (!url) return;
+
+    historyStack = historyStack.slice(0, index + 1);
+    historyStack.push(url);
+    index++;
+
+    load(url);
+  }
+
+  function load(url) {
+    document.getElementById("status").innerText = "Loading: " + url;
+    window.location.href = url;
   }
 
   function back() {
-    view.contentWindow.history.back();
+    if (index > 0) {
+      index--;
+      load(historyStack[index]);
+    }
   }
 
   function forward() {
-    view.contentWindow.history.forward();
+    if (index < historyStack.length - 1) {
+      index++;
+      load(historyStack[index]);
+    }
   }
 </script>
 
