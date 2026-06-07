@@ -3,6 +3,7 @@ package com.spoondon.browser;
 import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -46,51 +47,51 @@ public class MainActivity extends BridgeActivity {
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-
-        int topPadding = dp(18);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
 
         toolbar.setPadding(
                 dp(8),
-                topPadding,
+                dp(18),
                 dp(8),
                 dp(8)
         );
 
-        toolbar.setBackgroundColor(Color.parseColor("#1a1a1a"));
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setBackgroundColor(Color.parseColor("#111111"));
 
         Button back = makeButton("←");
         Button forward = makeButton("→");
         Button home = makeButton("⌂");
+
         Button prevTab = makeButton("◀");
-        Button nextTab = makeButton("▶");
-        Button newTab = makeButton("+");
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
-        tabIndicator.setTextSize(16);
-        tabIndicator.setPadding(dp(8), 0, dp(8), 0);
+        tabIndicator.setTextSize(15);
+        tabIndicator.setPadding(dp(10), 0, dp(10), 0);
 
-        Button go = makeButton("Go");
+        Button nextTab = makeButton("▶");
+        Button newTab = makeButton("+");
+        Button closeTab = makeButton("×");
 
         addressBar = new EditText(this);
 
         addressBar.setHint("Search or enter URL");
         addressBar.setTextColor(Color.WHITE);
         addressBar.setHintTextColor(Color.GRAY);
+        addressBar.setSingleLine(true);
 
-        addressBar.setBackgroundColor(
-                Color.parseColor("#2a2a2a")
-        );
+        GradientDrawable addressBg = new GradientDrawable();
+        addressBg.setColor(Color.parseColor("#1e1e1e"));
+        addressBg.setCornerRadius(dp(14));
+
+        addressBar.setBackground(addressBg);
 
         addressBar.setPadding(
-                dp(14),
-                dp(10),
-                dp(14),
-                dp(10)
+                dp(16),
+                dp(12),
+                dp(16),
+                dp(12)
         );
-
-        addressBar.setSingleLine(true);
 
         LinearLayout.LayoutParams inputParams =
                 new LinearLayout.LayoutParams(
@@ -99,9 +100,11 @@ public class MainActivity extends BridgeActivity {
                         1
                 );
 
-        inputParams.setMargins(dp(6), 0, dp(6), 0);
+        inputParams.setMargins(dp(8), 0, dp(8), 0);
 
         addressBar.setLayoutParams(inputParams);
+
+        Button go = makeButton("Go");
 
         toolbar.addView(back);
         toolbar.addView(forward);
@@ -110,6 +113,7 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(tabIndicator);
         toolbar.addView(nextTab);
         toolbar.addView(newTab);
+        toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
 
@@ -160,6 +164,26 @@ public class MainActivity extends BridgeActivity {
             showHome();
         });
 
+        closeTab.setOnClickListener(v -> {
+
+            if (tabs.size() > 1) {
+
+                tabs.remove(currentTab);
+
+                if (currentTab >= tabs.size()) {
+                    currentTab = tabs.size() - 1;
+                }
+
+                switchToTab(currentTab);
+
+                Toast.makeText(
+                        this,
+                        "Tab Closed",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+        });
+
         prevTab.setOnClickListener(v -> {
 
             if (tabs.size() > 1) {
@@ -206,14 +230,22 @@ public class MainActivity extends BridgeActivity {
         Button button = new Button(this);
 
         button.setText(text);
+        button.setTextColor(Color.WHITE);
+        button.setAllCaps(false);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#2a2a2a"));
+        bg.setCornerRadius(dp(12));
+
+        button.setBackground(bg);
 
         LinearLayout.LayoutParams params =
                 new LinearLayout.LayoutParams(
-                        dp(48),
-                        dp(48)
+                        dp(46),
+                        dp(46)
                 );
 
-        params.setMargins(dp(2), 0, dp(2), 0);
+        params.setMargins(dp(3), 0, dp(3), 0);
 
         button.setLayoutParams(params);
 
@@ -309,23 +341,23 @@ public class MainActivity extends BridgeActivity {
                 "<body style='margin:0;background:#000;color:white;" +
                 "font-family:sans-serif;text-align:center;'>" +
 
-                "<div style='padding-top:25%;'>" +
+                "<div style='padding-top:20%;'>" +
 
-                "<h1 style='font-size:42px;margin-bottom:40px;'>" +
+                "<h1 style='font-size:48px;margin-bottom:40px;'>" +
                 "Spoon Browser</h1>" +
 
                 "<input id='q' type='text' " +
                 "placeholder='Search privately...' " +
 
-                "style='width:70%;padding:18px;border:none;" +
-                "border-radius:14px;background:#1f1f1f;" +
+                "style='width:72%;padding:20px;border:none;" +
+                "border-radius:18px;background:#1f1f1f;" +
                 "color:white;font-size:18px;outline:none;'/>" +
 
                 "<br><br>" +
 
                 "<button onclick='goSearch()' " +
-                "style='padding:14px 28px;border:none;" +
-                "border-radius:12px;background:#333;" +
+                "style='padding:14px 32px;border:none;" +
+                "border-radius:14px;background:#333;" +
                 "color:white;font-size:16px;'>" +
 
                 "Search</button>" +
@@ -388,7 +420,6 @@ public class MainActivity extends BridgeActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
 
-        menu.add("Close Current Tab");
         menu.add("Refresh");
         menu.add("Home");
         menu.add("About");
@@ -402,27 +433,6 @@ public class MainActivity extends BridgeActivity {
         String title = item.getTitle().toString();
 
         switch (title) {
-
-            case "Close Current Tab":
-
-                if (tabs.size() > 1) {
-
-                    tabs.remove(currentTab);
-
-                    if (currentTab >= tabs.size()) {
-                        currentTab = tabs.size() - 1;
-                    }
-
-                    switchToTab(currentTab);
-
-                    Toast.makeText(
-                            this,
-                            "Tab Closed",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
-
-                return true;
 
             case "Refresh":
 
