@@ -5,7 +5,6 @@ import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -34,7 +33,7 @@ public class MainActivity extends BridgeActivity {
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setPadding(8,8,8,8);
+        toolbar.setPadding(8, 8, 8, 8);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
 
         Button back = new Button(this);
@@ -42,6 +41,9 @@ public class MainActivity extends BridgeActivity {
 
         Button forward = new Button(this);
         forward.setText("→");
+
+        Button home = new Button(this);
+        home.setText("⌂");
 
         Button go = new Button(this);
         go.setText("Go");
@@ -60,6 +62,7 @@ public class MainActivity extends BridgeActivity {
 
         toolbar.addView(back);
         toolbar.addView(forward);
+        toolbar.addView(home);
         toolbar.addView(addressBar);
         toolbar.addView(go);
 
@@ -107,6 +110,7 @@ public class MainActivity extends BridgeActivity {
                 navigate();
                 return true;
             }
+
             return false;
         });
 
@@ -122,10 +126,14 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
+        home.setOnClickListener(v -> showHome());
+
         getOnBackPressedDispatcher().addCallback(this,
                 new OnBackPressedCallback(true) {
+
                     @Override
                     public void handleOnBackPressed() {
+
                         if (webView.canGoBack()) {
                             webView.goBack();
                         } else {
@@ -134,7 +142,26 @@ public class MainActivity extends BridgeActivity {
                     }
                 });
 
-        webView.loadUrl("https://duckduckgo.com");
+        showHome();
+    }
+
+    private void showHome() {
+
+        String homePage =
+                "<html>" +
+                "<body style='background:#111;color:white;font-family:sans-serif;text-align:center;padding-top:35%;'>" +
+                "<h1>Spoon Browser</h1>" +
+                "<p>Private. Simple. Fast.</p>" +
+                "</body>" +
+                "</html>";
+
+        webView.loadDataWithBaseURL(
+                null,
+                homePage,
+                "text/html",
+                "UTF-8",
+                null
+        );
     }
 
     private void navigate() {
@@ -153,12 +180,14 @@ public class MainActivity extends BridgeActivity {
                 url = "https://" + input;
 
             } else {
+
                 url = input;
             }
 
         } else {
 
-            url = "https://duckduckgo.com/?q=" + input.replace(" ", "+");
+            url = "https://duckduckgo.com/?q=" +
+                    input.replace(" ", "+");
         }
 
         webView.loadUrl(url);
