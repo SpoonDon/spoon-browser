@@ -22,10 +22,15 @@ import androidx.activity.OnBackPressedCallback;
 
 import com.getcapacitor.BridgeActivity;
 
+import java.util.ArrayList;
+
 public class MainActivity extends BridgeActivity {
 
     private WebView webView;
     private EditText addressBar;
+
+    private final ArrayList<String> bookmarks = new ArrayList<>();
+    private final ArrayList<String> history = new ArrayList<>();
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -108,6 +113,10 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 addressBar.setText(url);
+
+                if (!history.contains(url)) {
+                    history.add(url);
+                }
             }
         });
 
@@ -246,6 +255,9 @@ public class MainActivity extends BridgeActivity {
 
         menu.add("Refresh");
         menu.add("Home");
+        menu.add("Add Bookmark");
+        menu.add("View Bookmarks");
+        menu.add("View History");
         menu.add("About");
 
         return true;
@@ -266,12 +278,86 @@ public class MainActivity extends BridgeActivity {
                 showHome();
                 return true;
 
+            case "Add Bookmark":
+
+                String currentUrl = webView.getUrl();
+
+                if (currentUrl != null &&
+                        !bookmarks.contains(currentUrl)) {
+
+                    bookmarks.add(currentUrl);
+
+                    Toast.makeText(
+                            this,
+                            "Bookmarked",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
+
+                return true;
+
+            case "View Bookmarks":
+
+                if (bookmarks.isEmpty()) {
+
+                    Toast.makeText(
+                            this,
+                            "No bookmarks",
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                } else {
+
+                    StringBuilder b = new StringBuilder();
+
+                    for (String s : bookmarks) {
+                        b.append(s).append("\n\n");
+                    }
+
+                    Toast.makeText(
+                            this,
+                            b.toString(),
+                            Toast.LENGTH_LONG
+                    ).show();
+                }
+
+                return true;
+
+            case "View History":
+
+                if (history.isEmpty()) {
+
+                    Toast.makeText(
+                            this,
+                            "No history",
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                } else {
+
+                    StringBuilder h = new StringBuilder();
+
+                    for (String s : history) {
+                        h.append(s).append("\n\n");
+                    }
+
+                    Toast.makeText(
+                            this,
+                            h.toString(),
+                            Toast.LENGTH_LONG
+                    ).show();
+                }
+
+                return true;
+
             case "About":
+
                 Toast.makeText(
                         this,
                         "Spoon Browser",
                         Toast.LENGTH_SHORT
                 ).show();
+
                 return true;
         }
 
