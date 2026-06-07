@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -45,41 +46,51 @@ public class MainActivity extends BridgeActivity {
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setPadding(10, 20, 10, 10);
+
+        int topPadding = dp(18);
+
+        toolbar.setPadding(
+                dp(8),
+                topPadding,
+                dp(8),
+                dp(8)
+        );
+
         toolbar.setBackgroundColor(Color.parseColor("#1a1a1a"));
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button back = new Button(this);
-        back.setText("←");
-
-        Button forward = new Button(this);
-        forward.setText("→");
-
-        Button home = new Button(this);
-        home.setText("⌂");
-
-        Button prevTab = new Button(this);
-        prevTab.setText("◀");
-
-        Button nextTab = new Button(this);
-        nextTab.setText("▶");
-
-        Button newTab = new Button(this);
-        newTab.setText("+");
+        Button back = makeButton("←");
+        Button forward = makeButton("→");
+        Button home = makeButton("⌂");
+        Button prevTab = makeButton("◀");
+        Button nextTab = makeButton("▶");
+        Button newTab = makeButton("+");
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
-        tabIndicator.setPadding(15, 0, 15, 0);
+        tabIndicator.setTextSize(16);
+        tabIndicator.setPadding(dp(8), 0, dp(8), 0);
 
-        Button go = new Button(this);
-        go.setText("Go");
+        Button go = makeButton("Go");
 
         addressBar = new EditText(this);
+
         addressBar.setHint("Search or enter URL");
         addressBar.setTextColor(Color.WHITE);
         addressBar.setHintTextColor(Color.GRAY);
-        addressBar.setBackgroundColor(Color.parseColor("#2a2a2a"));
-        addressBar.setPadding(20, 10, 20, 10);
+
+        addressBar.setBackgroundColor(
+                Color.parseColor("#2a2a2a")
+        );
+
+        addressBar.setPadding(
+                dp(14),
+                dp(10),
+                dp(14),
+                dp(10)
+        );
+
+        addressBar.setSingleLine(true);
 
         LinearLayout.LayoutParams inputParams =
                 new LinearLayout.LayoutParams(
@@ -87,6 +98,8 @@ public class MainActivity extends BridgeActivity {
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         1
                 );
+
+        inputParams.setMargins(dp(6), 0, dp(6), 0);
 
         addressBar.setLayoutParams(inputParams);
 
@@ -188,6 +201,34 @@ public class MainActivity extends BridgeActivity {
                 });
     }
 
+    private Button makeButton(String text) {
+
+        Button button = new Button(this);
+
+        button.setText(text);
+
+        LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(
+                        dp(48),
+                        dp(48)
+                );
+
+        params.setMargins(dp(2), 0, dp(2), 0);
+
+        button.setLayoutParams(params);
+
+        return button;
+    }
+
+    private int dp(int value) {
+
+        return (int) TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP,
+                value,
+                getResources().getDisplayMetrics()
+        );
+    }
+
     private WebView createConfiguredWebView() {
 
         WebView webView = new WebView(this);
@@ -215,7 +256,10 @@ public class MainActivity extends BridgeActivity {
         webView.setWebViewClient(new WebViewClient() {
 
             @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            public void onPageStarted(WebView view,
+                                      String url,
+                                      Bitmap favicon) {
+
                 addressBar.setText(url);
             }
         });
