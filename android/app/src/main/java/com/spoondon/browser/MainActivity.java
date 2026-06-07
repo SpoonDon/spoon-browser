@@ -26,18 +26,18 @@ import java.util.ArrayList;
 
 public class MainActivity extends BridgeActivity {
 
-    private WebView webView;
     private EditText addressBar;
+    private LinearLayout root;
 
-    private final ArrayList<String> bookmarks = new ArrayList<>();
-    private final ArrayList<String> history = new ArrayList<>();
+    private final ArrayList<WebView> tabs = new ArrayList<>();
+    private int currentTab = 0;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        LinearLayout root = new LinearLayout(this);
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
 
@@ -55,6 +55,9 @@ public class MainActivity extends BridgeActivity {
 
         Button home = new Button(this);
         home.setText("⌂");
+
+        Button tabsBtn = new Button(this);
+        tabsBtn.setText("Tabs");
 
         Button go = new Button(this);
         go.setText("Go");
@@ -78,47 +81,16 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(back);
         toolbar.addView(forward);
         toolbar.addView(home);
+        toolbar.addView(tabsBtn);
         toolbar.addView(addressBar);
         toolbar.addView(go);
 
-        webView = new WebView(this);
-
-        LinearLayout.LayoutParams webParams =
-                new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        1
-                );
-
-        webView.setLayoutParams(webParams);
-
         root.addView(toolbar);
-        root.addView(webView);
 
         setContentView(root);
 
-        WebSettings s = webView.getSettings();
-
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(true);
-        s.setBuiltInZoomControls(true);
-        s.setDisplayZoomControls(false);
-
-        webView.setWebChromeClient(new WebChromeClient());
-
-        webView.setWebViewClient(new WebViewClient() {
-
-            @Override
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                addressBar.setText(url);
-
-                if (!history.contains(url)) {
-                    history.add(url);
-                }
-            }
-        });
+        createNewTab();
+        showHome();
 
         go.setOnClickListener(v -> navigate());
 
@@ -136,12 +108,16 @@ public class MainActivity extends BridgeActivity {
 
         back.setOnClickListener(v -> {
 
+            WebView webView = getCurrentWebView();
+
             if (webView.canGoBack()) {
                 webView.goBack();
             }
         });
 
         forward.setOnClickListener(v -> {
+
+            WebView webView = getCurrentWebView();
 
             if (webView.canGoForward()) {
                 webView.goForward();
@@ -150,11 +126,24 @@ public class MainActivity extends BridgeActivity {
 
         home.setOnClickListener(v -> showHome());
 
+        tabsBtn.setOnClickListener(v -> {
+
+            createNewTab();
+
+            Toast.makeText(
+                    this,
+                    "New Tab: " + tabs.size(),
+                    Toast.LENGTH_SHORT
+            ).show();
+        });
+
         getOnBackPressedDispatcher().addCallback(this,
                 new OnBackPressedCallback(true) {
 
                     @Override
                     public void handleOnBackPressed() {
+
+                        WebView webView = getCurrentWebView();
 
                         if (webView.canGoBack()) {
                             webView.goBack();
@@ -163,8 +152,67 @@ public class MainActivity extends BridgeActivity {
                         }
                     }
                 });
+    }
 
-        showHome();
+    private WebView createConfiguredWebView() {
+
+        WebView webView = new WebView(this);
+
+        LinearLayout.LayoutParams webParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1
+                );
+
+        webView.setLayoutParams(webParams);
+
+        WebSettings s = webView.getSettings();
+
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
+        s.setBuiltInZoomControls(true);
+        s.setDisplayZoomControls(false);
+
+        webView.setWebChromeClient(new WebChromeClient());
+
+        webView.setWebViewClient(new WebViewClient() {
+
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                addressBar.setText(url);
+            }
+        });
+
+        return webView;
+    }
+
+    private void createNewTab() {
+
+        WebView webView = createConfiguredWebView();
+
+        tabs.add(webView);
+
+        switchToTab(tabs.size() - 1);
+    }
+
+    private void switchToTab(int index) {
+
+        if (index < 0 || index >= tabs.size()) return;
+
+        currentTab = index;
+
+        if (root.getChildCount() > 1) {
+            root.removeViewAt(1);
+        }
+
+        root.addView(getCurrentWebView());
+    }
+
+    private WebView getCurrentWebView() {
+        return tabs.get(currentTab);
     }
 
     private void showHome() {
@@ -212,7 +260,7 @@ public class MainActivity extends BridgeActivity {
 
                 "</body></html>";
 
-        webView.loadDataWithBaseURL(
+        getCurrentWebView().loadDataWithBaseURL(
                 null,
                 homePage,
                 "text/html",
@@ -247,17 +295,17 @@ public class MainActivity extends BridgeActivity {
                     input.replace(" ", "+");
         }
 
-        webView.loadUrl(url);
+        getCurrentWebView().loadUrl(url);
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
 
+        menu.add("New Tab");
+        menu.add("Next Tab");
+        menu.add("Close Tab");
         menu.add("Refresh");
         menu.add("Home");
-        menu.add("Add Bookmark");
-        menu.add("View Bookmarks");
-        menu.add("View History");
         menu.add("About");
 
         return true;
@@ -270,83 +318,58 @@ public class MainActivity extends BridgeActivity {
 
         switch (title) {
 
-            case "Refresh":
-                webView.reload();
-                return true;
+            case "New Tab":
 
-            case "Home":
+                createNewTab();
                 showHome();
+
                 return true;
 
-            case "Add Bookmark":
+            case "Next Tab":
 
-                String currentUrl = webView.getUrl();
+                if (tabs.size() > 1) {
 
-                if (currentUrl != null &&
-                        !bookmarks.contains(currentUrl)) {
+                    int next = (currentTab + 1) % tabs.size();
 
-                    bookmarks.add(currentUrl);
+                    switchToTab(next);
 
                     Toast.makeText(
                             this,
-                            "Bookmarked",
+                            "Tab " + (next + 1),
                             Toast.LENGTH_SHORT
                     ).show();
                 }
 
                 return true;
 
-            case "View Bookmarks":
+            case "Close Tab":
 
-                if (bookmarks.isEmpty()) {
+                if (tabs.size() > 1) {
 
-                    Toast.makeText(
-                            this,
-                            "No bookmarks",
-                            Toast.LENGTH_LONG
-                    ).show();
+                    tabs.remove(currentTab);
 
-                } else {
+                    currentTab = Math.max(0, currentTab - 1);
 
-                    StringBuilder b = new StringBuilder();
-
-                    for (String s : bookmarks) {
-                        b.append(s).append("\n\n");
-                    }
+                    switchToTab(currentTab);
 
                     Toast.makeText(
                             this,
-                            b.toString(),
-                            Toast.LENGTH_LONG
+                            "Tab Closed",
+                            Toast.LENGTH_SHORT
                     ).show();
                 }
 
                 return true;
 
-            case "View History":
+            case "Refresh":
 
-                if (history.isEmpty()) {
+                getCurrentWebView().reload();
 
-                    Toast.makeText(
-                            this,
-                            "No history",
-                            Toast.LENGTH_LONG
-                    ).show();
+                return true;
 
-                } else {
+            case "Home":
 
-                    StringBuilder h = new StringBuilder();
-
-                    for (String s : history) {
-                        h.append(s).append("\n\n");
-                    }
-
-                    Toast.makeText(
-                            this,
-                            h.toString(),
-                            Toast.LENGTH_LONG
-                    ).show();
-                }
+                showHome();
 
                 return true;
 
