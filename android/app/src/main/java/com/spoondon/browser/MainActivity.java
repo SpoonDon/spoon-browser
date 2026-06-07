@@ -1,17 +1,16 @@
 package com.spoondon.browser;
 
 import android.annotation.SuppressLint;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
-import android.view.KeyEvent;
 import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.EditText;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -30,32 +29,45 @@ public class MainActivity extends BridgeActivity {
         WebSettings s = webView.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(true);
         s.setAllowContentAccess(true);
         s.setAllowFileAccess(true);
 
-        // IMPORTANT: Fix blocked responses
+        // Keep browser stable and modern
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
 
+            // Keep all navigation inside browser
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 view.loadUrl(request.getUrl().toString());
                 return true;
             }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                view.loadUrl(url);
+                return true;
+            }
         });
 
-        // Fix downloads
+        // DOWNLOAD HANDLING (external apps / system)
         webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
-            Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setData(Uri.parse(url));
-            startActivity(i);
+            try {
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setData(Uri.parse(url));
+                startActivity(i);
+            } catch (ActivityNotFoundException e) {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            }
         });
 
-        // START PAGE (must NOT be blank)
-        webView.loadUrl("https://duckduckgo.com");
+        // START CLEAN (IMPORTANT)
+        webView.loadUrl("about:blank");
     }
 
     @Override
