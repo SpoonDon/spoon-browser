@@ -2,6 +2,7 @@ package com.spoondon.browser;
 
 import android.annotation.SuppressLint;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -30,10 +31,12 @@ public class MainActivity extends BridgeActivity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.BLACK);
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setPadding(8, 8, 8, 8);
+        toolbar.setPadding(10, 20, 10, 10);
+        toolbar.setBackgroundColor(Color.parseColor("#1a1a1a"));
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
 
         Button back = new Button(this);
@@ -49,7 +52,11 @@ public class MainActivity extends BridgeActivity {
         go.setText("Go");
 
         addressBar = new EditText(this);
-        addressBar.setHint("Search or URL");
+        addressBar.setHint("Search or enter URL");
+        addressBar.setTextColor(Color.WHITE);
+        addressBar.setHintTextColor(Color.GRAY);
+        addressBar.setBackgroundColor(Color.parseColor("#2a2a2a"));
+        addressBar.setPadding(20, 10, 20, 10);
 
         LinearLayout.LayoutParams inputParams =
                 new LinearLayout.LayoutParams(
@@ -104,6 +111,7 @@ public class MainActivity extends BridgeActivity {
         go.setOnClickListener(v -> navigate());
 
         addressBar.setOnKeyListener((v, keyCode, event) -> {
+
             if (keyCode == KeyEvent.KEYCODE_ENTER &&
                     event.getAction() == KeyEvent.ACTION_DOWN) {
 
@@ -115,12 +123,14 @@ public class MainActivity extends BridgeActivity {
         });
 
         back.setOnClickListener(v -> {
+
             if (webView.canGoBack()) {
                 webView.goBack();
             }
         });
 
         forward.setOnClickListener(v -> {
+
             if (webView.canGoForward()) {
                 webView.goForward();
             }
@@ -149,11 +159,44 @@ public class MainActivity extends BridgeActivity {
 
         String homePage =
                 "<html>" +
-                "<body style='background:#111;color:white;font-family:sans-serif;text-align:center;padding-top:35%;'>" +
-                "<h1>Spoon Browser</h1>" +
-                "<p>Private. Simple. Fast.</p>" +
-                "</body>" +
-                "</html>";
+                "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
+
+                "<div style='padding-top:22%;'>" +
+
+                "<h1 style='font-size:42px;margin-bottom:10px;'>Spoon Browser</h1>" +
+
+                "<p style='opacity:0.7;font-size:18px;'>Private • Simple • Fast</p>" +
+
+                "<div style='margin-top:50px;'>" +
+
+                "<input id='q' type='text' placeholder='Search privately...' " +
+                "style='width:70%;padding:18px;border:none;border-radius:14px;" +
+                "background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
+
+                "<br><br>" +
+
+                "<button onclick='goSearch()' " +
+                "style='padding:14px 28px;border:none;border-radius:12px;" +
+                "background:#333;color:white;font-size:16px;'>Search</button>" +
+
+                "</div>" +
+
+                "</div>" +
+
+                "<script>" +
+
+                "function goSearch(){" +
+                "var q=document.getElementById(\"q\").value;" +
+                "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
+                "}" +
+
+                "document.getElementById('q').addEventListener('keydown',function(e){" +
+                "if(e.key==='Enter'){goSearch();}" +
+                "});" +
+
+                "</script>" +
+
+                "</body></html>";
 
         webView.loadDataWithBaseURL(
                 null,
