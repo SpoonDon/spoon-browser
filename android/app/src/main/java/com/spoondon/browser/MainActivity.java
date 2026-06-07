@@ -6,6 +6,8 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -14,6 +16,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 
@@ -26,7 +29,7 @@ public class MainActivity extends BridgeActivity {
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         LinearLayout root = new LinearLayout(this);
@@ -159,27 +162,29 @@ public class MainActivity extends BridgeActivity {
 
         String homePage =
                 "<html>" +
-                "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
+                "<body style='margin:0;background:#000;color:white;" +
+                "font-family:sans-serif;text-align:center;'>" +
 
-                "<div style='padding-top:22%;'>" +
+                "<div style='padding-top:25%;'>" +
 
-                "<h1 style='font-size:42px;margin-bottom:10px;'>Spoon Browser</h1>" +
+                "<h1 style='font-size:42px;margin-bottom:40px;'>" +
+                "Spoon Browser</h1>" +
 
-                "<p style='opacity:0.7;font-size:18px;'>Private • Simple • Fast</p>" +
+                "<input id='q' type='text' " +
+                "placeholder='Search privately...' " +
 
-                "<div style='margin-top:50px;'>" +
-
-                "<input id='q' type='text' placeholder='Search privately...' " +
-                "style='width:70%;padding:18px;border:none;border-radius:14px;" +
-                "background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
+                "style='width:70%;padding:18px;border:none;" +
+                "border-radius:14px;background:#1f1f1f;" +
+                "color:white;font-size:18px;outline:none;'/>" +
 
                 "<br><br>" +
 
                 "<button onclick='goSearch()' " +
-                "style='padding:14px 28px;border:none;border-radius:12px;" +
-                "background:#333;color:white;font-size:16px;'>Search</button>" +
+                "style='padding:14px 28px;border:none;" +
+                "border-radius:12px;background:#333;" +
+                "color:white;font-size:16px;'>" +
 
-                "</div>" +
+                "Search</button>" +
 
                 "</div>" +
 
@@ -234,5 +239,42 @@ public class MainActivity extends BridgeActivity {
         }
 
         webView.loadUrl(url);
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+
+        menu.add("Refresh");
+        menu.add("Home");
+        menu.add("About");
+
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+
+        String title = item.getTitle().toString();
+
+        switch (title) {
+
+            case "Refresh":
+                webView.reload();
+                return true;
+
+            case "Home":
+                showHome();
+                return true;
+
+            case "About":
+                Toast.makeText(
+                        this,
+                        "Spoon Browser",
+                        Toast.LENGTH_SHORT
+                ).show();
+                return true;
+        }
+
+        return super.onOptionsItemSelected(item);
     }
 }
