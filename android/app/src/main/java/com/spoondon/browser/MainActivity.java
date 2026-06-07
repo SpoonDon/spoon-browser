@@ -16,6 +16,7 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -28,6 +29,7 @@ public class MainActivity extends BridgeActivity {
 
     private EditText addressBar;
     private LinearLayout root;
+    private TextView tabIndicator;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
     private int currentTab = 0;
@@ -56,8 +58,18 @@ public class MainActivity extends BridgeActivity {
         Button home = new Button(this);
         home.setText("⌂");
 
-        Button tabsBtn = new Button(this);
-        tabsBtn.setText("Tabs");
+        Button prevTab = new Button(this);
+        prevTab.setText("◀");
+
+        Button nextTab = new Button(this);
+        nextTab.setText("▶");
+
+        Button newTab = new Button(this);
+        newTab.setText("+");
+
+        tabIndicator = new TextView(this);
+        tabIndicator.setTextColor(Color.WHITE);
+        tabIndicator.setPadding(15, 0, 15, 0);
 
         Button go = new Button(this);
         go.setText("Go");
@@ -81,7 +93,10 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(back);
         toolbar.addView(forward);
         toolbar.addView(home);
-        toolbar.addView(tabsBtn);
+        toolbar.addView(prevTab);
+        toolbar.addView(tabIndicator);
+        toolbar.addView(nextTab);
+        toolbar.addView(newTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
 
@@ -126,15 +141,34 @@ public class MainActivity extends BridgeActivity {
 
         home.setOnClickListener(v -> showHome());
 
-        tabsBtn.setOnClickListener(v -> {
+        newTab.setOnClickListener(v -> {
 
             createNewTab();
+            showHome();
+        });
 
-            Toast.makeText(
-                    this,
-                    "New Tab: " + tabs.size(),
-                    Toast.LENGTH_SHORT
-            ).show();
+        prevTab.setOnClickListener(v -> {
+
+            if (tabs.size() > 1) {
+
+                int previous = currentTab - 1;
+
+                if (previous < 0) {
+                    previous = tabs.size() - 1;
+                }
+
+                switchToTab(previous);
+            }
+        });
+
+        nextTab.setOnClickListener(v -> {
+
+            if (tabs.size() > 1) {
+
+                int next = (currentTab + 1) % tabs.size();
+
+                switchToTab(next);
+            }
         });
 
         getOnBackPressedDispatcher().addCallback(this,
@@ -204,11 +238,20 @@ public class MainActivity extends BridgeActivity {
 
         currentTab = index;
 
+        updateTabIndicator();
+
         if (root.getChildCount() > 1) {
             root.removeViewAt(1);
         }
 
         root.addView(getCurrentWebView());
+    }
+
+    private void updateTabIndicator() {
+
+        tabIndicator.setText(
+                (currentTab + 1) + "/" + tabs.size()
+        );
     }
 
     private WebView getCurrentWebView() {
@@ -301,9 +344,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
 
-        menu.add("New Tab");
-        menu.add("Next Tab");
-        menu.add("Close Tab");
+        menu.add("Close Current Tab");
         menu.add("Refresh");
         menu.add("Home");
         menu.add("About");
@@ -318,37 +359,15 @@ public class MainActivity extends BridgeActivity {
 
         switch (title) {
 
-            case "New Tab":
-
-                createNewTab();
-                showHome();
-
-                return true;
-
-            case "Next Tab":
-
-                if (tabs.size() > 1) {
-
-                    int next = (currentTab + 1) % tabs.size();
-
-                    switchToTab(next);
-
-                    Toast.makeText(
-                            this,
-                            "Tab " + (next + 1),
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
-
-                return true;
-
-            case "Close Tab":
+            case "Close Current Tab":
 
                 if (tabs.size() > 1) {
 
                     tabs.remove(currentTab);
 
-                    currentTab = Math.max(0, currentTab - 1);
+                    if (currentTab >= tabs.size()) {
+                        currentTab = tabs.size() - 1;
+                    }
 
                     switchToTab(currentTab);
 
