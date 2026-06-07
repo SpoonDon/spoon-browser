@@ -9,10 +9,8 @@
     body {
       margin: 0;
       font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
       background: #111;
+      color: white;
     }
 
     #bar {
@@ -25,8 +23,8 @@
     input {
       flex: 1;
       padding: 10px;
-      border: none;
       border-radius: 6px;
+      border: none;
       outline: none;
     }
 
@@ -38,8 +36,9 @@
       color: white;
     }
 
-    iframe {
-      flex: 1;
+    #view {
+      width: 100%;
+      height: calc(100vh - 60px);
       border: none;
       background: white;
     }
@@ -51,25 +50,21 @@
 <div id="bar">
   <button onclick="back()">←</button>
   <button onclick="forward()">→</button>
-  <button onclick="reload()">⟳</button>
-
-  <input id="url" placeholder="Search or enter URL" onkeydown="if(event.key==='Enter') go()" />
+  <input id="url" placeholder="Search or URL" onkeydown="if(event.key==='Enter') go()" />
   <button onclick="go()">Go</button>
 </div>
 
-<iframe id="web"></iframe>
+<iframe id="view"></iframe>
 
 <script>
-  const frame = document.getElementById("web");
-
-  function isURL(t) {
-    return t.includes(".") && !t.includes(" ");
-  }
+  const view = document.getElementById("view");
 
   function resolve(input) {
+    input = input.trim();
+
     if (!input) return "";
 
-    if (isURL(input)) {
+    if (input.includes(".") && !input.includes(" ")) {
       if (!input.startsWith("http")) return "https://" + input;
       return input;
     }
@@ -78,19 +73,16 @@
   }
 
   function go() {
-    frame.src = resolve(document.getElementById("url").value);
+    const input = document.getElementById("url").value;
+    view.src = resolve(input);
   }
 
   function back() {
-    frame.contentWindow.history.back();
+    view.contentWindow.history.back();
   }
 
   function forward() {
-    frame.contentWindow.history.forward();
-  }
-
-  function reload() {
-    frame.src = frame.src;
+    view.contentWindow.history.forward();
   }
 </script>
 
