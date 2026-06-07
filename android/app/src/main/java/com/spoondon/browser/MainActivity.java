@@ -422,6 +422,7 @@ public class MainActivity extends BridgeActivity {
 
         menu.add("Refresh");
         menu.add("Home");
+        menu.add("Bookmark Page");
         menu.add("About");
 
         return true;
