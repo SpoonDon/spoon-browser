@@ -466,6 +466,16 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
                 return true;
 
+            case "Bookmark Page":
+
+                Toast.makeText(
+                        this,
+                        bookmarks.toString(),
+                        Toast.LENGTH_LONG
+                ).show();
+
+                return true;
+
             case "About":
 
                 Toast.makeText(
