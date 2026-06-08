@@ -104,6 +104,7 @@ public class MainActivity extends BridgeActivity {
 
         Button nextTab = makeButton("▶");
         Button bookmarksView = makeButton("📚");
+        Button historyView = makeButton("🕘");
         Button bookmark = makeButton("★");
         Button newTab = makeButton("+");
         Button closeTab = makeButton("×");
@@ -150,6 +151,7 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(newTab);
         toolbar.addView(bookmark);
         toolbar.addView(bookmarksView);
+        toolbar.addView(historyView);
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
@@ -191,6 +193,22 @@ bookmarksView.setOnClickListener(v -> {
 
         new AlertDialog.Builder(this)
                 .setTitle("Bookmarks")
+                .setItems(items, (dialog, which) ->
+
+                        getCurrentWebView().loadUrl(
+                                items[which]
+                        )
+                )
+                .show();
+});
+
+historyView.setOnClickListener(v -> {
+
+        String[] items =
+                history.toArray(new String[0]);
+
+        new AlertDialog.Builder(this)
+                .setTitle("History")
                 .setItems(items, (dialog, which) ->
 
                         getCurrentWebView().loadUrl(
