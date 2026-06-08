@@ -52,7 +52,7 @@ public class MainActivity extends BridgeActivity {
 
         toolbar.setPadding(
                 dp(8),
-                dp(18),
+                dp(8),
                 dp(8),
                 dp(8)
         );
