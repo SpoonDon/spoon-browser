@@ -1,6 +1,7 @@
 package com.spoondon.browser;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -147,13 +148,21 @@ bookmark.setOnClickListener(v -> {
         ).show();
 });
 
-bookmarksView.setOnClickListener(v ->
-        Toast.makeText(
-                this,
-                bookmarks.toString(),
-                Toast.LENGTH_LONG
-        ).show()
-);
+bookmarksView.setOnClickListener(v -> {
+
+        String[] items =
+                bookmarks.toArray(new String[0]);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Bookmarks")
+                .setItems(items, (dialog, which) ->
+
+                        getCurrentWebView().loadUrl(
+                                items[which]
+                        )
+                )
+                .show();
+});
 
 addressBar.setOnKeyListener((v, keyCode, event) -> {
 
