@@ -37,6 +37,7 @@ public class MainActivity extends BridgeActivity {
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
     private final ArrayList<String> bookmarks = new ArrayList<>();
+    private final ArrayList<String> history = new ArrayList<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
 
@@ -49,17 +50,29 @@ public class MainActivity extends BridgeActivity {
                 MODE_PRIVATE
         );
 
-        String savedBookmarks =
-                prefs.getString("bookmarks", "");
+        String savedHistory =
+                        prefs.getString("history", "");
 
-        if (!savedBookmarks.isEmpty()) {
+                if (!savedHistory.isEmpty()) {
 
-                for (String bookmark :
-                        savedBookmarks.split("\n")) {
+                        for (String item :
+                                    savedHistory.split("\n")) {
 
-                        bookmarks.add(bookmark);
+                                    history.add(item);
+                        }
                 }
-        }
+
+                String savedBookmarks =
+                        prefs.getString("bookmarks", "");
+
+                if (!savedBookmarks.isEmpty()) {
+
+                        for (String bookmark :
+                                savedBookmarks.split("\n")) {
+
+                                bookmarks.add(bookmark);
+                        }
+                }
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -354,6 +367,12 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                                       Bitmap favicon) {
 
                 addressBar.setText(url);
+
+                history.add(url);
+                prefs.edit().putString(
+                        "history",
+                        String.join("\n", history)
+                ).apply();
             }
         });
 
