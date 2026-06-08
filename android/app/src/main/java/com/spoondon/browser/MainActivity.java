@@ -432,8 +432,10 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                                 ).apply();
                         }
                 }
+           }
+       });
 
-        return webView;
+       return webView;
     }
 
     private void createNewTab() {
