@@ -70,6 +70,7 @@ public class MainActivity extends BridgeActivity {
         tabIndicator.setPadding(dp(10), 0, dp(10), 0);
 
         Button nextTab = makeButton("▶");
+        Button bookmark = makeButton("★");
         Button newTab = makeButton("+");
         Button closeTab = makeButton("×");
 
@@ -113,20 +114,29 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(tabIndicator);
         toolbar.addView(nextTab);
         toolbar.addView(newTab);
+        toolbar.addView(bookmark);
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
 
         root.addView(toolbar);
 
-        setContentView(root);
+setContentView(root);
 
-        createNewTab();
-        showHome();
+createNewTab();
+showHome();
 
-        go.setOnClickListener(v -> navigate());
+go.setOnClickListener(v -> navigate());
 
-        addressBar.setOnKeyListener((v, keyCode, event) -> {
+bookmark.setOnClickListener(v ->
+        Toast.makeText(
+                this,
+                "★ Bookmark",
+                Toast.LENGTH_SHORT
+        ).show()
+);
+
+addressBar.setOnKeyListener((v, keyCode, event) -> {
 
             if (keyCode == KeyEvent.KEYCODE_ENTER &&
                     event.getAction() == KeyEvent.ACTION_DOWN) {
