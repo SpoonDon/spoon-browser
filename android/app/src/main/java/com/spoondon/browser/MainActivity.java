@@ -22,6 +22,7 @@ import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.PopupMenu;
 
 import androidx.activity.OnBackPressedCallback;
 
@@ -108,6 +109,7 @@ public class MainActivity extends BridgeActivity {
         Button bookmark = makeButton("★");
         Button newTab = makeButton("+");
         Button closeTab = makeButton("×");
+        Button menuButton = makeButton("⋮");
 
         addressBar = new EditText(this);
 
@@ -155,6 +157,7 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
+        toolbar.addView(menuButton);
 
         root.addView(toolbar);
 
@@ -167,26 +170,29 @@ go.setOnClickListener(v -> navigate());
 
 bookmark.setOnClickListener(v -> {
 
-        String url =
-                getCurrentWebView().getUrl();
-
-        if (url != null) {
-                bookmarks.add(url);
-
-                prefs.edit().putString(
-                        "bookmarks",
-                        String.join("\n", bookmarks)
+        String url = getCurrentWebView().getUrl();
+        if (url != null && !bookmarks.contains(url)) {
+            bookmarks.add(url);
+            prefs.edit().putString("bookmarks",String.join("\n", bookmarks)
                 ).apply();
         }
 
-        Toast.makeText(
-                this,
-                "Saved: " + url,
-                Toast.LENGTH_SHORT
-        ).show();
+        Toast.makeText(this,"Saved: " + url,
+                Toast.LENGTH_SHORT).show();
 });
 
 bookmarksView.setOnClickListener(v -> {
+
+        if (bookmarks.isEmpty()) {
+
+                Toast.makeText(
+                        this,
+                        "No bookmarks saved",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+        }
 
         String[] items =
                 bookmarks.toArray(new String[0]);
@@ -204,6 +210,17 @@ bookmarksView.setOnClickListener(v -> {
 
 historyView.setOnClickListener(v -> {
 
+        if (history.isEmpty()) {
+
+                Toast.makeText(
+                        this,
+                        "No history yet",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+        }
+
         String[] items =
                 history.toArray(new String[0]);
 
@@ -216,6 +233,19 @@ historyView.setOnClickListener(v -> {
                         )
                 )
                 .show();
+});
+
+menuButton.setOnClickListener(v -> {
+
+    PopupMenu popup = new PopupMenu(this, menuButton);
+
+    // Add menu items
+    popup.getMenu().add("Bookmarks");
+    popup.getMenu().add("History");
+    popup.getMenu().add("About");
+
+    // Show the popup
+    popup.show();
 });
 
 addressBar.setOnKeyListener((v, keyCode, event) -> {
@@ -386,13 +416,22 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
                 addressBar.setText(url);
 
-                history.add(url);
-                prefs.edit().putString(
-                        "history",
-                        String.join("\n", history)
-                ).apply();
-            }
-        });
+                if (url != null &&
+                        !url.isEmpty() &&
+                        !url.equals("about:blank")) {
+
+                        if (history.isEmpty() ||
+                                !history.get(history.size() - 1)
+                                        .equals(url)) {
+
+                                history.add(url);
+
+                                prefs.edit().putString(
+                                        "history",
+                                        String.join("\n", history)
+                                ).apply();
+                        }
+                }
 
         return webView;
     }
