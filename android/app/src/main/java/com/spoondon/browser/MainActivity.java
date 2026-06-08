@@ -2,6 +2,7 @@ package com.spoondon.browser;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
@@ -36,12 +37,29 @@ public class MainActivity extends BridgeActivity {
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
     private final ArrayList<String> bookmarks = new ArrayList<>();
+    private SharedPreferences prefs;
     private int currentTab = 0;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        prefs = getSharedPreferences(
+                "spoon_browser",
+                MODE_PRIVATE
+        );
+
+        String savedBookmarks =
+                prefs.getString("bookmarks", "");
+
+        if (!savedBookmarks.isEmpty()) {
+
+                for (String bookmark :
+                        savedBookmarks.split("\n")) {
+
+                        bookmarks.add(bookmark);
+                }
+        }
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -139,6 +157,11 @@ bookmark.setOnClickListener(v -> {
 
         if (url != null) {
                 bookmarks.add(url);
+
+                prefs.edit().putString(
+                        "bookmarks",
+                        String.join("\n", bookmarks)
+                ).apply();
         }
 
         Toast.makeText(
