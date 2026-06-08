@@ -34,6 +34,7 @@ public class MainActivity extends BridgeActivity {
     private TextView tabIndicator;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
+    private final ArrayList<String> bookmarks = new ArrayList<>();
     private int currentTab = 0;
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -128,13 +129,21 @@ showHome();
 
 go.setOnClickListener(v -> navigate());
 
-bookmark.setOnClickListener(v ->
+bookmark.setOnClickListener(v -> {
+
+        String url =
+                getCurrentWebView().getUrl();
+
+        if (url != null) {
+                bookmarks.add(url);
+        }
+
         Toast.makeText(
                 this,
-                "★ Bookmark",
+                "Saved: " + url,
                 Toast.LENGTH_SHORT
-        ).show()
-);
+        ).show();
+});
 
 addressBar.setOnKeyListener((v, keyCode, event) -> {
 
