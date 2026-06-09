@@ -32,6 +32,15 @@ import java.util.ArrayList;
 
 public class MainActivity extends BridgeActivity {
 
+   private static final String PREFS_NAME =
+        "spoon_browser";
+
+   private static final String KEY_BOOKMARKS =
+        "bookmarks";
+
+   private static final String KEY_HISTORY =
+        "history";
+
     private EditText addressBar;
     private LinearLayout root;
     // Reserved for future WebView container features
@@ -49,12 +58,12 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = getSharedPreferences(
-                "spoon_browser",
+                PREFS_NAME,
                 MODE_PRIVATE
         );
 
         String savedHistory =
-                        prefs.getString("history", "");
+                        prefs.getString(KEY_HISTORY, "");
 
                 if (!savedHistory.isEmpty()) {
 
@@ -66,7 +75,7 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 String savedBookmarks =
-                        prefs.getString("bookmarks", "");
+                        prefs.getString(KEY_BOOKMARKS, "");
 
                 if (!savedBookmarks.isEmpty()) {
 
@@ -453,7 +462,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     private void saveBookmarks() {
 
     prefs.edit().putString(
-            "bookmarks",
+            KEY_BOOKMARKS,
             String.join("\n", bookmarks)
     ).apply();
 }
@@ -461,7 +470,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     private void saveHistory() {
 
     prefs.edit().putString(
-            "history",
+            KEY_HISTORY,
             String.join("\n", history)
     ).apply();
 }
