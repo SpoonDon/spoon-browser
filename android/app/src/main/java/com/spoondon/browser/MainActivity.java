@@ -104,8 +104,6 @@ public class MainActivity extends BridgeActivity {
         tabIndicator.setPadding(dp(10), 0, dp(10), 0);
 
         Button nextTab = makeButton("▶");
-        Button bookmarksView = makeButton("📚");
-        Button historyView = makeButton("🕘");
         Button bookmark = makeButton("★");
         Button newTab = makeButton("+");
         Button closeTab = makeButton("×");
@@ -152,8 +150,6 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(nextTab);
         toolbar.addView(newTab);
         toolbar.addView(bookmark);
-        // toolbar.addView(bookmarksView);
-        // toolbar.addView(historyView);
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
@@ -181,60 +177,6 @@ bookmark.setOnClickListener(v -> {
                 Toast.LENGTH_SHORT).show();
 });
 
-bookmarksView.setOnClickListener(v -> {
-
-        if (bookmarks.isEmpty()) {
-
-                Toast.makeText(
-                        this,
-                        "No bookmarks saved",
-                        Toast.LENGTH_SHORT
-                ).show();
-
-                return;
-        }
-
-        String[] items =
-                bookmarks.toArray(new String[0]);
-
-        new AlertDialog.Builder(this)
-                .setTitle("Bookmarks")
-                .setItems(items, (dialog, which) ->
-
-                        getCurrentWebView().loadUrl(
-                                items[which]
-                        )
-                )
-                .show();
-});
-
-historyView.setOnClickListener(v -> {
-
-        if (history.isEmpty()) {
-
-                Toast.makeText(
-                        this,
-                        "No history yet",
-                        Toast.LENGTH_SHORT
-                ).show();
-
-                return;
-        }
-
-        String[] items =
-                history.toArray(new String[0]);
-
-        new AlertDialog.Builder(this)
-                .setTitle("History")
-                .setItems(items, (dialog, which) ->
-
-                        getCurrentWebView().loadUrl(
-                                items[which]
-                        )
-                )
-                .show();
-});
-
 menuButton.setOnClickListener(v -> {
 
     PopupMenu popup = new PopupMenu(this, menuButton);
@@ -250,11 +192,11 @@ menuButton.setOnClickListener(v -> {
         switch (title) {
 
             case "Bookmarks":
-                bookmarksView.performClick();
+                showBookmarks();
                 return true;
 
             case "History":
-                historyView.performClick();
+                showHistory();
                 return true;
 
             case "About":
@@ -496,6 +438,60 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     private WebView getCurrentWebView() {
         return tabs.get(currentTab);
     }
+
+    private void showBookmarks() {
+
+    if (bookmarks.isEmpty()) {
+
+        Toast.makeText(
+                this,
+                "No bookmarks saved",
+                Toast.LENGTH_SHORT
+        ).show();
+
+        return;
+    }
+
+    String[] items =
+            bookmarks.toArray(new String[0]);
+
+    new AlertDialog.Builder(this)
+            .setTitle("Bookmarks")
+            .setItems(items, (dialog, which) ->
+
+                    getCurrentWebView().loadUrl(
+                            items[which]
+                    )
+            )
+            .show();
+}
+
+    private void showHistory() {
+
+    if (history.isEmpty()) {
+
+        Toast.makeText(
+                this,
+                "No history yet",
+                Toast.LENGTH_SHORT
+        ).show();
+
+        return;
+    }
+
+    String[] items =
+            history.toArray(new String[0]);
+
+    new AlertDialog.Builder(this)
+            .setTitle("History")
+            .setItems(items, (dialog, which) ->
+
+                    getCurrentWebView().loadUrl(
+                            items[which]
+                    )
+            )
+            .show();
+}
 
     private void showHome() {
 
