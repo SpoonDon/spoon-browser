@@ -187,8 +187,7 @@ bookmark.setOnClickListener(v -> {
         String url = getCurrentWebView().getUrl();
         if (url != null && !bookmarks.contains(url)) {
             bookmarks.add(url);
-            prefs.edit().putString("bookmarks",String.join("\n", bookmarks)
-                ).apply();
+            saveBookmarks();
         }
 
         Toast.makeText(this,"Saved: " + url,
@@ -410,10 +409,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
                                 history.add(url);
 
-                                prefs.edit().putString(
-                                        "history",
-                                        String.join("\n", history)
-                                ).apply();
+                                saveHistory();
                         }
                 }
            }
@@ -453,6 +449,22 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     private WebView getCurrentWebView() {
         return tabs.get(currentTab);
     }
+
+    private void saveBookmarks() {
+
+    prefs.edit().putString(
+            "bookmarks",
+            String.join("\n", bookmarks)
+    ).apply();
+}
+
+    private void saveHistory() {
+
+    prefs.edit().putString(
+            "history",
+            String.join("\n", history)
+    ).apply();
+}
 
     private void showBookmarks() {
 
