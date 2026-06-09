@@ -457,40 +457,40 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
     private void saveBookmarks() {
 
-    prefs.edit().putString(
-            KEY_BOOKMARKS,
-            String.join("\n", bookmarks)
-    ).apply();
-}
+        prefs.edit().putString(
+                KEY_BOOKMARKS,
+                String.join("\n", bookmarks)
+        ).apply();
+    }
 
     private void saveHistory() {
 
-    prefs.edit().putString(
-            KEY_HISTORY,
-            String.join("\n", history)
-    ).apply();
-}
+        prefs.edit().putString(
+                KEY_HISTORY,
+                String.join("\n", history)
+        ).apply();
+    }
 
     private void showAbout() {
 
-        new AlertDialog.Builder(this)
-        .setTitle("Spoon Browser")
-        .setMessage(
-                "Version: 0.2\n\n" +
-                "Tabs: " +
-                tabs.size() +
-                "\nBookmarks: " +
-                bookmarks.size() +
-                "\nHistory: " +
-                history.size() +
-                "\n\nBuilt one green commit at a time."
-        )
-        .setPositiveButton(
-                "OK",
-                null
-        )
-        .show();
-    }
+            new AlertDialog.Builder(this)
+            .setTitle("Spoon Browser")
+            .setMessage(
+                    "Version: 0.2\n\n"
+                            + "Tabs: "
+                            + tabs.size()
+                            + "\nBookmarks: "
+                            + bookmarks.size()
+                            + "\nHistory: "
+                            + history.size()
+                            + "\n\nBuilt one green commit at a time."
+            )
+            .setPositiveButton(
+                    "OK",
+                    null
+            )
+            .show();
+}
 
     private void showBookmarks() {
 
@@ -510,18 +510,19 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
     new AlertDialog.Builder(this)
             .setTitle("Bookmarks")
-            .setItems(items, (dialog, which) ->
-
-                    getCurrentWebView().loadUrl(
-                            items[which]
-                    )
+            .setItems(
+                    items,
+                    (dialog, which) ->
+                            getCurrentWebView().loadUrl(
+                                    items[which]
+                            )
             )
             .show();
 }
 
     private void showHistory() {
 
-    if (history.isEmpty()) {
+        if (history.isEmpty()) {
 
         Toast.makeText(
                 this,
