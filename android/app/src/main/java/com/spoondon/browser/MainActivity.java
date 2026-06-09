@@ -473,11 +473,23 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
     private void showAbout() {
 
-        Toast.makeText(
-                this,
-                "Spoon Browser",
-                Toast.LENGTH_SHORT
-        ).show();
+        new AlertDialog.Builder(this)
+        .setTitle("Spoon Browser")
+        .setMessage(
+                "Version: 0.2\n\n" +
+                "Tabs: " +
+                tabs.size() +
+                "\nBookmarks: " +
+                bookmarks.size() +
+                "\nHistory: " +
+                history.size() +
+                "\n\nBuilt one green commit at a time."
+        )
+        .setPositiveButton(
+                "OK",
+                null
+        )
+        .show();
     }
 
     private void showBookmarks() {
