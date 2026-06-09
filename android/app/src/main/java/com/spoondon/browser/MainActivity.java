@@ -34,6 +34,8 @@ public class MainActivity extends BridgeActivity {
 
     private EditText addressBar;
     private LinearLayout root;
+    // Reserved for future WebView container features
+    private LinearLayout browserContainer;
     private TextView tabIndicator;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
@@ -78,6 +80,21 @@ public class MainActivity extends BridgeActivity {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
+        browserContainer = new LinearLayout(this);
+        browserContainer.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        LinearLayout.LayoutParams browserParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1
+                );
+
+        browserContainer.setLayoutParams(
+                browserParams
+        );
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
@@ -156,11 +173,12 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(menuButton);
 
         root.addView(toolbar);
+        root.addView(browserContainer);
 
-setContentView(root);
+        setContentView(root);
 
-createNewTab();
-showHome();
+        createNewTab();
+        showHome();
 
 go.setOnClickListener(v -> navigate());
 
@@ -421,11 +439,8 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         updateTabIndicator();
 
-        if (root.getChildCount() > 1) {
-            root.removeViewAt(1);
-        }
-
-        root.addView(getCurrentWebView());
+        browserContainer.removeAllViews();
+        browserContainer.addView(getCurrentWebView());
     }
 
     private void updateTabIndicator() {
