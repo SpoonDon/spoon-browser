@@ -152,8 +152,8 @@ public class MainActivity extends BridgeActivity {
         toolbar.addView(nextTab);
         toolbar.addView(newTab);
         toolbar.addView(bookmark);
-        toolbar.addView(bookmarksView);
-        toolbar.addView(historyView);
+        // toolbar.addView(bookmarksView);
+        // toolbar.addView(historyView);
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
