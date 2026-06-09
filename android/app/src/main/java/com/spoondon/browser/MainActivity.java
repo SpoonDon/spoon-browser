@@ -276,22 +276,26 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         closeTab.setOnClickListener(v -> {
 
-            if (tabs.size() > 1) {
+            if (tabs.size() == 1) {
 
-                tabs.remove(currentTab);
+                finish();
 
-                if (currentTab >= tabs.size()) {
-                    currentTab = tabs.size() - 1;
-                }
-
-                switchToTab(currentTab);
-
-                Toast.makeText(
-                        this,
-                        "Tab Closed",
-                        Toast.LENGTH_SHORT
-                ).show();
+                return;
             }
+
+            tabs.remove(currentTab);
+
+            if (currentTab >= tabs.size()) {
+                currentTab = tabs.size() - 1;
+            }
+
+            switchToTab(currentTab);
+
+            Toast.makeText(
+                    this,
+                    "Tab Closed",
+                    Toast.LENGTH_SHORT
+            ).show();
         });
 
         prevTab.setOnClickListener(v -> {
