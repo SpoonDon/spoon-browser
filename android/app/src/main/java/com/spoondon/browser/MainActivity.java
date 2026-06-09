@@ -226,11 +226,7 @@ menuButton.setOnClickListener(v -> {
                 return true;
 
             case "About":
-                Toast.makeText(
-                        this,
-                        "Spoon Browser",
-                        Toast.LENGTH_SHORT
-                ).show();
+                showAbout();
                 return true;
         }
 
@@ -475,6 +471,15 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     ).apply();
 }
 
+    private void showAbout() {
+
+        Toast.makeText(
+                this,
+                "Spoon Browser",
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
     private void showBookmarks() {
 
     if (bookmarks.isEmpty()) {
@@ -654,11 +659,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
             case "About":
 
-                Toast.makeText(
-                        this,
-                        "Spoon Browser",
-                        Toast.LENGTH_SHORT
-                ).show();
+                showAbout();
 
                 return true;
         }
