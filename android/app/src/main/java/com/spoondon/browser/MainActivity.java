@@ -239,12 +239,36 @@ menuButton.setOnClickListener(v -> {
 
     PopupMenu popup = new PopupMenu(this, menuButton);
 
-    // Add menu items
     popup.getMenu().add("Bookmarks");
     popup.getMenu().add("History");
     popup.getMenu().add("About");
 
-    // Show the popup
+    popup.setOnMenuItemClickListener(item -> {
+
+        String title = item.getTitle().toString();
+
+        switch (title) {
+
+            case "Bookmarks":
+                bookmarksView.performClick();
+                return true;
+
+            case "History":
+                historyView.performClick();
+                return true;
+
+            case "About":
+                Toast.makeText(
+                        this,
+                        "Spoon Browser",
+                        Toast.LENGTH_SHORT
+                ).show();
+                return true;
+        }
+
+        return false;
+    });
+
     popup.show();
 });
 
