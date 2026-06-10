@@ -503,9 +503,17 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                         if (url != null &&
                                 icon != null) {
 
+                            Bitmap small =
+                                    Bitmap.createScaledBitmap(
+                                            icon,
+                                            48,
+                                            48,
+                                            true
+                                    );
+
                             pageIcons.put(
                                     url,
-                                    icon
+                                    small
                             );
                         }
                     }
