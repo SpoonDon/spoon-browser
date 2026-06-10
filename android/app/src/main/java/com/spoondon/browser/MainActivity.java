@@ -27,7 +27,9 @@ import android.widget.PopupMenu;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-
+import android.widget.ArrayAdapter;
+import android.widget.ImageView;
+import android.widget.ListView;
 
 import androidx.activity.OnBackPressedCallback;
 
@@ -74,6 +76,22 @@ import java.util.HashMap;
             new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
+    private static class BrowserItem {
+
+        Bitmap icon;
+        String title;
+        String url;
+
+        BrowserItem(
+                Bitmap icon,
+                String title,
+                String url) {
+
+            this.icon = icon;
+            this.title = title;
+            this.url = url;
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
