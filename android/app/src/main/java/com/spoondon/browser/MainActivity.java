@@ -302,7 +302,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
             if (tabs.size() == 1) {
 
-                finish();
+                finishAndRemoveTask();
 
                 return;
             }
