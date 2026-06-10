@@ -695,36 +695,25 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             return;
         }
 
+        ArrayList<BrowserItem> items =
+                buildTabItems();
+
         String[] displayItems =
-                new String[tabs.size()];
+                new String[items.size()];
 
         int[] tabIndexes =
-                new int[tabs.size()];
+                new int[items.size()];
 
-        for (int i = 0; i < tabs.size(); i++) {
+        for (int i = 0;
+             i < items.size();
+             i++) {
 
-            WebView webView = tabs.get(i);
+            BrowserItem item =
+                    items.get(i);
 
-            String url = webView.getUrl();
-            String title = null;
+            displayItems[i] =
+                    item.title;
 
-            if (url != null) {
-                title = pageTitles.get(url);
-            }
-
-            if (title == null ||
-                    title.isEmpty()) {
-
-                if (url == null ||
-                        url.isEmpty()) {
-
-                    title = "New Tab";
-                } else {
-                    title = url;
-                }
-            }
-
-            displayItems[i] = title;
             tabIndexes[i] = i;
         }
 
