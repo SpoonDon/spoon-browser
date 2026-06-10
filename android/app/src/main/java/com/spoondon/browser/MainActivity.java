@@ -253,13 +253,21 @@ go.setOnClickListener(v -> navigate());
 bookmark.setOnClickListener(v -> {
 
         String url = getCurrentWebView().getUrl();
-        if (url != null && !bookmarks.contains(url)) {
+
+       if (url != null &&
+               !url.isEmpty() &&
+               !url.equals("about:blank") &&
+               !bookmarks.contains(url)) {
+
             bookmarks.add(url);
             saveBookmarks();
-        }
 
-        Toast.makeText(this,"Saved: " + url,
-                Toast.LENGTH_SHORT).show();
+            Toast.makeText(
+                    this,
+                    "Saved: " + url,
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
 });
 
 menuButton.setOnClickListener(v -> {
@@ -531,7 +539,16 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
                 if (url != null &&
                         !url.isEmpty() &&
-                        !url.equals("about:blank")) {
+                        !url.equals("about:blank") &&
+                        !url.startsWith(
+                                "chrome-error://"
+                        ) &&
+                        !url.startsWith(
+                                "data:"
+                        ) &&
+                        !url.startsWith(
+                                "file://"
+                        )) {
 
                         if (history.isEmpty() ||
                                 !history.get(history.size() - 1)
