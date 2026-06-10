@@ -61,6 +61,8 @@ public class MainActivity extends BridgeActivity {
     private final ArrayList<String> history = new ArrayList<>();
     private final HashMap<String, String> pageTitles =
             new HashMap<>();
+    private final HashMap<String, Bitmap> pageIcons =
+            new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
 
@@ -310,7 +312,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             showHistoryDialog();
 
             return true;
-        }); 
+        });
 
         forward.setOnClickListener(v -> {
 
@@ -479,6 +481,22 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                             pageTitles.put(
                                     url,
                                     title
+                            );
+                        }
+                    }
+                    @Override
+                    public void onReceivedIcon(
+                            WebView view,
+                            Bitmap icon) {
+
+                        String url = view.getUrl();
+
+                        if (url != null &&
+                                icon != null) {
+
+                            pageIcons.put(
+                                    url,
+                                    icon
                             );
                         }
                     }
