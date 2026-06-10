@@ -48,6 +48,15 @@ public class MainActivity extends BridgeActivity {
    private static final String KEY_HISTORY =
         "history";
 
+    private static final int MAX_HISTORY =
+            500;
+
+    private static final int MAX_PAGE_TITLES =
+            500;
+
+    private static final int MAX_PAGE_ICONS =
+            200;
+
     private EditText addressBar;
     private LinearLayout root;
     // Reserved for future WebView container features
@@ -521,6 +530,13 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                                         .equals(url)) {
 
                                 history.add(url);
+
+                                while (
+                                        history.size()
+                                                > MAX_HISTORY
+                                ) {
+                                        history.remove(0);
+                                }
 
                                 saveHistory();
                         }
