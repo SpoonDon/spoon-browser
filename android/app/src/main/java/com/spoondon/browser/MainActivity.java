@@ -159,6 +159,12 @@ public class MainActivity extends BridgeActivity {
         tabIndicator.setTextColor(Color.WHITE);
         tabIndicator.setTextSize(15);
         tabIndicator.setPadding(dp(10), 0, dp(10), 0);
+        tabIndicator.setOnLongClickListener(v -> {
+
+            showTabSwitcher();
+
+            return true;
+        });
 
         Button nextTab = makeButton("▶");
         Button bookmark = makeButton("★");
@@ -551,6 +557,58 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         tabIndicator.setText(
                 (currentTab + 1) + "/" + tabs.size()
         );
+    }
+
+    private void showTabSwitcher() {
+
+        if (tabs.isEmpty()) {
+            return;
+        }
+
+        String[] displayItems =
+                new String[tabs.size()];
+
+        int[] tabIndexes =
+                new int[tabs.size()];
+
+        for (int i = 0; i < tabs.size(); i++) {
+
+            WebView webView = tabs.get(i);
+
+            String url = webView.getUrl();
+            String title = null;
+
+            if (url != null) {
+                title = pageTitles.get(url);
+            }
+
+            if (title == null ||
+                    title.isEmpty()) {
+
+                if (url == null ||
+                        url.isEmpty()) {
+
+                    title = "New Tab";
+                } else {
+                    title = url;
+                }
+            }
+
+            displayItems[i] = title;
+            tabIndexes[i] = i;
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Tabs")
+                .setItems(
+                        displayItems,
+                        (dialog, which) -> {
+
+                            switchToTab(
+                                    tabIndexes[which]
+                            );
+                        })
+                .show();
     }
 
     private void showHistoryDialog() {
