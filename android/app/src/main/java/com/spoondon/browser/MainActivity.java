@@ -633,6 +633,62 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         );
     }
 
+    private ArrayList<BrowserItem>
+    buildTabItems() {
+
+        ArrayList<BrowserItem> items =
+                new ArrayList<>();
+
+        for (int i = 0;
+             i < tabs.size();
+             i++) {
+
+            WebView webView =
+                    tabs.get(i);
+
+            String url =
+                    webView.getUrl();
+
+            String title = null;
+
+            if (url != null) {
+                title =
+                        pageTitles.get(url);
+            }
+
+            if (title == null ||
+                    title.isEmpty()) {
+
+                if (url == null ||
+                        url.isEmpty()) {
+
+                    title = "New Tab";
+
+                } else {
+
+                    title = url;
+                }
+            }
+
+            Bitmap icon = null;
+
+            if (url != null) {
+                icon =
+                        pageIcons.get(url);
+            }
+
+            items.add(
+                    new BrowserItem(
+                            icon,
+                            title,
+                            url
+                    )
+            );
+        }
+
+        return items;
+    }
+
     private void showTabSwitcher() {
 
         if (tabs.isEmpty()) {
