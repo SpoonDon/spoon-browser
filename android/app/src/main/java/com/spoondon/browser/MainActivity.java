@@ -37,7 +37,7 @@ import java.util.ArrayList;
 
 import java.util.HashMap;
 
-public class MainActivity extends BridgeActivity {
+   public class MainActivity extends BridgeActivity {
 
    private static final String PREFS_NAME =
         "spoon_browser";
@@ -703,6 +703,22 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         return tabs.get(currentTab);
     }
 
+    private String getAppVersion() {
+
+        try {
+
+            return getPackageManager()
+                    .getPackageInfo(
+                            getPackageName(),
+                            0
+                    ).versionName;
+
+        } catch (Exception e) {
+
+            return "?";
+        }
+    }
+
     private void saveBookmarks() {
 
         prefs.edit().putString(
@@ -725,7 +741,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             .setTitle("Spoon Browser")
             .setMessage(
                     "Version: "
-                            + BuildConfig.VERSION_NAME
+                            + getAppVersion()
                             + "\n\n"
                             + "Tabs: "
                             + tabs.size()
