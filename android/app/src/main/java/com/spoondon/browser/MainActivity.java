@@ -35,6 +35,8 @@ import com.getcapacitor.BridgeActivity;
 
 import java.util.ArrayList;
 
+import java.util.HashMap;
+
 public class MainActivity extends BridgeActivity {
 
    private static final String PREFS_NAME =
@@ -57,6 +59,8 @@ public class MainActivity extends BridgeActivity {
     private int lastClosedTabIndex = -1;
     private final ArrayList<String> bookmarks = new ArrayList<>();
     private final ArrayList<String> history = new ArrayList<>();
+    private final HashMap<String, String> pageTitles =
+            new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
 
@@ -452,7 +456,28 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         s.setBuiltInZoomControls(true);
         s.setDisplayZoomControls(false);
 
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(
+                new WebChromeClient() {
+
+                    @Override
+                    public void onReceivedTitle(
+                            WebView view,
+                            String title) {
+
+                        String url = view.getUrl();
+
+                        if (url != null &&
+                                title != null &&
+                                !title.isEmpty()) {
+
+                            pageTitles.put(
+                                    url,
+                                    title
+                            );
+                        }
+                    }
+                }
+        );
 
         webView.setWebViewClient(new WebViewClient() {
 
@@ -534,22 +559,43 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             return;
         }
 
-        String[] items = new String[history.size()];
+        String[] displayItems =
+                new String[history.size()];
+
+        String[] urlItems =
+                new String[history.size()];
 
         for (int i = 0; i < history.size(); i++) {
-            items[i] = history.get(
+
+            String url = history.get(
                     history.size() - 1 - i
             );
+
+            urlItems[i] = url;
+
+            String title =
+                    pageTitles.get(url);
+
+            if (title == null ||
+                    title.isEmpty()) {
+
+                title = url;
+            }
+
+            displayItems[i] = title;
         }
 
         new AlertDialog.Builder(this)
                 .setTitle("History")
-                .setItems(items, (dialog, which) -> {
+                .setItems(
+                        displayItems,
+                        (dialog, which) -> {
 
-                    getCurrentWebView().loadUrl(
-                            items[which]
-                    );
-                })
+                            getCurrentWebView()
+                                    .loadUrl(
+                                            urlItems[which]
+                                    );
+                        })
                 .show();
     }
 
