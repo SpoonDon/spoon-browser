@@ -7,11 +7,11 @@ import java.util.ArrayList;
 
 public class BrowserItemAdapter
         extends ArrayAdapter<
-                MainActivity.BrowserItem> {
+        BrowserItem>
 
     public BrowserItemAdapter(
             Context context,
-            ArrayList<MainActivity.BrowserItem> items) {
+            ArrayList<BrowserItem> items) {
 
         super(
                 context,
