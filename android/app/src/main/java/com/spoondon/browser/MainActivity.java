@@ -2,6 +2,7 @@ package com.spoondon.browser;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -213,6 +214,17 @@ public class MainActivity extends BridgeActivity {
         setContentView(root);
 
         createNewTab();
+
+        Intent intent = getIntent();
+
+        if (Intent.ACTION_VIEW.equals(intent.getAction())
+                && intent.getData() != null) {
+
+            getCurrentWebView().loadUrl(
+                    intent.getData().toString()
+            );
+        }
+
         showHome();
 
 go.setOnClickListener(v -> navigate());
