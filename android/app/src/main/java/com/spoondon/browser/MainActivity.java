@@ -472,22 +472,23 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         switchToTab(tabs.size() - 1);
     }
 
+    // Long press "+" to restore the most recently closed tab.
     private void restoreLastClosedTab() {
 
-    if (lastClosedTab == null) {
-        return;
+        if (lastClosedTab == null) {
+            return;
+        }
+
+        tabs.add(
+                lastClosedTabIndex,
+                lastClosedTab
+        );
+
+        switchToTab(lastClosedTabIndex);
+
+        lastClosedTab = null;
+        lastClosedTabIndex = -1;
     }
-
-    tabs.add(
-            lastClosedTabIndex,
-            lastClosedTab
-    );
-
-    switchToTab(lastClosedTabIndex);
-
-    lastClosedTab = null;
-    lastClosedTabIndex = -1;
-}
 
     private void switchToTab(int index) {
 
