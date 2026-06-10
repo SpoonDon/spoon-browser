@@ -27,9 +27,6 @@ import android.widget.PopupMenu;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import android.widget.ArrayAdapter;
-import android.widget.ImageView;
-import android.widget.ListView;
 
 import androidx.activity.OnBackPressedCallback;
 
@@ -686,6 +683,44 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                             );
                         })
                 .show();
+    }
+
+    private ArrayList<BrowserItem>
+    buildHistoryItems() {
+
+        ArrayList<BrowserItem> items =
+                new ArrayList<>();
+
+        for (int i = 0;
+             i < history.size();
+             i++) {
+
+            String url = history.get(
+                    history.size() - 1 - i
+            );
+
+            String title =
+                    pageTitles.get(url);
+
+            if (title == null ||
+                    title.isEmpty()) {
+
+                title = url;
+            }
+
+            Bitmap icon =
+                    pageIcons.get(url);
+
+            items.add(
+                    new BrowserItem(
+                            icon,
+                            title,
+                            url
+                    )
+            );
+        }
+
+        return items;
     }
 
     private void showHistoryDialog() {
