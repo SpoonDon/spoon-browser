@@ -546,7 +546,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             new AlertDialog.Builder(this)
             .setTitle("Spoon Browser")
             .setMessage(
-                    "Version: 0.2\n\n"
+                    "Version: 0.3\n\n"
                             + "Tabs: "
                             + tabs.size()
                             + "\nBookmarks: "
