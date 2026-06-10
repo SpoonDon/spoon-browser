@@ -23,6 +23,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.PopupMenu;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
 
 import androidx.activity.OnBackPressedCallback;
 
@@ -89,6 +93,26 @@ public class MainActivity extends BridgeActivity {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
+        ViewCompat.setOnApplyWindowInsetsListener(
+        root,
+        (v, windowInsets) -> {
+
+            Insets systemBars =
+                    windowInsets.getInsets(
+                            WindowInsetsCompat.Type.systemBars()
+                    );
+
+            v.setPadding(
+                    systemBars.left,
+                    systemBars.top,
+                    systemBars.right,
+                    systemBars.bottom
+            );
+
+            return windowInsets;
+        }
+);
+
         browserContainer = new LinearLayout(this);
         browserContainer.setOrientation(
                 LinearLayout.VERTICAL
