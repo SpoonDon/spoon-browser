@@ -52,6 +52,8 @@ public class MainActivity extends BridgeActivity {
     private TextView tabIndicator;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
+    private WebView lastClosedTab = null;
+    private int lastClosedTabIndex = -1;
     private final ArrayList<String> bookmarks = new ArrayList<>();
     private final ArrayList<String> history = new ArrayList<>();
     private SharedPreferences prefs;
@@ -298,6 +300,13 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             showHome();
         });
 
+        newTab.setOnLongClickListener(v -> {
+
+            restoreLastClosedTab();
+
+            return true;
+        });
+
         closeTab.setOnClickListener(v -> {
 
             if (tabs.size() == 1) {
@@ -306,6 +315,9 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
                 return;
             }
+
+            lastClosedTab = tabs.get(currentTab);
+            lastClosedTabIndex = currentTab;
 
             tabs.remove(currentTab);
 
@@ -459,6 +471,23 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         switchToTab(tabs.size() - 1);
     }
+
+    private void restoreLastClosedTab() {
+
+    if (lastClosedTab == null) {
+        return;
+    }
+
+    tabs.add(
+            lastClosedTabIndex,
+            lastClosedTab
+    );
+
+    switchToTab(lastClosedTabIndex);
+
+    lastClosedTab = null;
+    lastClosedTabIndex = -1;
+}
 
     private void switchToTab(int index) {
 
