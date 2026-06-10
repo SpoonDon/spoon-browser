@@ -295,6 +295,13 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             }
         });
 
+        back.setOnLongClickListener(v -> {
+
+            showHistoryDialog();
+
+            return true;
+        }); 
+
         forward.setOnClickListener(v -> {
 
             WebView webView = getCurrentWebView();
@@ -519,6 +526,31 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         tabIndicator.setText(
                 (currentTab + 1) + "/" + tabs.size()
         );
+    }
+
+    private void showHistoryDialog() {
+
+        if (history.isEmpty()) {
+            return;
+        }
+
+        String[] items = new String[history.size()];
+
+        for (int i = 0; i < history.size(); i++) {
+            items[i] = history.get(
+                    history.size() - 1 - i
+            );
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("History")
+                .setItems(items, (dialog, which) -> {
+
+                    getCurrentWebView().loadUrl(
+                            items[which]
+                    );
+                })
+                .show();
     }
 
     private WebView getCurrentWebView() {
