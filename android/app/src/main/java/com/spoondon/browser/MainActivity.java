@@ -729,28 +729,27 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             return;
         }
 
+        ArrayList<BrowserItem> items =
+                buildHistoryItems();
+
         String[] displayItems =
-                new String[history.size()];
+                new String[items.size()];
 
         String[] urlItems =
-                new String[history.size()];
+                new String[items.size()];
 
-        for (int i = 0; i < history.size(); i++) {
+        for (int i = 0; i < items.size(); i++) {
 
-            String url = history.get(
-                    history.size() - 1 - i
-            );
+            BrowserItem item =
+                    items.get(i);
+
+            String url =
+                    item.url;
 
             urlItems[i] = url;
 
             String title =
-                    pageTitles.get(url);
-
-            if (title == null ||
-                    title.isEmpty()) {
-
-                title = url;
-            }
+                    item.title;
 
             displayItems[i] = title;
         }
