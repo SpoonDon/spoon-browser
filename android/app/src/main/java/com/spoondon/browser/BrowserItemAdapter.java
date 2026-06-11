@@ -1,11 +1,9 @@
 package com.spoondon.browser;
 
 import android.content.Context;
-import android.graphics.Bitmap;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -41,24 +39,6 @@ public class BrowserItemAdapter
 
         layout.setOrientation(
                 LinearLayout.HORIZONTAL
-        );
-
-        ImageView iconView =
-                new ImageView(
-                        getContext()
-                );
-
-        Bitmap icon =
-                item.icon;
-
-        if (icon != null) {
-            iconView.setImageBitmap(
-                    icon
-            );
-        }
-
-        layout.addView(
-                iconView
         );
 
         TextView titleView =

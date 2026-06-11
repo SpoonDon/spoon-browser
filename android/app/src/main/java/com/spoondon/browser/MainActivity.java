@@ -25,7 +25,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.PopupMenu;
 import android.widget.ArrayAdapter;
-import android.widget.ImageView;
 import android.widget.ListView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -74,8 +73,6 @@ import java.util.HashMap;
     private final ArrayList<String> bookmarks = new ArrayList<>();
     private final ArrayList<String> history = new ArrayList<>();
     private final HashMap<String, String> pageTitles =
-            new HashMap<>();
-    private final HashMap<String, Bitmap> pageIcons =
             new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
@@ -559,30 +556,6 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
                         }
                     }
-                    @Override
-                    public void onReceivedIcon(
-                            WebView view,
-                            Bitmap icon) {
-
-                        String url = view.getUrl();
-
-                        if (url != null &&
-                                icon != null) {
-
-                            Bitmap small =
-                                    Bitmap.createScaledBitmap(
-                                            icon,
-                                            48,
-                                            48,
-                                            true
-                                    );
-
-                            pageIcons.put(
-                                    url,
-                                    small
-                            );
-                        }
-                    }
                 }
         );
 
@@ -732,16 +705,11 @@ if (url == null ||
                 }
             }
 
-            Bitmap icon = null;
-
-            if (url != null) {
-                icon =
-                        pageIcons.get(url);
-            }
-
             items.add(
-                    new BrowserItem(
                             icon,
+        title,
+        url
+)new BrowserItem(
                             title,
                             url
                     )
@@ -815,16 +783,6 @@ new AlertDialog.Builder(this)
                 title = url;
             }
 
-            Bitmap icon =
-                    pageIcons.get(url);
-
-            items.add(
-                    new BrowserItem(
-                            icon,
-                            title,
-                            url
-                    )
-            );
         }
 
         return items;
@@ -852,12 +810,9 @@ new AlertDialog.Builder(this)
                 title = url;
             }
 
-            Bitmap icon =
-                    pageIcons.get(url);
 
             items.add(
-                    new BrowserItem(
-                            icon,
+                            new BrowserItem(
                             title,
                             url
                     )
@@ -910,6 +865,8 @@ new AlertDialog.Builder(this)
 
     }
 
+    // Utility helpers
+
     private WebView getCurrentWebView() {
         return tabs.get(currentTab);
     }
@@ -930,6 +887,8 @@ new AlertDialog.Builder(this)
         }
     }
 
+    // Persistence helpers
+
     private void saveBookmarks() {
 
         prefs.edit().putString(
@@ -945,6 +904,8 @@ new AlertDialog.Builder(this)
                 String.join("\n", history)
         ).apply();
     }
+
+    // Metadata persistence
 
     private void savePageTitles() {
 
@@ -970,7 +931,8 @@ new AlertDialog.Builder(this)
 
     private void showAbout() {
 
-            new AlertDialog.Builder(this)
+            AlertDialog dialog =
+                    new AlertDialog.Builder(this)
             .setTitle("Spoon Browser")
             .setMessage(
                     "Version: "
@@ -983,12 +945,20 @@ new AlertDialog.Builder(this)
                             + "\nHistory: "
                             + history.size()
                             + "\n\nBuilt one green commit at a time."
+                            + "\n\nDesigned to evolve with Android WebView."
+                            + "\n\n-with love, Plaban."
             )
             .setPositiveButton(
                     "OK",
                     null
             )
-            .show();
+            .create();
+
+            dialog.show();
+            dialog.setCanceledOnTouchOutside(
+                    false
+            );
+
 }
 
     private void showBookmarks() {
