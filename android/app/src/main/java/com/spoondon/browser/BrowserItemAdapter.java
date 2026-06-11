@@ -6,7 +6,7 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-
+import android.view.Gravity;
 import java.util.ArrayList;
 
 public class BrowserItemAdapter
@@ -38,7 +38,18 @@ public class BrowserItemAdapter
                 );
 
         layout.setOrientation(
-                LinearLayout.HORIZONTAL
+                LinearLayout.VERTICAL
+        );
+
+        layout.setPadding(
+                32,
+                24,
+                32,
+                24
+        );
+
+        layout.setGravity(
+                Gravity.CENTER_VERTICAL
         );
 
         TextView titleView =
@@ -48,6 +59,10 @@ public class BrowserItemAdapter
 
         titleView.setText(
                 item.title
+        );
+
+        titleView.setTextSize(
+                18
         );
 
         layout.addView(
