@@ -317,6 +317,14 @@ bookmark.setOnClickListener(v -> {
         }
 });
 
+bookmark.setOnLongClickListener(
+        v -> {
+
+    showBookmarks();
+
+    return true;
+});
+
 menuButton.setOnClickListener(v -> {
 
     PopupMenu popup = new PopupMenu(this, menuButton);
@@ -668,7 +676,7 @@ if (url == null ||
         url.isEmpty()) {
 
     addressBar.setText(
-            "about:blank"
+            "Type URL"
     );
 
 } else {
