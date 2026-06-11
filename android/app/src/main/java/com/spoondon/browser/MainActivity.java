@@ -50,6 +50,9 @@ import java.util.HashMap;
    private static final String KEY_HISTORY =
         "history";
 
+   private static final String KEY_PAGE_TITLES =
+        "page_titles";
+
     private static final int MAX_HISTORY =
             500;
 
@@ -122,6 +125,35 @@ import java.util.HashMap;
 }
                         }
                 }
+
+                String savedPageTitles =
+        prefs.getString(
+                KEY_PAGE_TITLES,
+                ""
+        );
+
+if (!savedPageTitles.isEmpty()) {
+
+    for (String item :
+            savedPageTitles.split(
+                    "\n"
+            )) {
+
+        String[] parts =
+                item.split(
+                        "\\|",
+                        2
+                );
+
+        if (parts.length == 2) {
+
+            pageTitles.put(
+                    parts[0],
+                    parts[1]
+            );
+        }
+    }
+}
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -514,6 +546,9 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                                     url,
                                     title
                             );
+
+                            savePageTitles();
+
                         }
                     }
                     @Override
@@ -902,6 +937,28 @@ new AlertDialog.Builder(this)
                 String.join("\n", history)
         ).apply();
     }
+
+    private void savePageTitles() {
+
+    StringBuilder builder =
+            new StringBuilder();
+
+    for (String url :
+            pageTitles.keySet()) {
+
+        builder.append(url)
+                .append("|")
+                .append(
+                        pageTitles.get(url)
+                )
+                .append("\n");
+    }
+
+    prefs.edit().putString(
+            KEY_PAGE_TITLES,
+            builder.toString()
+    ).apply();
+}
 
     private void showAbout() {
 
