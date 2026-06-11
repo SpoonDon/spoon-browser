@@ -623,8 +623,8 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     private ArrayList<BrowserItem>
     buildTabItems() {
 
-                buildHistoryItems();ArrayList<BrowserItem> items =
-                new ArrayList<>();
+             ArrayList<BrowserItem> items =
+                             new ArrayList<>();
 
         for (int i = 0;
              i < tabs.size();
@@ -881,33 +881,6 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                             getCurrentWebView().loadUrl(
                                     items[which]
                             )
-            )
-            .show();
-}
-
-    private void showHistory() {
-
-        if (history.isEmpty()) {
-
-        Toast.makeText(
-                this,
-                "No history yet",
-                Toast.LENGTH_SHORT
-        ).show();
-
-        return;
-    }
-
-    String[] items =
-            history.toArray(new String[0]);
-
-    new AlertDialog.Builder(this)
-            .setTitle("History")
-            .setItems(items, (dialog, which) ->
-
-                    getCurrentWebView().loadUrl(
-                            items[which]
-                    )
             )
             .show();
 }
