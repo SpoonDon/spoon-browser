@@ -755,6 +755,43 @@ new AlertDialog.Builder(this)
         return items;
     }
 
+    private ArrayList<BrowserItem>
+    buildBookmarkItems() {
+
+        ArrayList<BrowserItem> items =
+                new ArrayList<>();
+
+        for (int i = 0;
+             i < bookmarks.size();
+             i++) {
+
+            String url =
+                    bookmarks.get(i);
+
+            String title =
+                    pageTitles.get(url);
+
+            if (title == null ||
+                    title.isEmpty()) {
+
+                title = url;
+            }
+
+            Bitmap icon =
+                    pageIcons.get(url);
+
+            items.add(
+                    new BrowserItem(
+                            icon,
+                            title,
+                            url
+                    )
+            );
+        }
+
+        return items;
+    }
+
     private void showHistoryDialog() {
 
         if (history.isEmpty()) {
@@ -870,19 +907,41 @@ new AlertDialog.Builder(this)
         return;
     }
 
-    String[] items =
-            bookmarks.toArray(new String[0]);
+ArrayList<BrowserItem> items =
+                buildBookmarkItems();
 
-    new AlertDialog.Builder(this)
-            .setTitle("Bookmarks")
-            .setItems(
-                    items,
-                    (dialog, which) ->
-                            getCurrentWebView().loadUrl(
-                                    items[which]
-                            )
-            )
-            .show();
+        BrowserItemAdapter adapter =
+                new BrowserItemAdapter(
+                        this,
+                        items
+                );
+
+        ListView listView =
+                new ListView(
+                        this
+                );
+
+        listView.setAdapter(
+                adapter
+        );
+
+                    listView.setOnItemClickListener(
+        (parent, view, which, id) -> {
+
+            getCurrentWebView()
+                    .loadUrl(
+                            items.get(which).url
+                    );
+        }
+);
+
+new AlertDialog.Builder(this)
+        .setTitle("Bookmarks")
+        .setView(
+                listView
+        )
+        .show();
+
 }
 
     private void showHome() {
