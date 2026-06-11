@@ -683,38 +683,38 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         }
 
         ArrayList<BrowserItem> items =
-                buildTabItems();
+                        buildTabItems();
 
-        String[] displayItems =
-                new String[items.size()];
+        BrowserItemAdapter adapter =
+                new BrowserItemAdapter(
+                        this,
+                        items
+                );
 
-        int[] tabIndexes =
-                new int[items.size()];
+        ListView listView =
+                new ListView(
+                        this
+                );
 
-        for (int i = 0;
-             i < items.size();
-             i++) {
+        listView.setAdapter(
+        adapter
+                );
 
-            BrowserItem item =
-                    items.get(i);
+                listView.setOnItemClickListener(
+        (parent, view, which, id) -> {
 
-            displayItems[i] =
-                    item.title;
-
-            tabIndexes[i] = i;
+            switchToTab(
+                    which
+            );
         }
+);
 
-        new AlertDialog.Builder(this)
-                .setTitle("Tabs")
-                .setItems(
-                        displayItems,
-                        (dialog, which) -> {
-
-                            switchToTab(
-                                    tabIndexes[which]
-                            );
-                        })
-                .show();
+new AlertDialog.Builder(this)
+        .setTitle("Tabs")
+        .setView(
+                listView
+        )
+        .show();
     }
 
     private ArrayList<BrowserItem>
