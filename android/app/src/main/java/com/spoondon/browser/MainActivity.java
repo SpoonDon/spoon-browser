@@ -566,7 +566,20 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                                       String url,
                                       Bitmap favicon) {
 
-                addressBar.setText(url);
+                if (url == null ||
+        url.isEmpty() ||
+        url.equals("about:blank")) {
+
+    addressBar.setText(
+            "Type URL"
+    );
+
+} else {
+
+    addressBar.setText(
+            url
+    );
+}
 
                 if (url != null &&
                         !url.isEmpty() &&
@@ -779,6 +792,13 @@ new AlertDialog.Builder(this)
 
                 title = url;
             }
+
+            items.add(
+                    new BrowserItem(
+                            title,
+                            url
+                    )
+            );
 
         }
 
