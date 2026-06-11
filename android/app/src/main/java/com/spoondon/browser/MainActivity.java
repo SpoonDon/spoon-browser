@@ -704,17 +704,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             tabIndexes[i] = i;
         }
 
-                .setTitle("History")
-        .setItems(
-                displayItems,
-                (dialog, which) -> {
-
-                    getCurrentWebView()
-                            .loadUrl(
-                                    urlItems[which]
-                            );
-                })
-        .show();new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
                 .setTitle("Tabs")
                 .setItems(
                         displayItems,
