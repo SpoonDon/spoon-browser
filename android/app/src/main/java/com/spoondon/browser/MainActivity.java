@@ -113,7 +113,13 @@ import java.util.HashMap;
                         for (String bookmark :
                                 savedBookmarks.split("\n")) {
 
-                                bookmarks.add(bookmark);
+                                if (!bookmarks.contains(
+        bookmark
+)) {
+        bookmarks.add(
+                bookmark
+        );
+}
                         }
                 }
 
