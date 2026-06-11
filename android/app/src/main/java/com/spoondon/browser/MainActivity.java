@@ -229,7 +229,7 @@ if (!savedPageTitles.isEmpty()) {
 
         addressBar = new EditText(this);
 
-        addressBar.setHint("Search or enter URL");
+        addressBar.setHint("Enter URL");
         addressBar.setTextColor(Color.WHITE);
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
@@ -571,7 +571,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         url.equals("about:blank")) {
 
     addressBar.setText(
-            "Type URL"
+            ""
     );
 
 } else {
@@ -662,7 +662,7 @@ if (url == null ||
         url.isEmpty()) {
 
     addressBar.setText(
-            "Type URL"
+            ""
     );
 
 } else {
