@@ -659,7 +659,8 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                 .getUrl();
 
 if (url == null ||
-        url.isEmpty()) {
+        url.isEmpty() ||
+        url.equals("about:blank")) {
 
     addressBar.setText(
             ""
