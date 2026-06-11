@@ -706,10 +706,7 @@ if (url == null ||
             }
 
             items.add(
-                            icon,
-        title,
-        url
-)new BrowserItem(
+                    new BrowserItem(
                             title,
                             url
                     )
