@@ -624,6 +624,25 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         browserContainer.removeAllViews();
         browserContainer.addView(getCurrentWebView());
+
+        String url =
+        getCurrentWebView()
+                .getUrl();
+
+if (url == null ||
+        url.isEmpty()) {
+
+    addressBar.setText(
+            "about:blank"
+    );
+
+} else {
+
+    addressBar.setText(
+            url
+    );
+}
+
     }
 
     private void updateTabIndicator() {
