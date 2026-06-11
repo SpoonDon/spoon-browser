@@ -92,10 +92,17 @@ import java.util.HashMap;
                 if (!savedHistory.isEmpty()) {
 
                         for (String item :
-                                    savedHistory.split("\n")) {
+            savedHistory.split("\n")) {
 
-                                    history.add(item);
-                        }
+            history.add(item);
+
+            while (
+                    history.size()
+                            > MAX_HISTORY
+            ) {
+                    history.remove(0);
+            }
+}
                 }
 
                 String savedBookmarks =
