@@ -291,7 +291,7 @@ menuButton.setOnClickListener(v -> {
                 return true;
 
             case "History":
-                showHistory();
+                showHistoryDialog();
                 return true;
 
             case "About":
@@ -623,7 +623,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
     private ArrayList<BrowserItem>
     buildTabItems() {
 
-        ArrayList<BrowserItem> items =
+                buildHistoryItems();ArrayList<BrowserItem> items =
                 new ArrayList<>();
 
         for (int i = 0;
@@ -704,7 +704,17 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             tabIndexes[i] = i;
         }
 
-        new AlertDialog.Builder(this)
+                .setTitle("History")
+        .setItems(
+                displayItems,
+                (dialog, which) -> {
+
+                    getCurrentWebView()
+                            .loadUrl(
+                                    urlItems[which]
+                            );
+                })
+        .show();new AlertDialog.Builder(this)
                 .setTitle("Tabs")
                 .setItems(
                         displayItems,
@@ -764,40 +774,38 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
         ArrayList<BrowserItem> items =
                 buildHistoryItems();
 
-        String[] displayItems =
-                new String[items.size()];
+        BrowserItemAdapter adapter =
+                new BrowserItemAdapter(
+                        this,
+                        items
+                );
 
-        String[] urlItems =
-                new String[items.size()];
+        ListView listView =
+                        new ListView(
+                                this
+                        );
 
-        for (int i = 0; i < items.size(); i++) {
+                listView.setAdapter(
+                        adapter
+                );
 
-            BrowserItem item =
-                    items.get(i);
-
-            String url =
-                    item.url;
-
-            urlItems[i] = url;
-
-            String title =
-                    item.title;
-
-            displayItems[i] = title;
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle("History")
-                .setItems(
-                        displayItems,
-                        (dialog, which) -> {
+                listView.setOnItemClickListener(
+                        (parent, view, which, id) -> {
 
                             getCurrentWebView()
                                     .loadUrl(
-                                            urlItems[which]
+                                            items.get(which).url
                                     );
-                        })
-                .show();
+                        }
+                );
+
+                new AlertDialog.Builder(this)
+                        .setTitle("History")
+                        .setView(
+                                listView
+                        )
+                        .show();
+
     }
 
     private WebView getCurrentWebView() {
