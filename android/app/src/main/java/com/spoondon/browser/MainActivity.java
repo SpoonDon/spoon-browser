@@ -631,6 +631,14 @@ public void onShowCustomView(
         return;
     }
 
+if (view.getParent() instanceof ViewGroup) {
+
+    ((ViewGroup) view.getParent())
+            .removeView(
+                    view
+            );
+}
+
     customView = view;
     customViewCallback = callback;
 toolbar.setVisibility(
@@ -638,6 +646,10 @@ toolbar.setVisibility(
 );
 browserContainer.setVisibility(
         View.GONE
+);
+
+root.addView(
+        customView
 );
 
 }
