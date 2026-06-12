@@ -574,7 +574,10 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         WebSettings s = webView.getSettings();
 
-        s.setJavaScriptEnabled(true);
+s.setJavaScriptEnabled(true);
+s.setSafeBrowsingEnabled(
+        true
+);
         s.setDomStorageEnabled(true);
         s.setUseWideViewPort(true);
         s.setLoadWithOverviewMode(true);
@@ -915,10 +918,9 @@ new AlertDialog.Builder(this)
         listView.setOnItemClickListener(
                         (parent, view, which, id) -> {
 
-                            getCurrentWebView()
-                                    .loadUrl(
-                                            items.get(which).url
-                                    );
+                            openUrl(
+        items.get(which).url
+);
                         }
                 );
 
@@ -941,10 +943,9 @@ new AlertDialog.Builder(this)
 
         createNewTab();
 
-        getCurrentWebView()
-                .loadUrl(
-                        items.get(which).url
-                );
+        openUrl(
+        items.get(which).url
+);
 
     } else if (item == 1) {
 
@@ -999,6 +1000,16 @@ new AlertDialog.Builder(this)
     private WebView getCurrentWebView() {
         return tabs.get(currentTab);
     }
+
+private void openUrl(
+        String url
+) {
+
+    getCurrentWebView()
+            .loadUrl(
+                    url
+            );
+}
 
     private String getAppVersion() {
 
@@ -1140,10 +1151,9 @@ ArrayList<BrowserItem> items =
                     listView.setOnItemClickListener(
         (parent, view, which, id) -> {
 
-            getCurrentWebView()
-                    .loadUrl(
-                            items.get(which).url
-                    );
+            openUrl(
+        items.get(which).url
+);
         }
 );
 
@@ -1292,7 +1302,31 @@ new AlertDialog.Builder(this)
                     input.replace(" ", "+");
         }
 
-        getCurrentWebView().loadUrl(url);
+if (url.startsWith(
+        "javascript:"
+)
+        || url.startsWith(
+                "file:"
+        )
+        || url.startsWith(
+                "content:"
+        )
+        || url.startsWith(
+                "intent:"
+        )) {
+
+    Toast.makeText(
+            this,
+            "Blocked unsafe URL",
+            Toast.LENGTH_SHORT
+    ).show();
+
+    return;
+}
+
+openUrl(
+        url
+);
     }
 
     @Override
