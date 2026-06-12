@@ -29,7 +29,7 @@ import android.widget.ListView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-
+import android.widget.HorizontalScrollView;
 import androidx.activity.OnBackPressedCallback;
 
 import com.getcapacitor.BridgeActivity;
@@ -301,7 +301,20 @@ if (!savedPageTitles.isEmpty()) {
         toolbar.addView(go);
         toolbar.addView(menuButton);
 
-        root.addView(toolbar);
+
+HorizontalScrollView toolbarScroll =
+        new HorizontalScrollView(
+                this
+        );
+
+toolbarScroll.addView(
+        toolbar
+);
+
+root.addView(
+        toolbarScroll
+);
+
         root.addView(browserContainer);
 
         setContentView(root);
