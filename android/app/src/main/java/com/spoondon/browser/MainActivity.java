@@ -874,41 +874,6 @@ new AlertDialog.Builder(this)
                         }
                 );
 
-        listView.setOnItemLongClickListener(
-                (parent, view, which, id) -> {
-
-            String url =
-                    items.get(which).url;
-
-            if (!bookmarks.contains(
-                    url
-            )) {
-
-                bookmarks.add(
-                        url
-                );
-
-                saveBookmarks();
-
-                Toast.makeText(
-                        this,
-                        "Bookmark added",
-                        Toast.LENGTH_SHORT
-                ).show();
-
-            } else {
-
-                Toast.makeText(
-                        this,
-                        "Already bookmarked",
-                        Toast.LENGTH_SHORT
-                ).show();
-            }
-
-            return true;
-        }
-);
-
                 new AlertDialog.Builder(this)
                         .setTitle("History")
                         .setView(
