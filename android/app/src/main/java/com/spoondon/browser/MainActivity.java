@@ -750,12 +750,12 @@ if (url == null ||
                         this
                 );
 
-        listView.setAdapter(
-        adapter
+                listView.setAdapter(
+                        adapter
                 );
 
                 listView.setOnItemClickListener(
-        (parent, view, which, id) -> {
+                        (parent, view, which, id) -> {
 
             switchToTab(
                     which
@@ -864,7 +864,7 @@ new AlertDialog.Builder(this)
                         adapter
                 );
 
-                listView.setOnItemClickListener(
+        listView.setOnItemClickListener(
                         (parent, view, which, id) -> {
 
                             getCurrentWebView()
@@ -873,6 +873,41 @@ new AlertDialog.Builder(this)
                                     );
                         }
                 );
+
+        listView.setOnItemLongClickListener(
+                (parent, view, which, id) -> {
+
+            String url =
+                    items.get(which).url;
+
+            if (!bookmarks.contains(
+                    url
+            )) {
+
+                bookmarks.add(
+                        url
+                );
+
+                saveBookmarks();
+
+                Toast.makeText(
+                        this,
+                        "Bookmark added",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+            } else {
+
+                Toast.makeText(
+                        this,
+                        "Already bookmarked",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+
+            return true;
+        }
+);
 
                 new AlertDialog.Builder(this)
                         .setTitle("History")
