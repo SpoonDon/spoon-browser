@@ -8,6 +8,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.view.Gravity;
 import java.util.ArrayList;
+import java.net.URI;
 
 public class BrowserItemAdapter
         extends ArrayAdapter<BrowserItem> {
@@ -65,8 +66,54 @@ public class BrowserItemAdapter
                 18
         );
 
+        TextView urlView =
+          new TextView(
+                getContext()
+        );
+
+        try {
+
+        String host =
+                URI.create(
+                        item.url
+                ).getHost();
+
+        if (host != null &&
+                host.startsWith(
+                        "www."
+                )) {
+
+            host =
+                    host.substring(
+                            4
+                    );
+        }
+
+        urlView.setText(
+                host
+        );
+
+        } catch (Exception e) {
+
+            urlView.setText(
+                    item.url
+            );
+        }
+
+        urlView.setTextSize(
+                12
+        );
+
+        urlView.setAlpha(
+                0.7f
+        );
+
         layout.addView(
                 titleView
+        );
+
+        layout.addView(
+                urlView
         );
 
         return layout;
