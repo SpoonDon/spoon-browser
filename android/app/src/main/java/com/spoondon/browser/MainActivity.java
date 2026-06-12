@@ -636,12 +636,20 @@ public void onShowCustomView(
 toolbar.setVisibility(
         View.GONE
 );
+browserContainer.setVisibility(
+        View.GONE
+);
+
 }
 
 @Override
 public void onHideCustomView() {
 
 toolbar.setVisibility(
+        View.VISIBLE
+);
+
+browserContainer.setVisibility(
         View.VISIBLE
 );
 
