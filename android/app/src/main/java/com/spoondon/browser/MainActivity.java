@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
+import android.view.View;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -68,6 +69,11 @@ import java.util.HashMap;
     // Reserved for future WebView container features
     private LinearLayout browserContainer;
     private TextView tabIndicator;
+private LinearLayout toolbar;
+private View customView;
+
+private WebChromeClient.CustomViewCallback
+        customViewCallback;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
     private WebView lastClosedTab = null;
@@ -218,7 +224,7 @@ if (!savedPageTitles.isEmpty()) {
                 browserParams
         );
 
-        LinearLayout toolbar = new LinearLayout(this);
+        toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
 
@@ -611,6 +617,37 @@ s.setSafeBrowsingEnabled(
 
         webView.setWebChromeClient(
                 new WebChromeClient() {
+
+@Override
+public void onShowCustomView(
+        View view,
+        CustomViewCallback callback
+) {
+
+    if (customView != null) {
+
+        callback.onCustomViewHidden();
+
+        return;
+    }
+
+    customView = view;
+    customViewCallback = callback;
+toolbar.setVisibility(
+        View.GONE
+);
+}
+
+@Override
+public void onHideCustomView() {
+
+toolbar.setVisibility(
+        View.VISIBLE
+);
+
+    customView = null;
+    customViewCallback = null;
+}
 
                     @Override
                     public void onReceivedTitle(
