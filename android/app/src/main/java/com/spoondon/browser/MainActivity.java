@@ -1016,37 +1016,42 @@ new AlertDialog.Builder(this)
     ).apply();
 }
 
-    private void showAbout() {
+private void showAbout() {
 
-            AlertDialog dialog =
-                    new AlertDialog.Builder(this)
-            .setTitle("Spoon Browser")
-            .setMessage(
-                    "Version: "
-                            + getAppVersion()
-                            + "\n\n"
-                            + "Tabs: "
-                            + tabs.size()
-                            + "\nBookmarks: "
-                            + bookmarks.size()
-                            + "\nHistory: "
-                            + history.size()
-                            + "\n\nBuilt one green commit at a time."
-                            + "\n\nDesigned to evolve with Android WebView."
-                            + "\n\n-with love, Plaban."
-            )
-            .setPositiveButton(
-                    "OK",
-                    null
-            )
-            .create();
+        AlertDialog dialog =
+                new AlertDialog.Builder(
+                        this
+                )
+                        .setTitle(
+                                "Spoon Browser"
+                        )
+                        .setMessage(
+                                "Version: "
+                                        + getAppVersion()
+                                        + "\n\n"
+                                        + "Tabs: "
+                                        + tabs.size()
+                                        + "\nBookmarks: "
+                                        + bookmarks.size()
+                                        + "\nHistory: "
+                                        + history.size()
+                                        + "\n\nBuilt one green commit at a time."
+                                        + "\n\nDesigned to evolve with Android WebView."
+                                        + "\n\n-with love, Plaban."
+                        )
+                        .setPositiveButton(
+                                "OK",
+                                null
+                        )
+                        .create();
 
-            dialog.show();
-            dialog.setCanceledOnTouchOutside(
-                    false
-            );
+        dialog.show();
 
-}
+        dialog.setCanceledOnTouchOutside(
+                false
+        );
+
+    }
 
     private void showBookmarks() {
 
@@ -1086,6 +1091,62 @@ ArrayList<BrowserItem> items =
                     .loadUrl(
                             items.get(which).url
                     );
+        }
+);
+
+listView.setOnItemLongClickListener(
+        (parent, view, which, id) -> {
+
+            String[] options = {
+                    "Open",
+                    "Open in New Tab",
+                    "Remove Bookmark"
+            };
+
+            new AlertDialog.Builder(
+                    this
+            )
+                    .setItems(
+                            options,
+                            (dialog, item) -> {
+
+if (item == 0) {
+
+    getCurrentWebView()
+            .loadUrl(
+                    items.get(which).url
+            );
+}
+
+else if (item == 1) {
+
+    createNewTab();
+
+    getCurrentWebView()
+            .loadUrl(
+                    items.get(which).url
+            );
+}
+                                else if (item == 2) {
+
+    bookmarks.remove(
+            items.get(which).url
+    );
+
+    saveBookmarks();
+
+    Toast.makeText(
+            this,
+            "Bookmark removed",
+            Toast.LENGTH_SHORT
+    ).show();
+}
+
+                            }
+                    )
+                    .show();
+
+            return true;
         }
 );
 
