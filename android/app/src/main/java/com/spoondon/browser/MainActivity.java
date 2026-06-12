@@ -874,6 +874,69 @@ new AlertDialog.Builder(this)
                         }
                 );
 
+        listView.setOnItemLongClickListener(
+                (parent, view, which, id) -> {
+
+                    String[] options = {
+                            "Open in New Tab",
+                            "Add Bookmark"
+                    };
+
+                    new AlertDialog.Builder(
+                            this
+                    )
+                            .setItems(
+                                    options,
+                                    (dialog, item) -> {
+
+    if (item == 0) {
+
+        createNewTab();
+
+        getCurrentWebView()
+                .loadUrl(
+                        items.get(which).url
+                );
+
+    } else if (item == 1) {
+
+        String url =
+                items.get(which).url;
+
+        if (!bookmarks.contains(
+                url
+        )) {
+
+            bookmarks.add(
+                    url
+            );
+
+            saveBookmarks();
+
+            Toast.makeText(
+                    this,
+                    "Bookmark added",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+        } else {
+
+            Toast.makeText(
+                    this,
+                    "Already bookmarked",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+    }
+}
+
+                            )
+                            .show();
+
+                    return true;
+                }
+        );
+
                 new AlertDialog.Builder(this)
                         .setTitle("History")
                         .setView(
