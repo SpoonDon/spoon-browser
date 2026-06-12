@@ -29,7 +29,6 @@ import android.widget.ListView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import android.widget.HorizontalScrollView;
 import androidx.activity.OnBackPressedCallback;
 
 import com.getcapacitor.BridgeActivity;
@@ -302,17 +301,8 @@ if (!savedPageTitles.isEmpty()) {
         toolbar.addView(menuButton);
 
 
-HorizontalScrollView toolbarScroll =
-        new HorizontalScrollView(
-                this
-        );
-
-toolbarScroll.addView(
-        toolbar
-);
-
 root.addView(
-        toolbarScroll
+        toolbar
 );
 
         root.addView(browserContainer);
@@ -550,11 +540,14 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         button.setBackground(bg);
 
-        LinearLayout.LayoutParams params =
-                new LinearLayout.LayoutParams(
-                        dp(46),
-                        dp(46)
-                );
+int buttonSize =
+        getToolbarButtonSize();
+
+LinearLayout.LayoutParams params =
+        new LinearLayout.LayoutParams(
+                buttonSize,
+                buttonSize
+        );
 
         params.setMargins(dp(3), 0, dp(3), 0);
 
@@ -562,6 +555,25 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
         return button;
     }
+
+private int getToolbarButtonSize() {
+
+    int width =
+            getResources()
+                    .getConfiguration()
+                    .screenWidthDp;
+
+    if (width < 400) {
+
+        return dp(36);
+
+    } else if (width < 600) {
+
+        return dp(42);
+    }
+
+    return dp(46);
+}
 
     private int dp(int value) {
 
