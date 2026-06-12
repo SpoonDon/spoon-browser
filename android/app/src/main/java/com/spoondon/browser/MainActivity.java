@@ -665,6 +665,19 @@ browserContainer.setVisibility(
         View.VISIBLE
 );
 
+if (customView != null) {
+
+    root.removeView(
+            customView
+    );
+}
+
+if (customViewCallback != null) {
+
+    customViewCallback
+            .onCustomViewHidden();
+}
+
     customView = null;
     customViewCallback = null;
 }
