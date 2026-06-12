@@ -328,6 +328,7 @@ menuButton.setOnClickListener(v -> {
 
     popup.getMenu().add("Bookmarks");
     popup.getMenu().add("History");
+    popup.getMenu().add("Clear History");
     popup.getMenu().add("About");
 
     popup.setOnMenuItemClickListener(item -> {
@@ -342,6 +343,11 @@ menuButton.setOnClickListener(v -> {
 
             case "History":
                 showHistoryDialog();
+                return true;
+
+            case "Clear History":
+                history.clear();
+                saveHistory();
                 return true;
 
             case "About":
