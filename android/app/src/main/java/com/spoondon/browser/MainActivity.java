@@ -52,6 +52,9 @@ import java.util.HashMap;
    private static final String KEY_PAGE_TITLES =
         "page_titles";
 
+   private static final String KEY_FILTER_LISTS =
+        "filter_lists";
+
     private static final int MAX_HISTORY =
             500;
 
@@ -76,6 +79,9 @@ import java.util.HashMap;
             new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
+    private final ArrayList<String>
+    filterLists =
+            new ArrayList<>();
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -122,6 +128,28 @@ import java.util.HashMap;
 }
                         }
                 }
+
+String savedFilterLists =
+        prefs.getString(
+                KEY_FILTER_LISTS,
+                ""
+        );
+
+if (!savedFilterLists.isEmpty()) {
+
+    for (String filter :
+            savedFilterLists.split("\n")) {
+
+        if (!filterLists.contains(
+                filter
+        )) {
+
+            filterLists.add(
+                    filter
+            );
+        }
+    }
+}
 
                 String savedPageTitles =
         prefs.getString(
@@ -329,6 +357,7 @@ menuButton.setOnClickListener(v -> {
     popup.getMenu().add("Bookmarks");
     popup.getMenu().add("History");
     popup.getMenu().add("Clear History");
+    popup.getMenu().add("Clear Cache");
     popup.getMenu().add("About");
 
     popup.setOnMenuItemClickListener(item -> {
@@ -348,6 +377,19 @@ menuButton.setOnClickListener(v -> {
             case "Clear History":
                 history.clear();
                 saveHistory();
+                return true;
+
+            case "Clear Cache":
+                getCurrentWebView().clearCache(
+                        true
+                );
+
+                Toast.makeText(
+                        this,
+                        "Cache cleared",
+                        Toast.LENGTH_SHORT
+                ).show();
+
                 return true;
 
             case "About":
@@ -991,6 +1033,17 @@ new AlertDialog.Builder(this)
                 String.join("\n", history)
         ).apply();
     }
+
+    private void saveFilterLists() {
+
+    prefs.edit().putString(
+            KEY_FILTER_LISTS,
+            String.join(
+                    "\n",
+                    filterLists
+            )
+    ).apply();
+}
 
     // Metadata persistence
 
