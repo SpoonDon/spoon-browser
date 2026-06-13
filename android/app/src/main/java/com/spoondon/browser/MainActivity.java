@@ -58,12 +58,6 @@ import java.util.HashMap;
     private static final int MAX_HISTORY =
             500;
 
-    private static final int MAX_PAGE_TITLES =
-            500;
-
-    private static final int MAX_PAGE_ICONS =
-            200;
-
     private EditText addressBar;
     private LinearLayout root;
     // Reserved for future WebView container features
