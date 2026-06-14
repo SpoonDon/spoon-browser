@@ -731,11 +731,48 @@ try {
             "Cannot download file",
             Toast.LENGTH_SHORT
     ).show();
-} 
+}
 
             }
         }
 );
+
+webView.setOnLongClickListener(v -> {
+
+    WebView.HitTestResult result =
+            webView.getHitTestResult();
+
+    if (result != null &&
+            (result.getType()
+                    == WebView.HitTestResult.IMAGE_TYPE
+            || result.getType()
+                    == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+
+        try {
+
+            startActivity(
+                    new Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse(
+                                    result.getExtra()
+                            )
+                    )
+            );
+
+        } catch (Exception e) {
+
+            Toast.makeText(
+                    MainActivity.this,
+                    "Cannot download image",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+
+        return true;
+    }
+
+    return false;
+});
 
         webView.setWebViewClient(new WebViewClient() {
 
