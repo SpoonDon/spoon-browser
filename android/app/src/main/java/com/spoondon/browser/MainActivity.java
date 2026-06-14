@@ -15,6 +15,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.ViewGroup;
+import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -698,6 +699,27 @@ if (customViewCallback != null) {
                     }
                 }
         );
+
+webView.setDownloadListener(
+        new DownloadListener() {
+
+            @Override
+            public void onDownloadStart(
+                    String url,
+                    String userAgent,
+                    String contentDisposition,
+                    String mimetype,
+                    long contentLength
+            ) {
+
+                Toast.makeText(
+                        MainActivity.this,
+                        "Download detected",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+        }
+);
 
         webView.setWebViewClient(new WebViewClient() {
 
