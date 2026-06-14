@@ -1,5 +1,6 @@
 package com.spoondon.browser;
 
+import android.net.Uri;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.Intent;
@@ -712,11 +713,26 @@ webView.setDownloadListener(
                     long contentLength
             ) {
 
-                Toast.makeText(
-                        MainActivity.this,
-                        "Download detected",
-                        Toast.LENGTH_SHORT
-                ).show();
+try {
+
+    startActivity(
+            new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(
+                            url
+                    )
+            )
+    );
+
+} catch (Exception e) {
+
+    Toast.makeText(
+            MainActivity.this,
+            "Cannot download file",
+            Toast.LENGTH_SHORT
+    ).show();
+} 
+
             }
         }
 );
