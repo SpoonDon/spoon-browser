@@ -250,7 +250,6 @@ if (!savedPageTitles.isEmpty()) {
 
         Button nextTab = makeButton("▶");
         Button newTab = makeButton("+");
-        Button closeTab = makeButton("×");
         Button menuButton = makeButton("⋮");
 
         addressBar = new EditText(this);
@@ -289,7 +288,6 @@ if (!savedPageTitles.isEmpty()) {
         toolbar.addView(tabIndicator);
         toolbar.addView(nextTab);
         toolbar.addView(newTab);
-        toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(menuButton);
 
@@ -402,18 +400,6 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
             return true;
         });
-
-        closeTab.setOnClickListener(v -> {
-
-            if (tabs.size() == 1) {
-
-                finishAndRemoveTask();
-
-                return;
-            }
-
-            lastClosedTab = tabs.get(currentTab);
-            lastClosedTabIndex = currentTab;
 
             tabs.remove(currentTab);
 
