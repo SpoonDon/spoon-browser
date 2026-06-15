@@ -321,14 +321,6 @@ root.addView(
 
 go.setOnClickListener(v -> navigate());
 
-bookmark.setOnLongClickListener(
-        v -> {
-
-    showBookmarks();
-
-    return true;
-});
-
 menuButton.setOnClickListener(v -> {
 
     PopupMenu popup = new PopupMenu(this, menuButton);
