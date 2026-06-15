@@ -891,7 +891,6 @@ listView.setOnItemLongClickListener(
                     Toast.LENGTH_SHORT
             ).show();
 
-dialog.dismiss();
 
             return true;
         }
