@@ -233,7 +233,6 @@ if (!savedPageTitles.isEmpty()) {
 
         toolbar.setBackgroundColor(Color.parseColor("#111111"));
 
-        Button back = makeButton("←");
         Button forward = makeButton("→");
         Button home = makeButton("⌂");
 
@@ -289,7 +288,6 @@ if (!savedPageTitles.isEmpty()) {
 
         Button go = makeButton("Go");
 
-        toolbar.addView(back);
         toolbar.addView(forward);
         toolbar.addView(home);
         toolbar.addView(prevTab);
@@ -418,22 +416,6 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             }
 
             return false;
-        });
-
-        back.setOnClickListener(v -> {
-
-            WebView webView = getCurrentWebView();
-
-            if (webView.canGoBack()) {
-                webView.goBack();
-            }
-        });
-
-        back.setOnLongClickListener(v -> {
-
-            showHistoryDialog();
-
-            return true;
         });
 
         forward.setOnClickListener(v -> {
