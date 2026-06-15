@@ -234,7 +234,6 @@ if (!savedPageTitles.isEmpty()) {
         toolbar.setBackgroundColor(Color.parseColor("#111111"));
 
         Button forward = makeButton("→");
-        Button home = makeButton("⌂");
 
         Button prevTab = makeButton("◀");
 
@@ -289,7 +288,6 @@ if (!savedPageTitles.isEmpty()) {
         Button go = makeButton("Go");
 
         toolbar.addView(forward);
-        toolbar.addView(home);
         toolbar.addView(prevTab);
         toolbar.addView(tabIndicator);
         toolbar.addView(nextTab);
@@ -426,8 +424,6 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                 webView.goForward();
             }
         });
-
-        home.setOnClickListener(v -> showHome());
 
         newTab.setOnClickListener(v -> {
 
