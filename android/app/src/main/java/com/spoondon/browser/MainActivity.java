@@ -72,8 +72,6 @@ private WebChromeClient.CustomViewCallback
         customViewCallback;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
-    private WebView lastClosedTab = null;
-    private int lastClosedTabIndex = -1;
     private final ArrayList<String> bookmarks = new ArrayList<>();
     private final ArrayList<String> history = new ArrayList<>();
     private final HashMap<String, String> pageTitles =
@@ -392,28 +390,6 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
 
             createNewTab();
             showHome();
-        });
-
-        newTab.setOnLongClickListener(v -> {
-
-            restoreLastClosedTab();
-
-            return true;
-        });
-
-            tabs.remove(currentTab);
-
-            if (currentTab >= tabs.size()) {
-                currentTab = tabs.size() - 1;
-            }
-
-            switchToTab(currentTab);
-
-            Toast.makeText(
-                    this,
-                    "Tab Closed",
-                    Toast.LENGTH_SHORT
-            ).show();
         });
 
         prevTab.setOnClickListener(v -> {
@@ -770,22 +746,6 @@ webView.setOnLongClickListener(v -> {
     }
 
     // Long press "+" to restore the most recently closed tab.
-    private void restoreLastClosedTab() {
-
-        if (lastClosedTab == null) {
-            return;
-        }
-
-        tabs.add(
-                lastClosedTabIndex,
-                lastClosedTab
-        );
-
-        switchToTab(lastClosedTabIndex);
-
-        lastClosedTab = null;
-        lastClosedTabIndex = -1;
-    }
 
     private void switchToTab(int index) {
 
