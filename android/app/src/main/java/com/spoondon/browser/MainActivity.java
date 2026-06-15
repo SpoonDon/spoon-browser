@@ -249,7 +249,6 @@ if (!savedPageTitles.isEmpty()) {
         });
 
         Button nextTab = makeButton("▶");
-        Button bookmark = makeButton("★");
         Button newTab = makeButton("+");
         Button closeTab = makeButton("×");
         Button menuButton = makeButton("⋮");
@@ -292,7 +291,6 @@ if (!savedPageTitles.isEmpty()) {
         toolbar.addView(tabIndicator);
         toolbar.addView(nextTab);
         toolbar.addView(newTab);
-        toolbar.addView(bookmark);
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
         toolbar.addView(go);
@@ -322,26 +320,6 @@ root.addView(
         showHome();
 
 go.setOnClickListener(v -> navigate());
-
-bookmark.setOnClickListener(v -> {
-
-        String url = getCurrentWebView().getUrl();
-
-       if (url != null &&
-               !url.isEmpty() &&
-               !url.equals("about:blank") &&
-               !bookmarks.contains(url)) {
-
-            bookmarks.add(url);
-            saveBookmarks();
-
-            Toast.makeText(
-                    this,
-                    "Saved: " + url,
-                    Toast.LENGTH_SHORT
-            ).show();
-        }
-});
 
 bookmark.setOnLongClickListener(
         v -> {
