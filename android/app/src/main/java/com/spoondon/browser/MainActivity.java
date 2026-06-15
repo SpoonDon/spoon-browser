@@ -867,6 +867,34 @@ if (url == null ||
         }
 );
 
+listView.setOnItemLongClickListener(
+        (parent, view, which, id) -> {
+
+            if (tabs.size() == 1) {
+
+                finishAndRemoveTask();
+
+                return true;
+            }
+
+            tabs.remove(which);
+
+            if (currentTab >= tabs.size()) {
+                currentTab = tabs.size() - 1;
+            }
+
+            switchToTab(currentTab);
+
+            Toast.makeText(
+                    this,
+                    "Tab Closed",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return true;
+        }
+);
+
 new AlertDialog.Builder(this)
         .setTitle("Tabs")
         .setView(
