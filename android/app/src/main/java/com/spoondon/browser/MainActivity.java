@@ -895,12 +895,16 @@ listView.setOnItemLongClickListener(
         }
 );
 
-new AlertDialog.Builder(this)
-        .setTitle("Tabs")
-        .setView(
-                listView
-        )
-        .show();
+AlertDialog dialog =
+        new AlertDialog.Builder(this)
+                .setTitle("Tabs")
+                .setView(
+                        listView
+                )
+                .create();
+
+dialog.show();
+
     }
 
     private ArrayList<BrowserItem>
