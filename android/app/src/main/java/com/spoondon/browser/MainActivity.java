@@ -284,8 +284,6 @@ if (!savedPageTitles.isEmpty()) {
 
         addressBar.setLayoutParams(inputParams);
 
-        Button go = makeButton("Go");
-
         toolbar.addView(forward);
         toolbar.addView(prevTab);
         toolbar.addView(tabIndicator);
@@ -293,7 +291,6 @@ if (!savedPageTitles.isEmpty()) {
         toolbar.addView(newTab);
         toolbar.addView(closeTab);
         toolbar.addView(addressBar);
-        toolbar.addView(go);
         toolbar.addView(menuButton);
 
 
@@ -318,8 +315,6 @@ root.addView(
         }
 
         showHome();
-
-go.setOnClickListener(v -> navigate());
 
 menuButton.setOnClickListener(v -> {
 
