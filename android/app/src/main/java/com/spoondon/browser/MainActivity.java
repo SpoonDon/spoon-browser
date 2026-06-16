@@ -66,6 +66,11 @@ import java.util.HashMap;
     private LinearLayout browserContainer;
     private TextView tabIndicator;
 private LinearLayout toolbar;
+private Button forwardButton;
+private Button prevTabButton;
+private Button nextTabButton;
+private Button newTabButton;
+private Button menuButton;
 private View customView;
 
 private WebChromeClient.CustomViewCallback
@@ -231,9 +236,11 @@ if (!savedPageTitles.isEmpty()) {
 
         toolbar.setBackgroundColor(Color.parseColor("#111111"));
 
-        Button forward = makeButton("→");
-
-        Button prevTab = makeButton("◀");
+forwardButton = makeButton("→");
+prevTabButton = makeButton("◀");
+nextTabButton = makeButton("▶");
+newTabButton = makeButton("+");
+menuButton = makeButton("⋮");
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
@@ -245,10 +252,6 @@ if (!savedPageTitles.isEmpty()) {
 
             return true;
         });
-
-        Button nextTab = makeButton("▶");
-        Button newTab = makeButton("+");
-        Button menuButton = makeButton("⋮");
 
         addressBar = new EditText(this);
 
@@ -281,11 +284,11 @@ if (!savedPageTitles.isEmpty()) {
 
         addressBar.setLayoutParams(inputParams);
 
-        toolbar.addView(forward);
-        toolbar.addView(prevTab);
+        toolbar.addView(forwardButton);
+        toolbar.addView(prevTabButton);
         toolbar.addView(tabIndicator);
-        toolbar.addView(nextTab);
-        toolbar.addView(newTab);
+        toolbar.addView(nextTabButton);
+        toolbar.addView(newTabButton);
         toolbar.addView(addressBar);
         toolbar.addView(menuButton);
 
@@ -377,7 +380,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             return false;
         });
 
-        forward.setOnClickListener(v -> {
+        forwardButton.setOnClickListener(v -> {
 
             WebView webView = getCurrentWebView();
 
@@ -386,13 +389,13 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             }
         });
 
-        newTab.setOnClickListener(v -> {
+        newTabButton.setOnClickListener(v -> {
 
             createNewTab();
             showHome();
         });
 
-        prevTab.setOnClickListener(v -> {
+        prevTabButton.setOnClickListener(v -> {
 
             if (tabs.size() > 1) {
 
@@ -406,7 +409,7 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
             }
         });
 
-        nextTab.setOnClickListener(v -> {
+        nextTabButton.setOnClickListener(v -> {
 
             if (tabs.size() > 1) {
 
