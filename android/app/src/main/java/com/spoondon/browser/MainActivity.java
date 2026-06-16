@@ -894,32 +894,13 @@ private void closeTab(int index) {
 listView.setOnItemLongClickListener(
         (parent, view, which, id) -> {
 
-            if (tabs.size() == 1) {
-
-                finishAndRemoveTask();
-
-                return true;
-            }
-
-            tabs.remove(which);
+closeTab(which);
 
 items.remove(which);
 adapter.notifyDataSetChanged();
 
-            if (currentTab >= tabs.size()) {
-                currentTab = tabs.size() - 1;
-            }
+return true;
 
-            switchToTab(currentTab);
-
-            Toast.makeText(
-                    this,
-                    "Tab Closed",
-                    Toast.LENGTH_SHORT
-            ).show();
-
-
-            return true;
         }
 );
 
