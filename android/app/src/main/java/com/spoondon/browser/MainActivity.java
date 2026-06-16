@@ -225,12 +225,7 @@ if (!savedPageTitles.isEmpty()) {
 
 createToolbarViews();
 
-tabIndicator.setOnLongClickListener(v -> {
-
-    showTabSwitcher();
-
-    return true;
-});
+setupToolbarListeners();
 
 root.addView(
         toolbar
@@ -307,57 +302,6 @@ menuButton.setOnClickListener(v -> {
     popup.show();
 });
 
-addressBar.setOnKeyListener((v, keyCode, event) -> {
-
-            if (keyCode == KeyEvent.KEYCODE_ENTER &&
-                    event.getAction() == KeyEvent.ACTION_DOWN) {
-
-                navigate();
-                return true;
-            }
-
-            return false;
-        });
-
-        forwardButton.setOnClickListener(v -> {
-
-            WebView webView = getCurrentWebView();
-
-            if (webView.canGoForward()) {
-                webView.goForward();
-            }
-        });
-
-        newTabButton.setOnClickListener(v -> {
-
-            createNewTab();
-            showHome();
-        });
-
-        prevTabButton.setOnClickListener(v -> {
-
-            if (tabs.size() > 1) {
-
-                int previous = currentTab - 1;
-
-                if (previous < 0) {
-                    previous = tabs.size() - 1;
-                }
-
-                switchToTab(previous);
-            }
-        });
-
-        nextTabButton.setOnClickListener(v -> {
-
-            if (tabs.size() > 1) {
-
-                int next = (currentTab + 1) % tabs.size();
-
-                switchToTab(next);
-            }
-        });
-
         getOnBackPressedDispatcher().addCallback(this,
                 new OnBackPressedCallback(true) {
 
@@ -374,6 +318,67 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                     }
                 });
     }
+
+private void setupToolbarListeners() {
+
+    tabIndicator.setOnLongClickListener(v -> {
+
+        showTabSwitcher();
+
+        return true;
+    });
+
+    addressBar.setOnKeyListener((v, keyCode, event) -> {
+
+        if (keyCode == KeyEvent.KEYCODE_ENTER &&
+                event.getAction() == KeyEvent.ACTION_DOWN) {
+
+            navigate();
+            return true;
+        }
+
+        return false;
+    });
+
+    forwardButton.setOnClickListener(v -> {
+
+        WebView webView = getCurrentWebView();
+
+        if (webView.canGoForward()) {
+            webView.goForward();
+        }
+    });
+
+    newTabButton.setOnClickListener(v -> {
+
+        createNewTab();
+        showHome();
+    });
+
+    prevTabButton.setOnClickListener(v -> {
+
+        if (tabs.size() > 1) {
+
+            int previous = currentTab - 1;
+
+            if (previous < 0) {
+                previous = tabs.size() - 1;
+            }
+
+            switchToTab(previous);
+        }
+    });
+
+    nextTabButton.setOnClickListener(v -> {
+
+        if (tabs.size() > 1) {
+
+            int next = (currentTab + 1) % tabs.size();
+
+            switchToTab(next);
+        }
+    });
+}
 
 private void createToolbarViews() {
 
