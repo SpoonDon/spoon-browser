@@ -113,19 +113,30 @@ root.addView(
 
         setContentView(root);
 
-        createNewTab();
+        setupInitialTab();
+}
 
-        Intent intent = getIntent();
+private void setupInitialTab() {
 
-        if (Intent.ACTION_VIEW.equals(intent.getAction())
-                && intent.getData() != null) {
+    createNewTab();
 
-            getCurrentWebView().loadUrl(
-                    intent.getData().toString()
-            );
-        }
+    handleIncomingIntent();
 
-        showHome();
+    showHome();
+}
+
+private void handleIncomingIntent() {
+
+    Intent intent = getIntent();
+
+    if (Intent.ACTION_VIEW.equals(
+            intent.getAction()
+    ) && intent.getData() != null) {
+
+        getCurrentWebView().loadUrl(
+                intent.getData().toString()
+        );
+    }
 }
 
 private void setupRootLayout() {
