@@ -96,7 +96,57 @@ private WebChromeClient.CustomViewCallback
                 MODE_PRIVATE
         );
 
-        String savedHistory =
+loadSavedData();
+
+        root = new LinearLayout(this);
+
+        browserContainer = new LinearLayout(this);
+        browserContainer.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        LinearLayout.LayoutParams browserParams =
+                new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0,
+                        1
+                );
+
+        browserContainer.setLayoutParams(
+                browserParams
+        );
+
+createToolbarViews();
+setupToolbarListeners();
+setupMenuButton();
+setupBackButtonHandler();
+
+root.addView(
+        toolbar
+);
+
+        root.addView(browserContainer);
+
+        setContentView(root);
+
+        createNewTab();
+
+        Intent intent = getIntent();
+
+        if (Intent.ACTION_VIEW.equals(intent.getAction())
+                && intent.getData() != null) {
+
+            getCurrentWebView().loadUrl(
+                    intent.getData().toString()
+            );
+        }
+
+        showHome();
+}
+
+private void loadSavedData() {
+
+String savedHistory =
                         prefs.getString(KEY_HISTORY, "");
 
                 if (!savedHistory.isEmpty()) {
@@ -181,75 +231,10 @@ if (!savedPageTitles.isEmpty()) {
                     parts[1]
             );
         }
+}
     }
 }
 
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
-        ViewCompat.setOnApplyWindowInsetsListener(
-        root,
-        (v, windowInsets) -> {
-
-            Insets systemBars =
-                    windowInsets.getInsets(
-                            WindowInsetsCompat.Type.systemBars()
-                    );
-
-            v.setPadding(
-                    systemBars.left,
-                    systemBars.top,
-                    systemBars.right,
-                    systemBars.bottom
-            );
-
-            return windowInsets;
-        }
-);
-
-        browserContainer = new LinearLayout(this);
-        browserContainer.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        LinearLayout.LayoutParams browserParams =
-                new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        1
-                );
-
-        browserContainer.setLayoutParams(
-                browserParams
-        );
-
-createToolbarViews();
-setupToolbarListeners();
-setupMenuButton();
-setupBackButtonHandler();
-
-root.addView(
-        toolbar
-);
-
-        root.addView(browserContainer);
-
-        setContentView(root);
-
-        createNewTab();
-
-        Intent intent = getIntent();
-
-        if (Intent.ACTION_VIEW.equals(intent.getAction())
-                && intent.getData() != null) {
-
-            getCurrentWebView().loadUrl(
-                    intent.getData().toString()
-            );
-        }
-
-        showHome();
-}
 
 private void setupBackButtonHandler() {
 
