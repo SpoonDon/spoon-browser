@@ -226,6 +226,7 @@ if (!savedPageTitles.isEmpty()) {
 createToolbarViews();
 
 setupToolbarListeners();
+setupMenuButton();
 
 root.addView(
         toolbar
@@ -249,59 +250,6 @@ root.addView(
 
         showHome();
 
-menuButton.setOnClickListener(v -> {
-
-    PopupMenu popup = new PopupMenu(this, menuButton);
-
-    popup.getMenu().add("Bookmarks");
-    popup.getMenu().add("History");
-    popup.getMenu().add("Clear History");
-    popup.getMenu().add("Clear Cache");
-    popup.getMenu().add("About");
-
-    popup.setOnMenuItemClickListener(item -> {
-
-        String title = item.getTitle().toString();
-
-        switch (title) {
-
-            case "Bookmarks":
-                showBookmarks();
-                return true;
-
-            case "History":
-                showHistoryDialog();
-                return true;
-
-            case "Clear History":
-                history.clear();
-                saveHistory();
-                return true;
-
-            case "Clear Cache":
-                getCurrentWebView().clearCache(
-                        true
-                );
-
-                Toast.makeText(
-                        this,
-                        "Cache cleared",
-                        Toast.LENGTH_SHORT
-                ).show();
-
-                return true;
-
-            case "About":
-                showAbout();
-                return true;
-        }
-
-        return false;
-    });
-
-    popup.show();
-});
-
         getOnBackPressedDispatcher().addCallback(this,
                 new OnBackPressedCallback(true) {
 
@@ -318,6 +266,62 @@ menuButton.setOnClickListener(v -> {
                     }
                 });
     }
+
+private void setupMenuButton() {
+
+    menuButton.setOnClickListener(v -> {
+
+        PopupMenu popup = new PopupMenu(this, menuButton);
+
+        popup.getMenu().add("Bookmarks");
+        popup.getMenu().add("History");
+        popup.getMenu().add("Clear History");
+        popup.getMenu().add("Clear Cache");
+        popup.getMenu().add("About");
+
+        popup.setOnMenuItemClickListener(item -> {
+
+            String title = item.getTitle().toString();
+
+            switch (title) {
+
+                case "Bookmarks":
+                    showBookmarks();
+                    return true;
+
+                case "History":
+                    showHistoryDialog();
+                    return true;
+
+                case "Clear History":
+                    history.clear();
+                    saveHistory();
+                    return true;
+
+                case "Clear Cache":
+                    getCurrentWebView().clearCache(
+                            true
+                    );
+
+                    Toast.makeText(
+                            this,
+                            "Cache cleared",
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                    return true;
+
+                case "About":
+                    showAbout();
+                    return true;
+            }
+
+            return false;
+        });
+
+        popup.show();
+    });
+}
 
 private void setupToolbarListeners() {
 
