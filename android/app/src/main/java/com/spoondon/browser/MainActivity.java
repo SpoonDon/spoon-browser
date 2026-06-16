@@ -223,75 +223,14 @@ if (!savedPageTitles.isEmpty()) {
                 browserParams
         );
 
-        toolbar = new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+createToolbarViews();
 
-        toolbar.setPadding(
-                dp(8),
-                dp(8),
-                dp(8),
-                dp(8)
-        );
+tabIndicator.setOnLongClickListener(v -> {
 
-        toolbar.setBackgroundColor(Color.parseColor("#111111"));
+    showTabSwitcher();
 
-forwardButton = makeButton("→");
-prevTabButton = makeButton("◀");
-nextTabButton = makeButton("▶");
-newTabButton = makeButton("+");
-menuButton = makeButton("⋮");
-
-        tabIndicator = new TextView(this);
-        tabIndicator.setTextColor(Color.WHITE);
-        tabIndicator.setTextSize(15);
-        tabIndicator.setPadding(dp(10), 0, dp(10), 0);
-        tabIndicator.setOnLongClickListener(v -> {
-
-            showTabSwitcher();
-
-            return true;
-        });
-
-        addressBar = new EditText(this);
-
-        addressBar.setHint("Enter URL");
-        addressBar.setTextColor(Color.WHITE);
-        addressBar.setHintTextColor(Color.GRAY);
-        addressBar.setSingleLine(true);
-
-        GradientDrawable addressBg = new GradientDrawable();
-        addressBg.setColor(Color.parseColor("#1e1e1e"));
-        addressBg.setCornerRadius(dp(14));
-
-        addressBar.setBackground(addressBg);
-
-        addressBar.setPadding(
-                dp(16),
-                dp(12),
-                dp(16),
-                dp(12)
-        );
-
-        LinearLayout.LayoutParams inputParams =
-                new LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1
-                );
-
-        inputParams.setMargins(dp(8), 0, dp(8), 0);
-
-        addressBar.setLayoutParams(inputParams);
-
-        toolbar.addView(forwardButton);
-        toolbar.addView(prevTabButton);
-        toolbar.addView(tabIndicator);
-        toolbar.addView(nextTabButton);
-        toolbar.addView(newTabButton);
-        toolbar.addView(addressBar);
-        toolbar.addView(menuButton);
-
+    return true;
+});
 
 root.addView(
         toolbar
@@ -434,6 +373,88 @@ addressBar.setOnKeyListener((v, keyCode, event) -> {
                         }
                     }
                 });
+    }
+
+private void createToolbarViews() {
+
+        toolbar = new LinearLayout(this);
+        toolbar.setOrientation(LinearLayout.HORIZONTAL);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+
+        toolbar.setPadding(
+                dp(8),
+                dp(8),
+                dp(8),
+                dp(8)
+        );
+
+        toolbar.setBackgroundColor(Color.parseColor("#111111"));
+
+        forwardButton = makeButton("→");
+        prevTabButton = makeButton("◀");
+        nextTabButton = makeButton("▶");
+        newTabButton = makeButton("+");
+        menuButton = makeButton("⋮");
+
+        tabIndicator = new TextView(this);
+        tabIndicator.setTextColor(Color.WHITE);
+        tabIndicator.setTextSize(15);
+        tabIndicator.setPadding(dp(10), 0, dp(10), 0);
+
+        addressBar = new EditText(this);
+
+        addressBar.setHint("Enter URL");
+        addressBar.setTextColor(Color.WHITE);
+        addressBar.setHintTextColor(Color.GRAY);
+        addressBar.setSingleLine(true);
+
+        GradientDrawable addressBg =
+                new GradientDrawable();
+
+        addressBg.setColor(
+                Color.parseColor("#1e1e1e")
+        );
+
+        addressBg.setCornerRadius(
+                dp(14)
+        );
+
+        addressBar.setBackground(
+                addressBg
+        );
+
+        addressBar.setPadding(
+                dp(16),
+                dp(12),
+                dp(16),
+                dp(12)
+        );
+
+        LinearLayout.LayoutParams inputParams =
+                new LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1
+                );
+
+        inputParams.setMargins(
+                dp(8),
+                0,
+                dp(8),
+                0
+        );
+
+        addressBar.setLayoutParams(
+                inputParams
+        );
+
+        toolbar.addView(forwardButton);
+        toolbar.addView(prevTabButton);
+        toolbar.addView(tabIndicator);
+        toolbar.addView(nextTabButton);
+        toolbar.addView(newTabButton);
+        toolbar.addView(addressBar);
+        toolbar.addView(menuButton);
     }
 
     private Button makeButton(String text) {
