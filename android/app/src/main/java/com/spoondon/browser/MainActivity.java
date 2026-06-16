@@ -98,23 +98,7 @@ private WebChromeClient.CustomViewCallback
 
 loadSavedData();
 
-        root = new LinearLayout(this);
-
-        browserContainer = new LinearLayout(this);
-        browserContainer.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        LinearLayout.LayoutParams browserParams =
-                new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        1
-                );
-
-        browserContainer.setLayoutParams(
-                browserParams
-        );
+setupRootLayout();
 
 createToolbarViews();
 setupToolbarListeners();
@@ -142,6 +126,56 @@ root.addView(
         }
 
         showHome();
+}
+
+private void setupRootLayout() {
+
+    root = new LinearLayout(this);
+
+    root.setOrientation(
+            LinearLayout.VERTICAL
+    );
+
+    root.setBackgroundColor(
+            Color.BLACK
+    );
+
+    ViewCompat.setOnApplyWindowInsetsListener(
+            root,
+            (v, windowInsets) -> {
+
+                Insets systemBars =
+                        windowInsets.getInsets(
+                                WindowInsetsCompat.Type.systemBars()
+                        );
+
+                v.setPadding(
+                        systemBars.left,
+                        systemBars.top,
+                        systemBars.right,
+                        systemBars.bottom
+                );
+
+                return windowInsets;
+            }
+    );
+
+    browserContainer = new LinearLayout(this);
+
+    browserContainer.setOrientation(
+            LinearLayout.VERTICAL
+    );
+
+    LinearLayout.LayoutParams browserParams =
+            new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    0,
+                    1
+            );
+
+    browserContainer.setLayoutParams(
+            browserParams
+    );
 }
 
 private void loadSavedData() {
