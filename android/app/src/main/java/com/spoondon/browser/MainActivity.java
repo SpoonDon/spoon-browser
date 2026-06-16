@@ -779,6 +779,30 @@ if (url == null ||
 
     }
 
+private void closeTab(int index) {
+
+        if (tabs.size() == 1) {
+
+            finishAndRemoveTask();
+
+            return;
+        }
+
+        tabs.remove(index);
+
+        if (currentTab >= tabs.size()) {
+            currentTab = tabs.size() - 1;
+        }
+
+        switchToTab(currentTab);
+
+        Toast.makeText(
+                this,
+                "Tab Closed",
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
     private void updateTabIndicator() {
 
         tabIndicator.setText(
@@ -878,6 +902,9 @@ listView.setOnItemLongClickListener(
             }
 
             tabs.remove(which);
+
+items.remove(which);
+adapter.notifyDataSetChanged();
 
             if (currentTab >= tabs.size()) {
                 currentTab = tabs.size() - 1;
