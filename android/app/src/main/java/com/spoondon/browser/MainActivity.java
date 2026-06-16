@@ -224,9 +224,9 @@ if (!savedPageTitles.isEmpty()) {
         );
 
 createToolbarViews();
-
 setupToolbarListeners();
 setupMenuButton();
+setupBackButtonHandler();
 
 root.addView(
         toolbar
@@ -249,23 +249,29 @@ root.addView(
         }
 
         showHome();
+}
 
-        getOnBackPressedDispatcher().addCallback(this,
-                new OnBackPressedCallback(true) {
+private void setupBackButtonHandler() {
 
-                    @Override
-                    public void handleOnBackPressed() {
+    getOnBackPressedDispatcher().addCallback(
+            this,
+            new OnBackPressedCallback(true) {
 
-                        WebView webView = getCurrentWebView();
+                @Override
+                public void handleOnBackPressed() {
 
-                        if (webView.canGoBack()) {
-                            webView.goBack();
-                        } else {
-                            finish();
-                        }
+                    WebView webView =
+                            getCurrentWebView();
+
+                    if (webView.canGoBack()) {
+                        webView.goBack();
+                    } else {
+                        finish();
                     }
-                });
-    }
+                }
+            }
+    );
+}
 
 private void setupMenuButton() {
 
