@@ -723,6 +723,50 @@ createDownloadListener() {
     };
 }
 
+private View.OnLongClickListener
+createImageLongClickListener(
+        WebView webView
+) {
+
+    return v -> {
+
+        WebView.HitTestResult result =
+                webView.getHitTestResult();
+
+        if (result != null &&
+                (result.getType()
+                        == WebView.HitTestResult.IMAGE_TYPE
+                || result.getType()
+                        == WebView.HitTestResult
+                        .SRC_IMAGE_ANCHOR_TYPE)) {
+
+            try {
+
+                startActivity(
+                        new Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(
+                                        result.getExtra()
+                                )
+                        )
+                );
+
+            } catch (Exception e) {
+
+                Toast.makeText(
+                        MainActivity.this,
+                        "Cannot download image",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+
+            return true;
+        }
+
+        return false;
+    };
+}
+
 private WebView createConfiguredWebView() {
 
         WebView webView = new WebView(this);
@@ -748,42 +792,11 @@ webView.setDownloadListener(
         createDownloadListener()
 );
 
-webView.setOnLongClickListener(v -> {
-
-    WebView.HitTestResult result =
-            webView.getHitTestResult();
-
-    if (result != null &&
-            (result.getType()
-                    == WebView.HitTestResult.IMAGE_TYPE
-            || result.getType()
-                    == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
-
-        try {
-
-            startActivity(
-                    new Intent(
-                            Intent.ACTION_VIEW,
-                            Uri.parse(
-                                    result.getExtra()
-                            )
-                    )
-            );
-
-        } catch (Exception e) {
-
-            Toast.makeText(
-                    MainActivity.this,
-                    "Cannot download image",
-                    Toast.LENGTH_SHORT
-            ).show();
-        }
-
-        return true;
-    }
-
-    return false;
-});
+webView.setOnLongClickListener(
+        createImageLongClickListener(
+                webView
+        )
+);
 
         webView.setWebViewClient(new WebViewClient() {
 
