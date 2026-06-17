@@ -767,6 +767,66 @@ createImageLongClickListener(
     };
 }
 
+private WebViewClient createWebViewClient() {
+
+    return new WebViewClient() {
+
+        @Override
+        public void onPageStarted(
+                WebView view,
+                String url,
+                Bitmap favicon
+        ) {
+
+            if (url == null ||
+                    url.isEmpty() ||
+                    url.equals("about:blank")) {
+
+                addressBar.setText(
+                        ""
+                );
+
+            } else {
+
+                addressBar.setText(
+                        url
+                );
+            }
+
+            if (url != null &&
+                    !url.isEmpty() &&
+                    !url.equals("about:blank") &&
+                    !url.startsWith(
+                            "chrome-error://"
+                    ) &&
+                    !url.startsWith(
+                            "data:"
+                    ) &&
+                    !url.startsWith(
+                            "file://"
+                    )) {
+
+                if (history.isEmpty() ||
+                        !history.get(
+                                history.size() - 1
+                        ).equals(url)) {
+
+                    history.add(url);
+
+                    while (
+                            history.size()
+                                    > MAX_HISTORY
+                    ) {
+                        history.remove(0);
+                    }
+
+                    saveHistory();
+                }
+            }
+        }
+    };
+}
+
 private WebView createConfiguredWebView() {
 
         WebView webView = new WebView(this);
@@ -798,59 +858,9 @@ webView.setOnLongClickListener(
         )
 );
 
-        webView.setWebViewClient(new WebViewClient() {
-
-            @Override
-            public void onPageStarted(WebView view,
-                                      String url,
-                                      Bitmap favicon) {
-
-                if (url == null ||
-        url.isEmpty() ||
-        url.equals("about:blank")) {
-
-    addressBar.setText(
-            ""
-    );
-
-} else {
-
-    addressBar.setText(
-            url
-    );
-}
-
-                if (url != null &&
-                        !url.isEmpty() &&
-                        !url.equals("about:blank") &&
-                        !url.startsWith(
-                                "chrome-error://"
-                        ) &&
-                        !url.startsWith(
-                                "data:"
-                        ) &&
-                        !url.startsWith(
-                                "file://"
-                        )) {
-
-                        if (history.isEmpty() ||
-                                !history.get(history.size() - 1)
-                                        .equals(url)) {
-
-                                history.add(url);
-
-                                while (
-                                        history.size()
-                                                > MAX_HISTORY
-                                ) {
-                                        history.remove(0);
-                                }
-
-                                saveHistory();
-                        }
-                }
-           }
-       });
+webView.setWebViewClient(
+        createWebViewClient()
+);
 
        return webView;
     }
