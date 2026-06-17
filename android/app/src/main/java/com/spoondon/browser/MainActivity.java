@@ -917,7 +917,13 @@ private void closeTab(int index) {
             return;
         }
 
-        tabs.remove(index);
+WebView webView =
+        tabs.get(index);
+
+webView.stopLoading();
+webView.clearHistory();
+
+tabs.remove(index);
 
         if (currentTab >= tabs.size()) {
             currentTab = tabs.size() - 1;
