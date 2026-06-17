@@ -560,7 +560,40 @@ private int getToolbarButtonSize() {
         );
     }
 
-    private WebView createConfiguredWebView() {
+private void configureWebSettings(
+        WebSettings settings
+) {
+
+    settings.setJavaScriptEnabled(
+            true
+    );
+
+    settings.setSafeBrowsingEnabled(
+            true
+    );
+
+    settings.setDomStorageEnabled(
+            true
+    );
+
+    settings.setUseWideViewPort(
+            true
+    );
+
+    settings.setLoadWithOverviewMode(
+            true
+    );
+
+    settings.setBuiltInZoomControls(
+            true
+    );
+
+    settings.setDisplayZoomControls(
+            false
+    );
+}
+
+private WebView createConfiguredWebView() {
 
         WebView webView = new WebView(this);
 
@@ -573,17 +606,9 @@ private int getToolbarButtonSize() {
 
         webView.setLayoutParams(webParams);
 
-        WebSettings s = webView.getSettings();
-
-s.setJavaScriptEnabled(true);
-s.setSafeBrowsingEnabled(
-        true
+configureWebSettings(
+        webView.getSettings()
 );
-        s.setDomStorageEnabled(true);
-        s.setUseWideViewPort(true);
-        s.setLoadWithOverviewMode(true);
-        s.setBuiltInZoomControls(true);
-        s.setDisplayZoomControls(false);
 
         webView.setWebChromeClient(
                 new WebChromeClient() {
