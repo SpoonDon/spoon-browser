@@ -33,12 +33,13 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.activity.OnBackPressedCallback;
-
 import com.getcapacitor.BridgeActivity;
-
 import java.util.ArrayList;
-
 import java.util.HashMap;
+import android.webkit.ValueCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import android.webkit.WebChromeClient.FileChooserParams;
 
    public class MainActivity extends BridgeActivity {
 
@@ -75,6 +76,11 @@ private View customView;
 
 private WebChromeClient.CustomViewCallback
         customViewCallback;
+private ValueCallback<Uri[]>
+        fileChooserCallback;
+
+private ActivityResultLauncher<String>
+        filePickerLauncher;
 
     private final ArrayList<WebView> tabs = new ArrayList<>();
     private final ArrayList<String> bookmarks = new ArrayList<>();
@@ -91,6 +97,37 @@ private WebChromeClient.CustomViewCallback
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+filePickerLauncher =
+        registerForActivityResult(
+                new ActivityResultContracts.GetContent(),
+                uri -> {
+
+                    if (fileChooserCallback != null) {
+
+                        if (uri != null) {
+
+                            fileChooserCallback
+                                    .onReceiveValue(
+                                            new Uri[]{
+                                                    uri
+                                            }
+                                    );
+
+                        } else {
+
+                            fileChooserCallback
+                                    .onReceiveValue(
+                                            null
+                                    );
+                        }
+
+                        fileChooserCallback =
+                                null;
+                    }
+                }
+        );
+
         prefs = getSharedPreferences(
                 PREFS_NAME,
                 MODE_PRIVATE
@@ -662,6 +699,30 @@ private WebChromeClient createWebChromeClient() {
             customView = null;
             customViewCallback = null;
         }
+
+@Override
+public boolean onShowFileChooser(
+        WebView webView,
+        ValueCallback<Uri[]> filePathCallback,
+        FileChooserParams fileChooserParams
+) {
+
+    if (fileChooserCallback != null) {
+
+        fileChooserCallback.onReceiveValue(
+                null
+        );
+    }
+
+    fileChooserCallback =
+            filePathCallback;
+
+    filePickerLauncher.launch(
+            "*/*"
+    );
+
+    return true;
+}
 
         @Override
         public void onReceivedTitle(
