@@ -686,6 +686,43 @@ private WebChromeClient createWebChromeClient() {
     };
 }
 
+private DownloadListener
+createDownloadListener() {
+
+    return new DownloadListener() {
+
+        @Override
+        public void onDownloadStart(
+                String url,
+                String userAgent,
+                String contentDisposition,
+                String mimetype,
+                long contentLength
+        ) {
+
+            try {
+
+                startActivity(
+                        new Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(
+                                        url
+                                )
+                        )
+                );
+
+            } catch (Exception e) {
+
+                Toast.makeText(
+                        MainActivity.this,
+                        "Cannot download file",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+        }
+    };
+}
+
 private WebView createConfiguredWebView() {
 
         WebView webView = new WebView(this);
@@ -708,39 +745,7 @@ webView.setWebChromeClient(
 );
 
 webView.setDownloadListener(
-        new DownloadListener() {
-
-            @Override
-            public void onDownloadStart(
-                    String url,
-                    String userAgent,
-                    String contentDisposition,
-                    String mimetype,
-                    long contentLength
-            ) {
-
-try {
-
-    startActivity(
-            new Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse(
-                            url
-                    )
-            )
-    );
-
-} catch (Exception e) {
-
-    Toast.makeText(
-            MainActivity.this,
-            "Cannot download file",
-            Toast.LENGTH_SHORT
-    ).show();
-}
-
-            }
-        }
+        createDownloadListener()
 );
 
 webView.setOnLongClickListener(v -> {
