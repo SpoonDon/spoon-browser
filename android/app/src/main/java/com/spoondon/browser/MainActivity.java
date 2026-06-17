@@ -593,6 +593,99 @@ private void configureWebSettings(
     );
 }
 
+private WebChromeClient createWebChromeClient() {
+
+    return new WebChromeClient() {
+
+        @Override
+        public void onShowCustomView(
+                View view,
+                CustomViewCallback callback
+        ) {
+
+            if (customView != null) {
+
+                callback.onCustomViewHidden();
+
+                return;
+            }
+
+            if (view.getParent()
+                    instanceof ViewGroup) {
+
+                ((ViewGroup) view.getParent())
+                        .removeView(
+                                view
+                        );
+            }
+
+            customView = view;
+            customViewCallback = callback;
+
+            toolbar.setVisibility(
+                    View.GONE
+            );
+
+            browserContainer.setVisibility(
+                    View.GONE
+            );
+
+            root.addView(
+                    customView
+            );
+        }
+
+        @Override
+        public void onHideCustomView() {
+
+            toolbar.setVisibility(
+                    View.VISIBLE
+            );
+
+            browserContainer.setVisibility(
+                    View.VISIBLE
+            );
+
+            if (customView != null) {
+
+                root.removeView(
+                        customView
+                );
+            }
+
+            if (customViewCallback != null) {
+
+                customViewCallback
+                        .onCustomViewHidden();
+            }
+
+            customView = null;
+            customViewCallback = null;
+        }
+
+        @Override
+        public void onReceivedTitle(
+                WebView view,
+                String title
+        ) {
+
+            String url = view.getUrl();
+
+            if (url != null &&
+                    title != null &&
+                    !title.isEmpty()) {
+
+                pageTitles.put(
+                        url,
+                        title
+                );
+
+                savePageTitles();
+            }
+        }
+    };
+}
+
 private WebView createConfiguredWebView() {
 
         WebView webView = new WebView(this);
@@ -610,95 +703,9 @@ configureWebSettings(
         webView.getSettings()
 );
 
-        webView.setWebChromeClient(
-                new WebChromeClient() {
-
-@Override
-public void onShowCustomView(
-        View view,
-        CustomViewCallback callback
-) {
-
-    if (customView != null) {
-
-        callback.onCustomViewHidden();
-
-        return;
-    }
-
-if (view.getParent() instanceof ViewGroup) {
-
-    ((ViewGroup) view.getParent())
-            .removeView(
-                    view
-            );
-}
-
-    customView = view;
-    customViewCallback = callback;
-toolbar.setVisibility(
-        View.GONE
+webView.setWebChromeClient(
+        createWebChromeClient()
 );
-browserContainer.setVisibility(
-        View.GONE
-);
-
-root.addView(
-        customView
-);
-
-}
-
-@Override
-public void onHideCustomView() {
-
-toolbar.setVisibility(
-        View.VISIBLE
-);
-
-browserContainer.setVisibility(
-        View.VISIBLE
-);
-
-if (customView != null) {
-
-    root.removeView(
-            customView
-    );
-}
-
-if (customViewCallback != null) {
-
-    customViewCallback
-            .onCustomViewHidden();
-}
-
-    customView = null;
-    customViewCallback = null;
-}
-
-                    @Override
-                    public void onReceivedTitle(
-                            WebView view,
-                            String title) {
-
-                        String url = view.getUrl();
-
-                        if (url != null &&
-                                title != null &&
-                                !title.isEmpty()) {
-
-                            pageTitles.put(
-                                    url,
-                                    title
-                            );
-
-                            savePageTitles();
-
-                        }
-                    }
-                }
-        );
 
 webView.setDownloadListener(
         new DownloadListener() {
