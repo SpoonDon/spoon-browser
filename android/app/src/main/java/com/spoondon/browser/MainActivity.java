@@ -1471,8 +1471,47 @@ private void showFilterListsDialog() {
                     ).show();
                 }
             })
+.setNeutralButton(
+        "View",
+        (d, w) -> showSubscribedFilterLists()
+)
             .setNegativeButton(
                     "Cancel",
+                    null
+            )
+            .show();
+}
+
+private void showSubscribedFilterLists() {
+
+    if (filterLists.isEmpty()) {
+
+        Toast.makeText(
+                this,
+                "No filter lists subscribed",
+                Toast.LENGTH_SHORT
+        ).show();
+
+        return;
+    }
+
+    ListView listView =
+            new ListView(this);
+
+    ArrayAdapter<String> adapter =
+            new ArrayAdapter<>(
+                    this,
+                    android.R.layout.simple_list_item_1,
+                    filterLists
+            );
+
+    listView.setAdapter(adapter);
+
+    new AlertDialog.Builder(this)
+            .setTitle("Subscribed Filter Lists")
+            .setView(listView)
+            .setPositiveButton(
+                    "OK",
                     null
             )
             .show();
