@@ -40,6 +40,7 @@ import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.WebChromeClient.FileChooserParams;
+import android.webkit.RenderProcessGoneDetail;
 
    public class MainActivity extends BridgeActivity {
 
@@ -898,6 +899,21 @@ private WebViewClient createWebViewClient() {
                 }
             }
         }
+@Override
+public boolean onRenderProcessGone(
+        WebView view,
+        RenderProcessGoneDetail detail
+) {
+
+    Toast.makeText(
+            MainActivity.this,
+            "Web page crashed",
+            Toast.LENGTH_SHORT
+    ).show();
+
+    return true;
+}
+
     };
 }
 
