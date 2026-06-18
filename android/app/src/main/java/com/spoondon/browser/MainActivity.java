@@ -1440,11 +1440,38 @@ private void openUrl(
 
 private void showFilterListsDialog() {
 
-    Toast.makeText(
-            this,
-            "Filter list subscriptions coming next",
-            Toast.LENGTH_SHORT
-    ).show();
+    EditText input = new EditText(this);
+
+    new AlertDialog.Builder(this)
+            .setTitle("Subscribe Filter List")
+            .setMessage("Enter filter list URL")
+            .setView(input)
+            .setPositiveButton("Save", (d, w) -> {
+
+                String url =
+                        input.getText()
+                                .toString()
+                                .trim();
+
+                if (!url.isEmpty()
+                        && !filterLists.contains(url)) {
+
+                    filterLists.add(url);
+
+                    saveFilterLists();
+
+                    Toast.makeText(
+                            this,
+                            "Filter list saved",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
+            })
+            .setNegativeButton(
+                    "Cancel",
+                    null
+            )
+            .show();
 }
 
 private void showAbout() {
