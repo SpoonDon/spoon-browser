@@ -921,6 +921,10 @@ public void onReceivedError(
         android.webkit.WebResourceError error
 ) {
 
+if (!request.isForMainFrame()) {
+    return;
+}
+
     Toast.makeText(
             MainActivity.this,
             "Page load failed",
