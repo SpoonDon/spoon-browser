@@ -351,6 +351,7 @@ private void setupMenuButton() {
         popup.getMenu().add("History");
         popup.getMenu().add("Clear History");
         popup.getMenu().add("Clear Cache");
+        popup.getMenu().add("Filter Lists");
         popup.getMenu().add("About");
 
         popup.setOnMenuItemClickListener(item -> {
@@ -384,6 +385,10 @@ private void setupMenuButton() {
                     ).show();
 
                     return true;
+
+case "Filter Lists":
+    showFilterListsDialog();
+    return true;
 
                 case "About":
                     showAbout();
@@ -1431,6 +1436,15 @@ private void openUrl(
             KEY_PAGE_TITLES,
             builder.toString()
     ).apply();
+}
+
+private void showFilterListsDialog() {
+
+    Toast.makeText(
+            this,
+            "Filter list subscriptions coming next",
+            Toast.LENGTH_SHORT
+    ).show();
 }
 
 private void showAbout() {
