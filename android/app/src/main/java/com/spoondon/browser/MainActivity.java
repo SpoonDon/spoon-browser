@@ -348,6 +348,7 @@ private void setupMenuButton() {
         PopupMenu popup = new PopupMenu(this, menuButton);
 
         popup.getMenu().add("Bookmarks");
+        popup.getMenu().add("Add Bookmark");
         popup.getMenu().add("History");
         popup.getMenu().add("Clear History");
         popup.getMenu().add("Clear Cache");
@@ -363,6 +364,29 @@ private void setupMenuButton() {
                 case "Bookmarks":
                     showBookmarks();
                     return true;
+
+                case "Add Bookmark":
+
+    String url =
+            getCurrentWebView()
+                    .getUrl();
+
+    if (url != null &&
+            !url.isEmpty() &&
+            !bookmarks.contains(url)) {
+
+        bookmarks.add(url);
+
+        saveBookmarks();
+
+        Toast.makeText(
+                this,
+                "Bookmark saved",
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+    return true;
 
                 case "History":
                     showHistoryDialog();
