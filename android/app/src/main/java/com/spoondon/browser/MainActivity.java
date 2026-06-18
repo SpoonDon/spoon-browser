@@ -1575,6 +1575,40 @@ private void showSubscribedFilterLists() {
 
     listView.setAdapter(adapter);
 
+listView.setOnItemLongClickListener(
+        (parent, view, which, id) -> {
+
+            String url =
+                    filterLists.get(which);
+
+            new AlertDialog.Builder(this)
+                    .setTitle("Remove Filter List")
+                    .setMessage(url)
+                    .setPositiveButton(
+                            "Remove",
+                            (d, w) -> {
+
+                                filterLists.remove(url);
+
+                                saveFilterLists();
+
+                                Toast.makeText(
+                                        this,
+                                        "Filter list removed",
+                                        Toast.LENGTH_SHORT
+                                ).show();
+                            }
+                    )
+                    .setNegativeButton(
+                            "Cancel",
+                            null
+                    )
+                    .show();
+
+            return true;
+        }
+);
+
     new AlertDialog.Builder(this)
             .setTitle("Subscribed Filter Lists")
             .setView(listView)
