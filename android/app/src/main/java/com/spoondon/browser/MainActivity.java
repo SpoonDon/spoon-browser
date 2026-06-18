@@ -1444,7 +1444,11 @@ private void showFilterListsDialog() {
 
     new AlertDialog.Builder(this)
             .setTitle("Subscribe Filter List")
-            .setMessage("Enter filter list URL")
+            .setMessage(
+        "Subscribed: "
+                + filterLists.size()
+                + "\n\nEnter filter list URL"
+)
             .setView(input)
             .setPositiveButton("Save", (d, w) -> {
 
