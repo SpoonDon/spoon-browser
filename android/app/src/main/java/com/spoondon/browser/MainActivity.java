@@ -932,6 +932,22 @@ if (!request.isForMainFrame()) {
     ).show();
 }
 
+@Override
+public void onReceivedSslError(
+        WebView view,
+        android.webkit.SslErrorHandler handler,
+        android.net.http.SslError error
+) {
+
+    handler.cancel();
+
+    Toast.makeText(
+            MainActivity.this,
+            "SSL certificate error",
+            Toast.LENGTH_SHORT
+    ).show();
+}
+
     };
 }
 
