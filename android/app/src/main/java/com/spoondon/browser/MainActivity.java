@@ -914,6 +914,20 @@ public boolean onRenderProcessGone(
     return true;
 }
 
+@Override
+public void onReceivedError(
+        WebView view,
+        android.webkit.WebResourceRequest request,
+        android.webkit.WebResourceError error
+) {
+
+    Toast.makeText(
+            MainActivity.this,
+            "Page load failed",
+            Toast.LENGTH_SHORT
+    ).show();
+}
+
     };
 }
 
