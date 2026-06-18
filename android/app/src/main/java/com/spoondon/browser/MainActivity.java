@@ -763,14 +763,27 @@ createDownloadListener() {
 
             try {
 
-                startActivity(
-                        new Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse(
-                                        url
-                                )
-                        )
-                );
+Intent intent =
+        new Intent(
+                Intent.ACTION_VIEW
+        );
+
+intent.setDataAndType(
+        Uri.parse(url),
+        mimetype
+);
+
+intent.putExtra(
+        "User-Agent",
+        userAgent
+);
+
+intent.putExtra(
+        "Content-Disposition",
+        contentDisposition
+);
+
+startActivity(intent);
 
             } catch (Exception e) {
 
