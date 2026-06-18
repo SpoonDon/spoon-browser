@@ -1472,13 +1472,57 @@ private void showFilterListsDialog() {
                 }
             })
 .setNeutralButton(
-        "View",
+        "More",
         (d, w) -> showSubscribedFilterLists()
 )
             .setNegativeButton(
                     "Cancel",
                     null
             )
+            .show();
+}
+
+private void showFilterListOptions() {
+
+    String[] options = {
+            "View Subscriptions",
+            "Add EasyList",
+            "Add EasyPrivacy"
+    };
+
+    new AlertDialog.Builder(this)
+            .setTitle("Filter Lists")
+            .setItems(options, (dialog, which) -> {
+
+                if (which == 0) {
+
+                    showSubscribedFilterLists();
+                }
+
+                else if (which == 1) {
+
+                    String url =
+                            "https://easylist.to/easylist/easylist.txt";
+
+                    if (!filterLists.contains(url)) {
+
+                        filterLists.add(url);
+                        saveFilterLists();
+                    }
+                }
+
+                else if (which == 2) {
+
+                    String url =
+                            "https://easylist.to/easylist/easyprivacy.txt";
+
+                    if (!filterLists.contains(url)) {
+
+                        filterLists.add(url);
+                        saveFilterLists();
+                    }
+                }
+            })
             .show();
 }
 
