@@ -355,6 +355,7 @@ private void setupMenuButton() {
         popup.getMenu().add("Clear Cache");
         popup.getMenu().add("Filter Lists");
         popup.getMenu().add("About");
+        popup.getMenu().add("Exit");
 
         popup.setOnMenuItemClickListener(item -> {
 
@@ -415,10 +416,14 @@ case "Filter Lists":
     showFilterListsDialog();
     return true;
 
-                case "About":
-                    showAbout();
-                    return true;
-            }
+case "About":
+    showAbout();
+    return true;
+
+case "Exit":
+    finishAndRemoveTask();
+    return true;
+}
 
             return false;
         });
