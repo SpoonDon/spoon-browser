@@ -187,7 +187,7 @@ protected void onNewIntent(
 }
 
 @Override
-protected void onStop() {
+public void onStop() {
 
     saveOpenTabs();
     saveCurrentTab();
