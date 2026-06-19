@@ -1277,6 +1277,20 @@ webView.setWebViewClient(
         createWebViewClient()
 );
 
+webView.setOnScrollChangeListener(
+        (
+                v,
+                scrollX,
+                scrollY,
+                oldScrollX,
+                oldScrollY
+        ) -> swipeRefreshLayout.setEnabled(
+                !webView.canScrollVertically(
+                        -1
+                )
+        )
+);
+
        return webView;
     }
 
