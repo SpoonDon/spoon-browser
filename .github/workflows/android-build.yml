@@ -53,6 +53,24 @@ jobs:
       - name: Force Gradle Java Home
         run: echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
 
+      - name: Restore signing keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spoon-browser.jks
+
+      - name: Create keystore.properties
+        run: |
+          cat > android/keystore.properties <<EOF
+          storeFile=../spoon-browser.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Verify keystore exists
+        run: |
+          ls -lh spoon-browser.jks
+          ls -lh android/keystore.properties
+
       # ---------------- BUILD APK ----------------
       - name: Build Debug APK
         run: |
