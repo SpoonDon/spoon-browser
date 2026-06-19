@@ -42,6 +42,8 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.net.URI;
 import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -107,6 +109,10 @@ private ActivityResultLauncher<String>
     private final ArrayList<String>
     filterLists =
             new ArrayList<>();
+
+private final HashSet<String>
+blockedDomains =
+        new HashSet<>();
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -446,6 +452,8 @@ if (!savedPageTitles.isEmpty()) {
         }
 }
     }
+
+rebuildBlockedDomains();
 }
 
 
@@ -1747,6 +1755,11 @@ private void openUrl(
         ).apply();
     }
 
+private void rebuildBlockedDomains() {
+
+    blockedDomains.clear();
+}
+
     private void saveFilterLists() {
 
     prefs.edit().putString(
@@ -1756,6 +1769,8 @@ private void openUrl(
                     filterLists
             )
     ).apply();
+
+    rebuildBlockedDomains();
 }
 
 private void saveOpenTabs() {
