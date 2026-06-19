@@ -78,6 +78,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
+      - name: List APK outputs
+        run: |
+          find android/app/build/outputs -type f
+
       # ---------------- UPLOAD APK ----------------
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
