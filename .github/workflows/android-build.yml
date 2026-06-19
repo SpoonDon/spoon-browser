@@ -89,6 +89,10 @@ jobs:
         run: |
           find android/app/build/outputs -type f
 
+      - name: Show release metadata
+        run: |
+          cat android/app/build/outputs/apk/release/output-metadata.json
+
       # ---------------- UPLOAD APK ----------------
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
