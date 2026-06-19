@@ -664,6 +664,15 @@ private void configureWebSettings(
     settings.setDisplayZoomControls(
             false
     );
+
+settings.setSupportMultipleWindows(
+        true
+);
+
+settings.setJavaScriptCanOpenWindowsAutomatically(
+        true
+);
+
 }
 
 private WebChromeClient createWebChromeClient() {
