@@ -114,6 +114,10 @@ private final HashSet<String>
 blockedDomains =
         new HashSet<>();
 
+private final HashSet<String>
+rawFilterRules =
+        new HashSet<>();
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1757,7 +1761,62 @@ private void openUrl(
 
 private void rebuildBlockedDomains() {
 
+    rawFilterRules.add(
+        "doubleclick.net"
+);
+
     blockedDomains.clear();
+
+    for (String rule : rawFilterRules) {
+
+        blockedDomains.add(
+                rule.toLowerCase()
+        );
+    }
+
+android.util.Log.d(
+        "SpoonBlocker",
+        "Blocked domains: "
+                + getBlockedDomainCount()
+);
+
+}
+
+private String extractHost(
+        String url
+) {
+
+    try {
+
+        String host =
+        new URI(url)
+                .getHost();
+
+if (host == null) {
+    return null;
+}
+
+return host.toLowerCase();
+
+    } catch (Exception e) {
+
+        return null;
+    }
+}
+
+private boolean isBlockedDomain(
+        String host
+) {
+
+    return host != null &&
+            blockedDomains.contains(
+                    host
+            );
+}
+
+private int getBlockedDomainCount() {
+
+    return blockedDomains.size();
 }
 
     private void saveFilterLists() {
