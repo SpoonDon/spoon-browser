@@ -45,7 +45,7 @@ release {
 
         keyAlias keystoreProperties["keyAlias"]
 
-        keyPassword keystoreProperties["keyPassword"]
+        keyPassword keystoreProperties["storePassword"]
     }
 }
 
