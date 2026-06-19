@@ -1,5 +1,21 @@
 apply plugin: 'com.android.application'
 
+def keystoreProperties = new Properties()
+
+def keystorePropertiesFile =
+        rootProject.file(
+                "keystore.properties"
+        )
+
+if (keystorePropertiesFile.exists()) {
+
+    keystoreProperties.load(
+            new FileInputStream(
+                    keystorePropertiesFile
+            )
+    )
+}
+
 android {
     namespace = "com.spoondon.browser"
     compileSdk = rootProject.ext.compileSdkVersion
