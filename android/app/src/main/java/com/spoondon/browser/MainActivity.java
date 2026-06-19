@@ -1262,10 +1262,15 @@ private void closeTab(int index) {
 
         if (tabs.size() == 1) {
 
-            finishAndRemoveTask();
+    prefs.edit()
+            .remove(KEY_OPEN_TABS)
+            .remove(KEY_CURRENT_TAB)
+            .apply();
 
-            return;
-        }
+    finishAndRemoveTask();
+
+    return;
+}
 
 WebView webView =
         tabs.get(index);
