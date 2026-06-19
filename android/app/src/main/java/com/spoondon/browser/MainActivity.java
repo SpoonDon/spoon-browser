@@ -186,6 +186,15 @@ protected void onNewIntent(
     }
 }
 
+@Override
+protected void onStop() {
+
+    saveOpenTabs();
+    saveCurrentTab();
+
+    super.onStop();
+}
+
 private void setupInitialTab() {
 
     Intent intent = getIntent();
