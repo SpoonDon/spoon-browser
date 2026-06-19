@@ -62,6 +62,12 @@ import android.webkit.RenderProcessGoneDetail;
    private static final String KEY_FILTER_LISTS =
         "filter_lists";
 
+private static final String KEY_OPEN_TABS =
+        "open_tabs";
+
+private static final String KEY_CURRENT_TAB =
+        "current_tab";
+
     private static final int MAX_HISTORY =
             500;
 
@@ -159,11 +165,74 @@ root.addView(
 
 private void setupInitialTab() {
 
+    Intent intent = getIntent();
+
+    if (Intent.ACTION_VIEW.equals(
+            intent.getAction()
+    ) && intent.getData() != null) {
+
+        createNewTab();
+
+        handleIncomingIntent();
+
+        return;
+    }
+
+    if (restoreSession()) {
+        return;
+    }
+
     createNewTab();
 
-    handleIncomingIntent();
-
     showHome();
+}
+
+private boolean restoreSession() {
+
+    String savedTabs =
+            prefs.getString(
+                    KEY_OPEN_TABS,
+                    ""
+            );
+
+    if (savedTabs.isEmpty()) {
+        return false;
+    }
+
+    for (String url :
+            savedTabs.split("\n")) {
+
+        if (url.isEmpty()) {
+            continue;
+        }
+
+        WebView webView =
+                createConfiguredWebView();
+
+        tabs.add(webView);
+
+        webView.loadUrl(url);
+    }
+
+if (tabs.isEmpty()) {
+    return false;
+}
+
+    int savedCurrentTab =
+            prefs.getInt(
+                    KEY_CURRENT_TAB,
+                    0
+            );
+
+    if (savedCurrentTab < 0 ||
+            savedCurrentTab >= tabs.size()) {
+
+        savedCurrentTab = 0;
+    }
+
+    switchToTab(savedCurrentTab);
+
+    return true;
 }
 
 private void handleIncomingIntent() {
@@ -179,6 +248,8 @@ private void handleIncomingIntent() {
         );
     }
 }
+
+
 
 private void setupRootLayout() {
 
@@ -968,6 +1039,7 @@ private WebViewClient createWebViewClient() {
                     }
 
                     saveHistory();
+                    saveOpenTabs();
                 }
             }
         }
@@ -1124,6 +1196,8 @@ webView.setWebViewClient(
 
         tabs.add(webView);
 
+saveOpenTabs();
+
         switchToTab(tabs.size() - 1);
     }
 
@@ -1134,6 +1208,8 @@ webView.setWebViewClient(
         if (index < 0 || index >= tabs.size()) return;
 
         currentTab = index;
+
+saveCurrentTab();
 
         updateTabIndicator();
 
@@ -1181,6 +1257,8 @@ webView.removeAllViews();
 webView.destroy();
 
 tabs.remove(index);
+
+saveOpenTabs();
 
         if (currentTab >= tabs.size()) {
             currentTab = tabs.size() - 1;
@@ -1539,6 +1617,38 @@ private void openUrl(
                     "\n",
                     filterLists
             )
+    ).apply();
+}
+
+private void saveOpenTabs() {
+
+    ArrayList<String> urls =
+            new ArrayList<>();
+
+    for (WebView tab : tabs) {
+
+        String url =
+                tab.getUrl();
+
+        if (url != null &&
+                !url.isEmpty() &&
+                !url.equals("about:blank")) {
+
+            urls.add(url);
+        }
+    }
+
+    prefs.edit().putString(
+            KEY_OPEN_TABS,
+            String.join("\n", urls)
+    ).apply();
+}
+
+private void saveCurrentTab() {
+
+    prefs.edit().putInt(
+            KEY_CURRENT_TAB,
+            currentTab
     ).apply();
 }
 
