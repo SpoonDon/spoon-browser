@@ -60,7 +60,7 @@ jobs:
       - name: Create keystore.properties
         run: |
           cat > android/keystore.properties <<EOF
-          storeFile=../spoon-browser.jks
+          storeFile=${GITHUB_WORKSPACE}/spoon-browser.jks
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
