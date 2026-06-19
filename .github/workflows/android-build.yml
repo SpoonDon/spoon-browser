@@ -71,6 +71,13 @@ jobs:
           ls -lh spoon-browser.jks
           ls -lh android/keystore.properties
 
+      - name: Verify signing files
+        run: |
+          pwd
+          ls -lh
+          ls -lh android
+          cat android/keystore.properties
+
       # ---------------- BUILD APK ----------------
       - name: Build Release APK
         run: |
@@ -87,4 +94,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: spoon-browser-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
