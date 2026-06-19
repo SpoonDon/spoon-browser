@@ -16,6 +16,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.ViewGroup;
+import android.webkit.WebResourceResponse;
 import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -957,6 +958,24 @@ if (!request.isForMainFrame()) {
     Toast.makeText(
             MainActivity.this,
             "Page load failed",
+            Toast.LENGTH_SHORT
+    ).show();
+}
+
+@Override
+public void onReceivedHttpError(
+        WebView view,
+        android.webkit.WebResourceRequest request,
+        WebResourceResponse errorResponse
+) {
+
+    if (!request.isForMainFrame()) {
+        return;
+    }
+
+    Toast.makeText(
+            MainActivity.this,
+            "HTTP " + errorResponse.getStatusCode(),
             Toast.LENGTH_SHORT
     ).show();
 }
