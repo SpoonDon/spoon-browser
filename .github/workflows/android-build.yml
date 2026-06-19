@@ -57,6 +57,14 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spoon-browser.jks
 
+      - name: Verify keystore can be opened
+        run: |
+          keytool -list -v \
+            -keystore spoon-browser.jks \
+            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}"
+
+
       - name: Create keystore.properties
         run: |
           cat > android/keystore.properties <<EOF
