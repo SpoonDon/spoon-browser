@@ -1028,20 +1028,24 @@ private WebViewClient createWebViewClient() {
                 Bitmap favicon
         ) {
 
-            if (url == null ||
-                    url.isEmpty() ||
-                    url.equals("about:blank")) {
+if (view == getCurrentWebView()) {
 
-                addressBar.setText(
-                        ""
-                );
+    if (url == null ||
+            url.isEmpty() ||
+            url.equals("about:blank")) {
 
-            } else {
+        addressBar.setText(
+                ""
+        );
 
-                addressBar.setText(
-                        url
-                );
-            }
+    } else {
+
+        addressBar.setText(
+                url
+        );
+    }
+}
+
 
             if (url != null &&
                     !url.isEmpty() &&
