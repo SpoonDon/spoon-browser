@@ -58,9 +58,6 @@ jobs:
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spoon-browser.jks
 
       - name: Create keystore.properties
-      - name: Verify keystore properties
-        run: |
-          sed 's/=.*$/=***/' android/keystore.properties
         run: |
           cat > android/keystore.properties <<EOF
           storeFile=${GITHUB_WORKSPACE}/spoon-browser.jks
@@ -68,6 +65,10 @@ jobs:
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
+
+      - name: Verify keystore properties
+        run: |
+          sed 's/=.*$/=***/' android/keystore.properties
 
       - name: Verify keystore exists
         run: |
