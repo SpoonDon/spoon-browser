@@ -38,6 +38,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.activity.OnBackPressedCallback;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -73,11 +74,13 @@ private static final String KEY_CURRENT_TAB =
     private static final int MAX_HISTORY =
             500;
 
-    private EditText addressBar;
-    private LinearLayout root;
+private EditText addressBar;
+private LinearLayout root;
     // Reserved for future WebView container features
-    private LinearLayout browserContainer;
-    private TextView tabIndicator;
+private LinearLayout browserContainer;
+private SwipeRefreshLayout
+        swipeRefreshLayout;
+private TextView tabIndicator;
 private LinearLayout toolbar;
 private Button forwardButton;
 private Button prevTabButton;
@@ -85,12 +88,10 @@ private Button nextTabButton;
 private Button newTabButton;
 private Button menuButton;
 private View customView;
-
 private WebChromeClient.CustomViewCallback
         customViewCallback;
 private ValueCallback<Uri[]>
         fileChooserCallback;
-
 private ActivityResultLauncher<String>
         filePickerLauncher;
 
@@ -160,7 +161,9 @@ root.addView(
         toolbar
 );
 
-        root.addView(browserContainer);
+root.addView(
+        swipeRefreshLayout
+);
 
         setContentView(root);
 
@@ -320,6 +323,9 @@ private void setupRootLayout() {
             }
     );
 
+swipeRefreshLayout =
+        new SwipeRefreshLayout(this);
+
     browserContainer = new LinearLayout(this);
 
     browserContainer.setOrientation(
@@ -333,9 +339,22 @@ private void setupRootLayout() {
                     1
             );
 
-    browserContainer.setLayoutParams(
-            browserParams
-    );
+browserContainer.setLayoutParams(
+        browserParams
+);
+
+swipeRefreshLayout.addView(
+        browserContainer
+);
+
+swipeRefreshLayout.setLayoutParams(
+        browserParams
+);
+
+swipeRefreshLayout.setOnRefreshListener(
+        () -> getCurrentWebView().reload()
+);
+
 }
 
 private void loadSavedData() {
@@ -1084,6 +1103,17 @@ if (view == getCurrentWebView()) {
                 }
             }
         }
+
+@Override
+public void onPageFinished(
+        WebView view,
+        String url
+) {
+
+    swipeRefreshLayout.setRefreshing(
+            false
+    );
+}
 
 @Override
 public boolean onRenderProcessGone(
