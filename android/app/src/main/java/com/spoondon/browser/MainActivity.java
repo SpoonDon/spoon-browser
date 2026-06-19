@@ -101,6 +101,8 @@ private ActivityResultLauncher<String>
             new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
+    private boolean clearSessionOnExit =
+        false;
     private final ArrayList<String>
     filterLists =
             new ArrayList<>();
@@ -189,8 +191,11 @@ protected void onNewIntent(
 @Override
 public void onStop() {
 
-    saveOpenTabs();
-    saveCurrentTab();
+    if (!clearSessionOnExit) {
+
+        saveOpenTabs();
+        saveCurrentTab();
+    }
 
     super.onStop();
 }
@@ -1295,6 +1300,8 @@ if (url == null ||
 private void closeTab(int index) {
 
         if (tabs.size() == 1) {
+
+    clearSessionOnExit = true;
 
     prefs.edit()
             .remove(KEY_OPEN_TABS)
