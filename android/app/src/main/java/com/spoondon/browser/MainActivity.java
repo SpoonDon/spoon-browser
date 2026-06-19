@@ -24,6 +24,8 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.SafeBrowsingResponse;
+import android.webkit.WebResourceRequest;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -1166,6 +1168,25 @@ public void onReceivedSslError(
     Toast.makeText(
             MainActivity.this,
             "SSL certificate error",
+            Toast.LENGTH_SHORT
+    ).show();
+}
+
+@Override
+public void onSafeBrowsingHit(
+        WebView view,
+        WebResourceRequest request,
+        int threatType,
+        SafeBrowsingResponse callback
+) {
+
+    callback.backToSafety(
+            true
+    );
+
+    Toast.makeText(
+            MainActivity.this,
+            "Unsafe website blocked",
             Toast.LENGTH_SHORT
     ).show();
 }
