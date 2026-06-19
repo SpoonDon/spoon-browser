@@ -929,15 +929,54 @@ private WebViewClient createWebViewClient() {
                 }
             }
         }
+
 @Override
 public boolean onRenderProcessGone(
         WebView view,
         RenderProcessGoneDetail detail
 ) {
 
+    String url = null;
+
+    try {
+        url = view.getUrl();
+    } catch (Exception ignored) {
+    }
+
+    WebView replacement =
+            createConfiguredWebView();
+
+    int index =
+            tabs.indexOf(view);
+
+    if (index >= 0) {
+
+        tabs.set(
+                index,
+                replacement
+        );
+
+        if (index == currentTab) {
+
+            browserContainer.removeAllViews();
+
+            browserContainer.addView(
+                    replacement
+            );
+        }
+
+        if (url != null &&
+                !url.isEmpty()) {
+
+            replacement.loadUrl(
+                    url
+            );
+        }
+    }
+
     Toast.makeText(
             MainActivity.this,
-            "Web page crashed",
+            "Web page crashed and was reloaded",
             Toast.LENGTH_SHORT
     ).show();
 
