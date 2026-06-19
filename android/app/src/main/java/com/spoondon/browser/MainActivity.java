@@ -16,6 +16,8 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.ViewGroup;
+import android.os.Message;
+import android.webkit.WebView.WebViewTransport;
 import android.webkit.WebResourceResponse;
 import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
@@ -765,6 +767,32 @@ public boolean onShowFileChooser(
     filePickerLauncher.launch(
             "*/*"
     );
+
+    return true;
+}
+
+@Override
+public boolean onCreateWindow(
+        WebView view,
+        boolean isDialog,
+        boolean isUserGesture,
+        Message resultMsg
+) {
+
+    createNewTab();
+
+    WebView newWebView =
+            getCurrentWebView();
+
+    WebViewTransport transport =
+            (WebViewTransport)
+                    resultMsg.obj;
+
+    transport.setWebView(
+            newWebView
+    );
+
+    resultMsg.sendToTarget();
 
     return true;
 }
