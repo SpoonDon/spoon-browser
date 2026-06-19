@@ -1139,6 +1139,10 @@ WebView webView =
 webView.stopLoading();
 webView.clearHistory();
 
+webView.loadUrl("about:blank");
+webView.removeAllViews();
+webView.destroy();
+
 tabs.remove(index);
 
         if (currentTab >= tabs.size()) {
