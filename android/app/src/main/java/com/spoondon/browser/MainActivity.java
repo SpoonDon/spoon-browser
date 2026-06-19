@@ -163,6 +163,27 @@ root.addView(
         setupInitialTab();
 }
 
+@Override
+protected void onNewIntent(
+        Intent intent
+) {
+
+    super.onNewIntent(intent);
+
+    setIntent(intent);
+
+    if (Intent.ACTION_VIEW.equals(
+            intent.getAction()
+    ) && intent.getData() != null) {
+
+        createNewTab();
+
+        getCurrentWebView().loadUrl(
+                intent.getData().toString()
+        );
+    }
+}
+
 private void setupInitialTab() {
 
     Intent intent = getIntent();
