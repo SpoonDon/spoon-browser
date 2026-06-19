@@ -57,6 +57,10 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spoon-browser.jks
 
+      - name: Show keystore SHA256
+        run: |
+          sha256sum spoon-browser.jks
+
       - name: Verify keystore can be opened
         run: |
           keytool -list -v \
