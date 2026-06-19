@@ -643,6 +643,26 @@ private void createToolbarViews() {
         newTabButton = makeButton("+");
         menuButton = makeButton("⋮");
 
+int screenWidth =
+        getScreenWidthDp();
+
+if (screenWidth < 400) {
+
+    forwardButton.setVisibility(
+            View.GONE
+    );
+
+    newTabButton.setVisibility(
+            View.GONE
+    );
+
+} else if (screenWidth < 600) {
+
+    forwardButton.setVisibility(
+            View.GONE
+    );
+}
+
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
         tabIndicator.setTextSize(15);
@@ -751,6 +771,13 @@ private int getToolbarButtonSize() {
     }
 
     return dp(46);
+}
+
+private int getScreenWidthDp() {
+
+    return getResources()
+            .getConfiguration()
+            .screenWidthDp;
 }
 
     private int dp(int value) {
