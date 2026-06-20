@@ -44,6 +44,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.net.URI;
+import java.net.URL;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -427,6 +430,8 @@ if (!savedFilterLists.isEmpty()) {
         }
     }
 }
+
+refreshFilterLists();
 
                 String savedPageTitles =
         prefs.getString(
@@ -1811,6 +1816,49 @@ android.util.Log.d(
 
 }
 
+private void refreshFilterLists() {
+
+    rawFilterRules.clear();
+
+    for (String filterUrl : filterLists) {
+
+        try {
+
+            BufferedReader reader =
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    new URL(
+                                            filterUrl
+                                    ).openStream()
+                            )
+                    );
+
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+
+                line = line.trim();
+
+                if (line.isEmpty()) {
+                    continue;
+                }
+
+                if (line.startsWith("!")) {
+                    continue;
+                }
+
+                rawFilterRules.add(line);
+            }
+
+            reader.close();
+
+        } catch (Exception ignored) {
+        }
+    }
+
+    rebuildBlockedDomains();
+}
+
 private String extractHost(
         String url
 ) {
@@ -1941,6 +1989,8 @@ private void showFilterListsDialog() {
 
                     filterLists.add(url);
 
+refreshFilterLists();
+
                     saveFilterLists();
 
                     Toast.makeText(
@@ -1986,6 +2036,8 @@ private void showFilterListOptions() {
                     if (!filterLists.contains(url)) {
 
                         filterLists.add(url);
+refreshFilterLists();
+
                         saveFilterLists();
                     }
                 }
@@ -1998,6 +2050,8 @@ private void showFilterListOptions() {
                     if (!filterLists.contains(url)) {
 
                         filterLists.add(url);
+refreshFilterLists();
+
                         saveFilterLists();
                     }
                 }
