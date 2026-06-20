@@ -1103,6 +1103,14 @@ public WebResourceResponse shouldInterceptRequest(
 
     if (isBlockedDomain(host)) {
 
+runOnUiThread(() ->
+        Toast.makeText(
+                MainActivity.this,
+                "Blocked: " + host,
+                Toast.LENGTH_SHORT
+        ).show()
+);
+
         return new WebResourceResponse(
         "text/plain",
         "utf-8",
