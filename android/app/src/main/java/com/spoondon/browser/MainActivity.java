@@ -1818,7 +1818,9 @@ private void refreshFilterLists() {
 
         rawFilterRules.clear();
 
-        for (String filterUrl : filterLists) {
+        try {
+
+    for (String filterUrl : filterLists) {
 
         try {
 
@@ -1873,6 +1875,15 @@ private void refreshFilterLists() {
     );
 }
     }
+
+} catch (Exception e) {
+
+    android.util.Log.e(
+            "SpoonBlocker",
+            "Refresh thread crash",
+            e
+    );
+}
 
     rebuildBlockedDomains();
 
@@ -2131,6 +2142,8 @@ listView.setOnItemLongClickListener(
                             (d, w) -> {
 
                                 filterLists.remove(url);
+
+                                adapter.notifyDataSetChanged();
 
                                 saveFilterLists();
 
