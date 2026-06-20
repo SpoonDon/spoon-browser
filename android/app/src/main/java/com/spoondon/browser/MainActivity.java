@@ -1084,6 +1084,35 @@ private WebViewClient createWebViewClient() {
 
     return new WebViewClient() {
 
+@Override
+public WebResourceResponse shouldInterceptRequest(
+        WebView view,
+        WebResourceRequest request
+) {
+
+    String host =
+            extractHost(
+                    request.getUrl()
+                            .toString()
+            );
+
+    if (isBlockedDomain(host)) {
+
+        return new WebResourceResponse(
+        "text/plain",
+        "utf-8",
+        new java.io.ByteArrayInputStream(
+                new byte[0]
+        )
+);
+    }
+
+    return super.shouldInterceptRequest(
+            view,
+            request
+    );
+}
+
         @Override
         public void onPageStarted(
                 WebView view,
