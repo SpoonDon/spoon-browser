@@ -2025,7 +2025,7 @@ refreshFilterLists();
             })
 .setNeutralButton(
         "More",
-        (d, w) -> showSubscribedFilterLists()
+        (d, w) -> showFilterListOptions()
 )
             .setNegativeButton(
                     "Cancel",
