@@ -196,15 +196,33 @@ protected void onNewIntent(
         Intent intent
 ) {
 
-    super.onNewIntent(intent);
+super.onNewIntent(intent);
 
 Toast.makeText(
-            this,
-            "onNewIntent",
-            Toast.LENGTH_SHORT
-    ).show();
+        this,
+        "onNewIntent",
+        Toast.LENGTH_SHORT
+).show();
 
-    setIntent(intent);
+Toast.makeText(
+        this,
+        "toolbar=" + (toolbar != null),
+        Toast.LENGTH_SHORT
+).show();
+
+Toast.makeText(
+        this,
+        "root=" + (root != null),
+        Toast.LENGTH_SHORT
+).show();
+
+Toast.makeText(
+        this,
+        "browserContainer=" + (browserContainer != null),
+        Toast.LENGTH_SHORT
+).show();
+
+setIntent(intent);
 
     if (Intent.ACTION_VIEW.equals(
             intent.getAction()
