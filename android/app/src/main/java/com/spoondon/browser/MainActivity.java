@@ -1103,14 +1103,6 @@ public WebResourceResponse shouldInterceptRequest(
 
     if (isBlockedDomain(host)) {
 
-runOnUiThread(() ->
-        Toast.makeText(
-                MainActivity.this,
-                "Blocked: " + host,
-                Toast.LENGTH_SHORT
-        ).show()
-);
-
         return new WebResourceResponse(
         "text/plain",
         "utf-8",
@@ -1824,14 +1816,6 @@ private void refreshFilterLists() {
 
     new Thread(() -> {
 
-        runOnUiThread(() ->
-        Toast.makeText(
-                MainActivity.this,
-                "Filter refresh started",
-                Toast.LENGTH_SHORT
-        ).show()
-);
-
         rawFilterRules.clear();
 
         for (String filterUrl : filterLists) {
@@ -1890,24 +1874,7 @@ private void refreshFilterLists() {
 }
     }
 
-runOnUiThread(() ->
-        Toast.makeText(
-                MainActivity.this,
-                "Rules: " + rawFilterRules.size(),
-                Toast.LENGTH_LONG
-        ).show()
-);
-
     rebuildBlockedDomains();
-
-runOnUiThread(() ->
-        Toast.makeText(
-                MainActivity.this,
-                "Blocked: "
-                        + getBlockedDomainCount(),
-                Toast.LENGTH_LONG
-        ).show()
-);
 
     }).start();
 }
