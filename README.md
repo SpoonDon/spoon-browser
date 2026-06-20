@@ -1,16 +1,16 @@
-#Spoon Browser
+# Spoon Browser
 
 Built 1 commit at a time.
 
 A lightweight Android browser focused on stability, simplicity, and long-term compatibility with the Android WebView engine.
 
-Version
+## Version
 
 Current release: v1.3
 
-Features
+## Features
 
-Browsing
+### Browsing
 
 - Multi-tab browsing
 - Smart address bar
@@ -20,13 +20,13 @@ Browsing
 - Fullscreen video support
 - Crash recovery for WebView renderer failures
 
-Privacy
+### Privacy
 
 - Safe Browsing protection
 - SSL error protection
 - Default DuckDuckGo search
 
-Ad Blocking
+### Ad Blocking
 
 - EasyList support
 - EasyPrivacy support
@@ -34,19 +34,19 @@ Ad Blocking
 - Domain and subdomain request blocking
 - Filter list subscription management
 
-Data Management
+### Data Management
 
 - Bookmarks
 - Browsing history
 - Session restoration
 - Tab persistence
 
-Downloads
+### Downloads
 
 - External download manager support
 - Improved download handoff
 
-Project Philosophy
+## Project Philosophy
 
 Spoon Browser follows a stability-first approach:
 
@@ -56,23 +56,23 @@ Spoon Browser follows a stability-first approach:
 - Maintain compatibility with future Android WebView updates
 - Avoid reinventing existing platform functionality
 
-Current Recommended Filter Lists
+## Current Recommended Filter Lists
 
 - EasyList
 - EasyPrivacy
 
 These lists are fully supported by the current ad-blocking architecture and provide the best balance of blocking effectiveness, performance, and stability.
 
-Roadmap
+## Roadmap
 
-Near Term
+### Near Term
 
 - Filter refresh caching
 - Adblock performance optimizations
 - Stability improvements
 - Additional browser polish
 
-Long Term
+### Long Term
 
 - Continued WebView compatibility
 - Performance improvements
