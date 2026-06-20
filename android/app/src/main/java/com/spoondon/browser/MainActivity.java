@@ -70,6 +70,9 @@ import android.webkit.RenderProcessGoneDetail;
    private static final String KEY_FILTER_LISTS =
         "filter_lists";
 
+private static final String KEY_FILTER_REFRESH_TIME =
+        "filter_refresh_time";
+
 private static final String KEY_OPEN_TABS =
         "open_tabs";
 
@@ -431,7 +434,21 @@ if (!savedFilterLists.isEmpty()) {
     }
 }
 
-refreshFilterLists();
+if (!savedFilterLists.isEmpty()) {
+
+    long lastRefresh =
+            prefs.getLong(
+                    KEY_FILTER_REFRESH_TIME,
+                    0
+            );
+
+    if (System.currentTimeMillis()
+            - lastRefresh
+            > 24L * 60 * 60 * 1000) {
+
+        refreshFilterLists();
+    }
+}
 
                 String savedPageTitles =
         prefs.getString(
@@ -1886,6 +1903,13 @@ private void refreshFilterLists() {
 }
 
     rebuildBlockedDomains();
+
+prefs.edit()
+        .putLong(
+                KEY_FILTER_REFRESH_TIME,
+                System.currentTimeMillis()
+        )
+        .apply();
 
     }).start();
 }
