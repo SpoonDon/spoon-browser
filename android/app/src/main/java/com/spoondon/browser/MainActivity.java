@@ -1892,6 +1892,15 @@ runOnUiThread(() ->
 
     rebuildBlockedDomains();
 
+runOnUiThread(() ->
+        Toast.makeText(
+                MainActivity.this,
+                "Blocked: "
+                        + getBlockedDomainCount(),
+                Toast.LENGTH_LONG
+        ).show()
+);
+
     }).start();
 }
 
