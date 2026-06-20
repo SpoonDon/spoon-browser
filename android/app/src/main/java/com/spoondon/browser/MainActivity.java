@@ -1816,10 +1816,13 @@ private void refreshFilterLists() {
 
     new Thread(() -> {
 
-        android.util.Log.d(
-                "SpoonBlocker",
-                "refreshFilterLists start"
-        );
+        runOnUiThread(() ->
+        Toast.makeText(
+                MainActivity.this,
+                "Filter refresh started",
+                Toast.LENGTH_SHORT
+        ).show()
+);
 
         rawFilterRules.clear();
 
