@@ -198,6 +198,12 @@ protected void onNewIntent(
 
     super.onNewIntent(intent);
 
+Toast.makeText(
+            this,
+            "onNewIntent",
+            Toast.LENGTH_SHORT
+    ).show();
+
     setIntent(intent);
 
     if (Intent.ACTION_VIEW.equals(
