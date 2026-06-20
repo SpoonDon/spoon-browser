@@ -367,10 +367,6 @@ swipeRefreshLayout.setLayoutParams(
         browserParams
 );
 
-swipeRefreshLayout.setOnRefreshListener(
-        () -> getCurrentWebView().reload()
-);
-
 }
 
 private void loadSavedData() {
@@ -512,6 +508,7 @@ private void setupMenuButton() {
         PopupMenu popup = new PopupMenu(this, menuButton);
 
         popup.getMenu().add("New Tab");
+        popup.getMenu().add("Reload");
         popup.getMenu().add("Bookmarks");
         popup.getMenu().add("Add Bookmark");
         popup.getMenu().add("History");
@@ -531,6 +528,12 @@ case "New Tab":
 
     createNewTab();
     showHome();
+
+    return true;
+
+case "Reload":
+
+    getCurrentWebView().reload();
 
     return true;
 
@@ -1211,21 +1214,6 @@ public void onPageFinished(
     swipeRefreshLayout.setRefreshing(
             false
     );
-
-    if (url != null &&
-            url.contains("youtube.com")) {
-
-        swipeRefreshLayout.setEnabled(
-                false
-        );
-
-    } else {
-
-        swipeRefreshLayout.setEnabled(
-                true
-        );
-    }
-
 }
 
 @Override
@@ -1388,11 +1376,6 @@ webView.setOnLongClickListener(
 
 webView.setWebViewClient(
         createWebViewClient()
-);
-
-swipeRefreshLayout.setOnChildScrollUpCallback(
-        (parent, child) ->
-                webView.getScrollY() > 0
 );
 
        return webView;
