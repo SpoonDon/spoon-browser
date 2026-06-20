@@ -1369,7 +1369,7 @@ webView.setWebViewClient(
 
 swipeRefreshLayout.setOnChildScrollUpCallback(
         (parent, child) ->
-                webView.canScrollVertically(-1)
+                webView.getScrollY() > 0
 );
 
        return webView;
