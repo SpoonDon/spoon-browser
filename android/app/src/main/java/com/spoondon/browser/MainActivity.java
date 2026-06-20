@@ -222,13 +222,13 @@ private void setupInitialTab() {
     Intent intent = getIntent();
 
     if (Intent.ACTION_VIEW.equals(
-            intent.getAction()
-    ) && intent.getData() != null) {
+        intent.getAction()
+) && intent.getData() != null) {
 
-        createNewTab();
+    showHome();
 
-        return;
-    }
+    return;
+}
 
     if (restoreSession()) {
         return;
