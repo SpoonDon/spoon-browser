@@ -1882,6 +1882,14 @@ private void refreshFilterLists() {
 }
     }
 
+runOnUiThread(() ->
+        Toast.makeText(
+                MainActivity.this,
+                "Rules: " + rawFilterRules.size(),
+                Toast.LENGTH_LONG
+        ).show()
+);
+
     rebuildBlockedDomains();
 
     }).start();
