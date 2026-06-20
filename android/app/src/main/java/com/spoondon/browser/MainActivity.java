@@ -1814,14 +1814,16 @@ android.util.Log.d(
 
 private void refreshFilterLists() {
 
-android.util.Log.d(
-        "SpoonBlocker",
-        "refreshFilterLists start"
-);
+    new Thread(() -> {
 
-    rawFilterRules.clear();
+        android.util.Log.d(
+                "SpoonBlocker",
+                "refreshFilterLists start"
+        );
 
-    for (String filterUrl : filterLists) {
+        rawFilterRules.clear();
+
+        for (String filterUrl : filterLists) {
 
         try {
 
@@ -1878,6 +1880,8 @@ android.util.Log.d(
     }
 
     rebuildBlockedDomains();
+
+    }).start();
 }
 
 private String extractHost(
