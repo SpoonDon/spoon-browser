@@ -38,7 +38,6 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.activity.OnBackPressedCallback;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -86,8 +85,6 @@ private EditText addressBar;
 private LinearLayout root;
     // Reserved for future WebView container features
 private LinearLayout browserContainer;
-private SwipeRefreshLayout
-        swipeRefreshLayout;
 private TextView tabIndicator;
 private LinearLayout toolbar;
 private Button forwardButton;
@@ -178,12 +175,13 @@ root.addView(
 );
 
 root.addView(
-        swipeRefreshLayout
+        browserContainer
 );
 
-        setContentView(root);
+setContentView(root);
 
-        setupInitialTab();
+setupInitialTab();
+
 }
 
 @Override
@@ -339,9 +337,6 @@ private void setupRootLayout() {
             }
     );
 
-swipeRefreshLayout =
-        new SwipeRefreshLayout(this);
-
     browserContainer = new LinearLayout(this);
 
     browserContainer.setOrientation(
@@ -356,14 +351,6 @@ swipeRefreshLayout =
             );
 
 browserContainer.setLayoutParams(
-        browserParams
-);
-
-swipeRefreshLayout.addView(
-        browserContainer
-);
-
-swipeRefreshLayout.setLayoutParams(
         browserParams
 );
 
@@ -1210,10 +1197,6 @@ public void onPageFinished(
         WebView view,
         String url
 ) {
-
-    swipeRefreshLayout.setRefreshing(
-            false
-    );
 }
 
 @Override
