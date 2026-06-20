@@ -16,11 +16,16 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.ViewGroup;
+import android.os.Message;
+import android.webkit.WebView.WebViewTransport;
+import android.webkit.WebResourceResponse;
 import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.SafeBrowsingResponse;
+import android.webkit.WebResourceRequest;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -33,9 +38,15 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.activity.OnBackPressedCallback;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.net.URI;
+import java.net.URL;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -59,14 +70,22 @@ import android.webkit.RenderProcessGoneDetail;
    private static final String KEY_FILTER_LISTS =
         "filter_lists";
 
+private static final String KEY_OPEN_TABS =
+        "open_tabs";
+
+private static final String KEY_CURRENT_TAB =
+        "current_tab";
+
     private static final int MAX_HISTORY =
             500;
 
-    private EditText addressBar;
-    private LinearLayout root;
+private EditText addressBar;
+private LinearLayout root;
     // Reserved for future WebView container features
-    private LinearLayout browserContainer;
-    private TextView tabIndicator;
+private LinearLayout browserContainer;
+private SwipeRefreshLayout
+        swipeRefreshLayout;
+private TextView tabIndicator;
 private LinearLayout toolbar;
 private Button forwardButton;
 private Button prevTabButton;
@@ -74,12 +93,10 @@ private Button nextTabButton;
 private Button newTabButton;
 private Button menuButton;
 private View customView;
-
 private WebChromeClient.CustomViewCallback
         customViewCallback;
 private ValueCallback<Uri[]>
         fileChooserCallback;
-
 private ActivityResultLauncher<String>
         filePickerLauncher;
 
@@ -90,9 +107,19 @@ private ActivityResultLauncher<String>
             new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
+    private boolean clearSessionOnExit =
+        false;
     private final ArrayList<String>
     filterLists =
             new ArrayList<>();
+
+private final HashSet<String>
+blockedDomains =
+        new HashSet<>();
+
+private final HashSet<String>
+rawFilterRules =
+        new HashSet<>();
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -147,20 +174,118 @@ root.addView(
         toolbar
 );
 
-        root.addView(browserContainer);
+root.addView(
+        swipeRefreshLayout
+);
 
         setContentView(root);
 
         setupInitialTab();
 }
 
+@Override
+protected void onNewIntent(
+        Intent intent
+) {
+
+    super.onNewIntent(intent);
+
+    setIntent(intent);
+
+    if (Intent.ACTION_VIEW.equals(
+            intent.getAction()
+    ) && intent.getData() != null) {
+
+        createNewTab();
+
+        getCurrentWebView().loadUrl(
+                intent.getData().toString()
+        );
+    }
+}
+
+@Override
+public void onStop() {
+
+    if (!clearSessionOnExit) {
+
+        saveOpenTabs();
+        saveCurrentTab();
+    }
+
+    super.onStop();
+}
+
 private void setupInitialTab() {
+
+    Intent intent = getIntent();
+
+    if (Intent.ACTION_VIEW.equals(
+            intent.getAction()
+    ) && intent.getData() != null) {
+
+        createNewTab();
+
+        handleIncomingIntent();
+
+        return;
+    }
+
+    if (restoreSession()) {
+        return;
+    }
 
     createNewTab();
 
-    handleIncomingIntent();
-
     showHome();
+}
+
+private boolean restoreSession() {
+
+    String savedTabs =
+            prefs.getString(
+                    KEY_OPEN_TABS,
+                    ""
+            );
+
+    if (savedTabs.isEmpty()) {
+        return false;
+    }
+
+    for (String url :
+            savedTabs.split("\n")) {
+
+        if (url.isEmpty()) {
+            continue;
+        }
+
+        WebView webView =
+                createConfiguredWebView();
+
+        tabs.add(webView);
+
+        webView.loadUrl(url);
+    }
+
+if (tabs.isEmpty()) {
+    return false;
+}
+
+    int savedCurrentTab =
+            prefs.getInt(
+                    KEY_CURRENT_TAB,
+                    0
+            );
+
+    if (savedCurrentTab < 0 ||
+            savedCurrentTab >= tabs.size()) {
+
+        savedCurrentTab = 0;
+    }
+
+    switchToTab(savedCurrentTab);
+
+    return true;
 }
 
 private void handleIncomingIntent() {
@@ -176,6 +301,8 @@ private void handleIncomingIntent() {
         );
     }
 }
+
+
 
 private void setupRootLayout() {
 
@@ -209,6 +336,9 @@ private void setupRootLayout() {
             }
     );
 
+swipeRefreshLayout =
+        new SwipeRefreshLayout(this);
+
     browserContainer = new LinearLayout(this);
 
     browserContainer.setOrientation(
@@ -222,9 +352,22 @@ private void setupRootLayout() {
                     1
             );
 
-    browserContainer.setLayoutParams(
-            browserParams
-    );
+browserContainer.setLayoutParams(
+        browserParams
+);
+
+swipeRefreshLayout.addView(
+        browserContainer
+);
+
+swipeRefreshLayout.setLayoutParams(
+        browserParams
+);
+
+swipeRefreshLayout.setOnRefreshListener(
+        () -> getCurrentWebView().reload()
+);
+
 }
 
 private void loadSavedData() {
@@ -288,6 +431,8 @@ if (!savedFilterLists.isEmpty()) {
     }
 }
 
+refreshFilterLists();
+
                 String savedPageTitles =
         prefs.getString(
                 KEY_PAGE_TITLES,
@@ -316,6 +461,8 @@ if (!savedPageTitles.isEmpty()) {
         }
 }
     }
+
+rebuildBlockedDomains();
 }
 
 
@@ -354,6 +501,7 @@ private void setupMenuButton() {
         popup.getMenu().add("Clear Cache");
         popup.getMenu().add("Filter Lists");
         popup.getMenu().add("About");
+        popup.getMenu().add("Exit");
 
         popup.setOnMenuItemClickListener(item -> {
 
@@ -414,10 +562,14 @@ case "Filter Lists":
     showFilterListsDialog();
     return true;
 
-                case "About":
-                    showAbout();
-                    return true;
-            }
+case "About":
+    showAbout();
+    return true;
+
+case "Exit":
+    finishAndRemoveTask();
+    return true;
+}
 
             return false;
         });
@@ -507,6 +659,26 @@ private void createToolbarViews() {
         nextTabButton = makeButton("▶");
         newTabButton = makeButton("+");
         menuButton = makeButton("⋮");
+
+int screenWidth =
+        getScreenWidthDp();
+
+if (screenWidth < 400) {
+
+    forwardButton.setVisibility(
+            View.GONE
+    );
+
+    newTabButton.setVisibility(
+            View.GONE
+    );
+
+} else if (screenWidth < 600) {
+
+    forwardButton.setVisibility(
+            View.GONE
+    );
+}
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
@@ -618,6 +790,13 @@ private int getToolbarButtonSize() {
     return dp(46);
 }
 
+private int getScreenWidthDp() {
+
+    return getResources()
+            .getConfiguration()
+            .screenWidthDp;
+}
+
     private int dp(int value) {
 
         return (int) TypedValue.applyDimension(
@@ -658,6 +837,15 @@ private void configureWebSettings(
     settings.setDisplayZoomControls(
             false
     );
+
+settings.setSupportMultipleWindows(
+        true
+);
+
+settings.setJavaScriptCanOpenWindowsAutomatically(
+        true
+);
+
 }
 
 private WebChromeClient createWebChromeClient() {
@@ -750,6 +938,32 @@ public boolean onShowFileChooser(
     filePickerLauncher.launch(
             "*/*"
     );
+
+    return true;
+}
+
+@Override
+public boolean onCreateWindow(
+        WebView view,
+        boolean isDialog,
+        boolean isUserGesture,
+        Message resultMsg
+) {
+
+    createNewTab();
+
+    WebView newWebView =
+            getCurrentWebView();
+
+    WebViewTransport transport =
+            (WebViewTransport)
+                    resultMsg.obj;
+
+    transport.setWebView(
+            newWebView
+    );
+
+    resultMsg.sendToTarget();
 
     return true;
 }
@@ -875,6 +1089,35 @@ private WebViewClient createWebViewClient() {
 
     return new WebViewClient() {
 
+@Override
+public WebResourceResponse shouldInterceptRequest(
+        WebView view,
+        WebResourceRequest request
+) {
+
+    String host =
+            extractHost(
+                    request.getUrl()
+                            .toString()
+            );
+
+    if (isBlockedDomain(host)) {
+
+        return new WebResourceResponse(
+        "text/plain",
+        "utf-8",
+        new java.io.ByteArrayInputStream(
+                new byte[0]
+        )
+);
+    }
+
+    return super.shouldInterceptRequest(
+            view,
+            request
+    );
+}
+
         @Override
         public void onPageStarted(
                 WebView view,
@@ -882,20 +1125,24 @@ private WebViewClient createWebViewClient() {
                 Bitmap favicon
         ) {
 
-            if (url == null ||
-                    url.isEmpty() ||
-                    url.equals("about:blank")) {
+if (view == getCurrentWebView()) {
 
-                addressBar.setText(
-                        ""
-                );
+    if (url == null ||
+            url.isEmpty() ||
+            url.equals("about:blank")) {
 
-            } else {
+        addressBar.setText(
+                ""
+        );
 
-                addressBar.setText(
-                        url
-                );
-            }
+    } else {
+
+        addressBar.setText(
+                url
+        );
+    }
+}
+
 
             if (url != null &&
                     !url.isEmpty() &&
@@ -925,18 +1172,69 @@ private WebViewClient createWebViewClient() {
                     }
 
                     saveHistory();
+                    saveOpenTabs();
                 }
             }
         }
+
+@Override
+public void onPageFinished(
+        WebView view,
+        String url
+) {
+
+    swipeRefreshLayout.setRefreshing(
+            false
+    );
+}
+
 @Override
 public boolean onRenderProcessGone(
         WebView view,
         RenderProcessGoneDetail detail
 ) {
 
+    String url = null;
+
+    try {
+        url = view.getUrl();
+    } catch (Exception ignored) {
+    }
+
+    WebView replacement =
+            createConfiguredWebView();
+
+    int index =
+            tabs.indexOf(view);
+
+    if (index >= 0) {
+
+        tabs.set(
+                index,
+                replacement
+        );
+
+        if (index == currentTab) {
+
+            browserContainer.removeAllViews();
+
+            browserContainer.addView(
+                    replacement
+            );
+        }
+
+        if (url != null &&
+                !url.isEmpty()) {
+
+            replacement.loadUrl(
+                    url
+            );
+        }
+    }
+
     Toast.makeText(
             MainActivity.this,
-            "Web page crashed",
+            "Web page crashed and was reloaded",
             Toast.LENGTH_SHORT
     ).show();
 
@@ -962,6 +1260,24 @@ if (!request.isForMainFrame()) {
 }
 
 @Override
+public void onReceivedHttpError(
+        WebView view,
+        android.webkit.WebResourceRequest request,
+        WebResourceResponse errorResponse
+) {
+
+    if (!request.isForMainFrame()) {
+        return;
+    }
+
+    Toast.makeText(
+            MainActivity.this,
+            "HTTP " + errorResponse.getStatusCode(),
+            Toast.LENGTH_SHORT
+    ).show();
+}
+
+@Override
 public void onReceivedSslError(
         WebView view,
         android.webkit.SslErrorHandler handler,
@@ -970,9 +1286,28 @@ public void onReceivedSslError(
 
     handler.cancel();
 
+    android.util.Log.w(
+        "SpoonBrowser",
+        "SSL error: "
+                + error.getPrimaryError()
+);
+}
+
+@Override
+public void onSafeBrowsingHit(
+        WebView view,
+        WebResourceRequest request,
+        int threatType,
+        SafeBrowsingResponse callback
+) {
+
+    callback.backToSafety(
+            true
+    );
+
     Toast.makeText(
             MainActivity.this,
-            "SSL certificate error",
+            "Unsafe website blocked",
             Toast.LENGTH_SHORT
     ).show();
 }
@@ -1015,6 +1350,20 @@ webView.setWebViewClient(
         createWebViewClient()
 );
 
+webView.setOnScrollChangeListener(
+        (
+                v,
+                scrollX,
+                scrollY,
+                oldScrollX,
+                oldScrollY
+        ) -> swipeRefreshLayout.setEnabled(
+                !webView.canScrollVertically(
+                        -1
+                )
+        )
+);
+
        return webView;
     }
 
@@ -1023,6 +1372,8 @@ webView.setWebViewClient(
         WebView webView = createConfiguredWebView();
 
         tabs.add(webView);
+
+saveOpenTabs();
 
         switchToTab(tabs.size() - 1);
     }
@@ -1034,6 +1385,8 @@ webView.setWebViewClient(
         if (index < 0 || index >= tabs.size()) return;
 
         currentTab = index;
+
+saveCurrentTab();
 
         updateTabIndicator();
 
@@ -1065,10 +1418,17 @@ private void closeTab(int index) {
 
         if (tabs.size() == 1) {
 
-            finishAndRemoveTask();
+    clearSessionOnExit = true;
 
-            return;
-        }
+    prefs.edit()
+            .remove(KEY_OPEN_TABS)
+            .remove(KEY_CURRENT_TAB)
+            .apply();
+
+    finishAndRemoveTask();
+
+    return;
+}
 
 WebView webView =
         tabs.get(index);
@@ -1076,7 +1436,13 @@ WebView webView =
 webView.stopLoading();
 webView.clearHistory();
 
+webView.loadUrl("about:blank");
+webView.removeAllViews();
+webView.destroy();
+
 tabs.remove(index);
+
+saveOpenTabs();
 
         if (currentTab >= tabs.size()) {
             currentTab = tabs.size() - 1;
@@ -1427,6 +1793,153 @@ private void openUrl(
         ).apply();
     }
 
+private void rebuildBlockedDomains() {
+
+    blockedDomains.clear();
+
+    for (String rule : rawFilterRules) {
+
+        blockedDomains.add(
+                rule.toLowerCase()
+        );
+    }
+
+android.util.Log.d(
+        "SpoonBlocker",
+        "Blocked domains: "
+                + getBlockedDomainCount()
+);
+
+}
+
+private void refreshFilterLists() {
+
+    new Thread(() -> {
+
+        rawFilterRules.clear();
+
+        try {
+
+    for (String filterUrl : filterLists) {
+
+        try {
+
+            BufferedReader reader =
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    new URL(
+                                            filterUrl
+                                    ).openStream()
+                            )
+                    );
+
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+
+                line = line.trim();
+
+                if (line.isEmpty()) {
+                    continue;
+                }
+
+                if (line.startsWith("!")) {
+                    continue;
+                }
+
+                if (line.startsWith("||")) {
+
+    int end =
+            line.indexOf('^');
+
+    if (end > 2) {
+
+        rawFilterRules.add(
+                line.substring(
+                        2,
+                        end
+                )
+        );
+    }
+}
+            }
+
+            reader.close();
+
+        } catch (Exception e) {
+
+    android.util.Log.e(
+            "SpoonBlocker",
+            "Filter download failed",
+            e
+    );
+}
+    }
+
+} catch (Exception e) {
+
+    android.util.Log.e(
+            "SpoonBlocker",
+            "Refresh thread crash",
+            e
+    );
+}
+
+    rebuildBlockedDomains();
+
+    }).start();
+}
+
+private String extractHost(
+        String url
+) {
+
+    try {
+
+        String host =
+        new URI(url)
+                .getHost();
+
+if (host == null) {
+    return null;
+}
+
+return host.toLowerCase();
+
+    } catch (Exception e) {
+
+        return null;
+    }
+}
+
+private boolean isBlockedDomain(
+        String host
+) {
+
+if (host == null) {
+    return false;
+}
+
+for (String blocked : blockedDomains) {
+
+    if (host.equals(blocked) ||
+            host.endsWith(
+                    "." + blocked
+            )) {
+
+        return true;
+    }
+}
+
+return false;
+
+}
+
+private int getBlockedDomainCount() {
+
+    return blockedDomains.size();
+}
+
     private void saveFilterLists() {
 
     prefs.edit().putString(
@@ -1435,6 +1948,40 @@ private void openUrl(
                     "\n",
                     filterLists
             )
+    ).apply();
+
+    rebuildBlockedDomains();
+}
+
+private void saveOpenTabs() {
+
+    ArrayList<String> urls =
+            new ArrayList<>();
+
+    for (WebView tab : tabs) {
+
+        String url =
+                tab.getUrl();
+
+        if (url != null &&
+                !url.isEmpty() &&
+                !url.equals("about:blank")) {
+
+            urls.add(url);
+        }
+    }
+
+    prefs.edit().putString(
+            KEY_OPEN_TABS,
+            String.join("\n", urls)
+    ).apply();
+}
+
+private void saveCurrentTab() {
+
+    prefs.edit().putInt(
+            KEY_CURRENT_TAB,
+            currentTab
     ).apply();
 }
 
@@ -1486,6 +2033,8 @@ private void showFilterListsDialog() {
 
                     filterLists.add(url);
 
+refreshFilterLists();
+
                     saveFilterLists();
 
                     Toast.makeText(
@@ -1497,7 +2046,7 @@ private void showFilterListsDialog() {
             })
 .setNeutralButton(
         "More",
-        (d, w) -> showSubscribedFilterLists()
+        (d, w) -> showFilterListOptions()
 )
             .setNegativeButton(
                     "Cancel",
@@ -1531,6 +2080,8 @@ private void showFilterListOptions() {
                     if (!filterLists.contains(url)) {
 
                         filterLists.add(url);
+refreshFilterLists();
+
                         saveFilterLists();
                     }
                 }
@@ -1543,6 +2094,8 @@ private void showFilterListOptions() {
                     if (!filterLists.contains(url)) {
 
                         filterLists.add(url);
+refreshFilterLists();
+
                         saveFilterLists();
                     }
                 }
@@ -1589,6 +2142,8 @@ listView.setOnItemLongClickListener(
                             (d, w) -> {
 
                                 filterLists.remove(url);
+
+                                adapter.notifyDataSetChanged();
 
                                 saveFilterLists();
 
