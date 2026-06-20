@@ -1795,10 +1795,6 @@ private void openUrl(
 
 private void rebuildBlockedDomains() {
 
-    rawFilterRules.add(
-        "doubleclick.net"
-);
-
     blockedDomains.clear();
 
     for (String rule : rawFilterRules) {
@@ -1847,7 +1843,21 @@ private void refreshFilterLists() {
                     continue;
                 }
 
-                rawFilterRules.add(line);
+                if (line.startsWith("||")) {
+
+    int end =
+            line.indexOf('^');
+
+    if (end > 2) {
+
+        rawFilterRules.add(
+                line.substring(
+                        2,
+                        end
+                )
+        );
+    }
+}
             }
 
             reader.close();
