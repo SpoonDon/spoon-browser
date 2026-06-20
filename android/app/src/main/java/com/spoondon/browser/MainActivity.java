@@ -1286,11 +1286,11 @@ public void onReceivedSslError(
 
     handler.cancel();
 
-    Toast.makeText(
-            MainActivity.this,
-            "SSL certificate error",
-            Toast.LENGTH_SHORT
-    ).show();
+    android.util.Log.w(
+        "SpoonBrowser",
+        "SSL error: "
+                + error.getPrimaryError()
+);
 }
 
 @Override
