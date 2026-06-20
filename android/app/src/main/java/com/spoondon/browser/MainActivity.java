@@ -225,7 +225,9 @@ private void setupInitialTab() {
         intent.getAction()
 ) && intent.getData() != null) {
 
-    showHome();
+    createNewTab();
+
+    handleIncomingIntent();
 
     return;
 }
