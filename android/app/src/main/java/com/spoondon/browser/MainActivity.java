@@ -1203,6 +1203,21 @@ public void onPageFinished(
     swipeRefreshLayout.setRefreshing(
             false
     );
+
+    if (url != null &&
+            url.contains("youtube.com")) {
+
+        swipeRefreshLayout.setEnabled(
+                false
+        );
+
+    } else {
+
+        swipeRefreshLayout.setEnabled(
+                true
+        );
+    }
+
 }
 
 @Override
