@@ -227,8 +227,6 @@ private void setupInitialTab() {
 
         createNewTab();
 
-        handleIncomingIntent();
-
         return;
     }
 
