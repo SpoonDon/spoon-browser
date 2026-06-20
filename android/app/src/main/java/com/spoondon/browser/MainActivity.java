@@ -1895,10 +1895,23 @@ private boolean isBlockedDomain(
         String host
 ) {
 
-    return host != null &&
-            blockedDomains.contains(
-                    host
-            );
+if (host == null) {
+    return false;
+}
+
+for (String blocked : blockedDomains) {
+
+    if (host.equals(blocked) ||
+            host.endsWith(
+                    "." + blocked
+            )) {
+
+        return true;
+    }
+}
+
+return false;
+
 }
 
 private int getBlockedDomainCount() {
