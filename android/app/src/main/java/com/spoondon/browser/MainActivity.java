@@ -1862,8 +1862,14 @@ private void refreshFilterLists() {
 
             reader.close();
 
-        } catch (Exception ignored) {
-        }
+        } catch (Exception e) {
+
+    android.util.Log.e(
+            "SpoonBlocker",
+            "Filter download failed",
+            e
+    );
+}
     }
 
     rebuildBlockedDomains();
