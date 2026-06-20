@@ -1814,6 +1814,11 @@ android.util.Log.d(
 
 private void refreshFilterLists() {
 
+android.util.Log.d(
+        "SpoonBlocker",
+        "refreshFilterLists start"
+);
+
     rawFilterRules.clear();
 
     for (String filterUrl : filterLists) {
