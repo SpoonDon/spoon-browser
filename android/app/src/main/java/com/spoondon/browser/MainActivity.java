@@ -127,12 +127,6 @@ rawFilterRules =
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-Toast.makeText(
-            this,
-            "onCreate",
-            Toast.LENGTH_SHORT
-    ).show();
-
 filePickerLauncher =
         registerForActivityResult(
                 new ActivityResultContracts.GetContent(),
@@ -198,30 +192,6 @@ protected void onNewIntent(
 
 super.onNewIntent(intent);
 
-Toast.makeText(
-        this,
-        "onNewIntent",
-        Toast.LENGTH_SHORT
-).show();
-
-Toast.makeText(
-        this,
-        "toolbar=" + (toolbar != null),
-        Toast.LENGTH_SHORT
-).show();
-
-Toast.makeText(
-        this,
-        "root=" + (root != null),
-        Toast.LENGTH_SHORT
-).show();
-
-Toast.makeText(
-        this,
-        "browserContainer=" + (browserContainer != null),
-        Toast.LENGTH_SHORT
-).show();
-
 setIntent(intent);
 
     if (Intent.ACTION_VIEW.equals(
@@ -249,12 +219,6 @@ public void onStop() {
 }
 
 private void setupInitialTab() {
-
-Toast.makeText(
-            this,
-            "setupInitialTab",
-            Toast.LENGTH_SHORT
-    ).show();
 
     Intent intent = getIntent();
 
@@ -327,12 +291,6 @@ if (tabs.isEmpty()) {
 }
 
 private void handleIncomingIntent() {
-
-Toast.makeText(
-            this,
-            "handleIncomingIntent",
-            Toast.LENGTH_SHORT
-    ).show();
 
     Intent intent = getIntent();
 
