@@ -122,9 +122,16 @@ rawFilterRules =
         new HashSet<>();
 
     @SuppressLint("SetJavaScriptEnabled")
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+Toast.makeText(
+            this,
+            "onCreate",
+            Toast.LENGTH_SHORT
+    ).show();
 
 filePickerLauncher =
         registerForActivityResult(
@@ -219,6 +226,12 @@ public void onStop() {
 
 private void setupInitialTab() {
 
+Toast.makeText(
+            this,
+            "setupInitialTab",
+            Toast.LENGTH_SHORT
+    ).show();
+
     Intent intent = getIntent();
 
     if (Intent.ACTION_VIEW.equals(
@@ -290,6 +303,12 @@ if (tabs.isEmpty()) {
 }
 
 private void handleIncomingIntent() {
+
+Toast.makeText(
+            this,
+            "handleIncomingIntent",
+            Toast.LENGTH_SHORT
+    ).show();
 
     Intent intent = getIntent();
 
