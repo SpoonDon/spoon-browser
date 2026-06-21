@@ -195,15 +195,15 @@ super.onNewIntent(intent);
 setIntent(intent);
 
     if (Intent.ACTION_VIEW.equals(
-            intent.getAction()
-    ) && intent.getData() != null) {
+        intent.getAction()
+) && intent.getData() != null) {
 
-        createNewTab();
+    createNewTab();
 
-        getCurrentWebView().loadUrl(
-                intent.getData().toString()
-        );
-    }
+    handleIncomingIntent(
+            intent
+    );
+}
 }
 
 @Override
@@ -228,7 +228,9 @@ private void setupInitialTab() {
 
     createNewTab();
 
-    handleIncomingIntent();
+    handleIncomingIntent(
+        intent
+);
 
     return;
 }
@@ -290,9 +292,9 @@ if (tabs.isEmpty()) {
     return true;
 }
 
-private void handleIncomingIntent() {
-
-    Intent intent = getIntent();
+private void handleIncomingIntent(
+        Intent intent
+) {
 
     if (Intent.ACTION_VIEW.equals(
             intent.getAction()
