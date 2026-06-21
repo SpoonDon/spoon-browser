@@ -491,7 +491,7 @@ private void setupBackButtonHandler() {
 
 } else {
 
-    finish();
+    finishAndRemoveTask();
 }
                 }
             }
