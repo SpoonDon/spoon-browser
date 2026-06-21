@@ -1190,7 +1190,6 @@ if (view == getCurrentWebView()) {
                     }
 
                     saveHistory();
-                    saveOpenTabs();
                 }
             }
         }
@@ -1223,10 +1222,14 @@ public boolean onRenderProcessGone(
 
     if (index >= 0) {
 
-        tabs.set(
-                index,
-                replacement
-        );
+    view.stopLoading();
+    view.removeAllViews();
+    view.destroy();
+
+    tabs.set(
+            index,
+            replacement
+    );
 
         if (index == currentTab) {
 
@@ -1432,6 +1435,19 @@ private void closeTab(int index) {
 
 WebView webView =
         tabs.get(index);
+
+String url =
+        webView.getUrl();
+
+if (url != null &&
+        pageTitles.containsKey(url)) {
+
+    pageTitles.remove(
+            url
+    );
+
+    savePageTitles();
+}
 
 webView.stopLoading();
 webView.clearHistory();
