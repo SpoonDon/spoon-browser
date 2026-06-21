@@ -482,10 +482,17 @@ private void setupBackButtonHandler() {
                             getCurrentWebView();
 
                     if (webView.canGoBack()) {
-                        webView.goBack();
-                    } else {
-                        finish();
-                    }
+
+    webView.goBack();
+
+} else if (tabs.size() > 1) {
+
+    closeTab(currentTab);
+
+} else {
+
+    finish();
+}
                 }
             }
     );
