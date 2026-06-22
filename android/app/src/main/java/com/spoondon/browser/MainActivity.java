@@ -1168,18 +1168,20 @@ private void closeTab(int index) {
     String input = addressBar.getText().toString().trim();
     if (input.isEmpty()) return;
 
-    // 1. Strict lowercase check for protocol intercepts
+    //1. Strict lowercase check for protocol intercepts
+
     String lowerInput = input.toLowerCase();
-    if (lowerInput.startsWith("javascript:") || 
-        lowerInput.startsWith("file:") || 
-        lowerInput.startsWith("content:") || 
+    if (lowerInput.startsWith("javascript:") ||
+        lowerInput.startsWith("file:") ||
+        lowerInput.startsWith("content:") ||
         lowerInput.startsWith("intent:")) {
-        
+
         Toast.makeText(this, "Blocked unsafe URL", Toast.LENGTH_SHORT).show();
         return;
     }
 
-    // 2. Decide if it's a valid web address or a search query
+    //2. Decide if it's a valid web address or a search query
+
     String url;
     if (input.contains(".") && !input.contains(" ")) {
         url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
