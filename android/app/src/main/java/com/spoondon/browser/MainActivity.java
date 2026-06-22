@@ -717,6 +717,11 @@ if (screenWidth < 400) {
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
 
+addressBar.setInputType(
+        android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI
+);
+
         GradientDrawable addressBg =
                 new GradientDrawable();
 
