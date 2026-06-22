@@ -83,8 +83,8 @@ private static final String KEY_CURRENT_TAB =
             500;
 
 private AutoCompleteTextView addressBar;
+private ArrayAdapter<String> addressBarAdapter;
 private LinearLayout root;
-    // Reserved for future WebView container features
 private LinearLayout browserContainer;
 private TextView tabIndicator;
 private LinearLayout toolbar;
@@ -721,6 +721,19 @@ if (screenWidth < 400) {
 addressBar.setInputType(
         android.text.InputType.TYPE_CLASS_TEXT
                 | android.text.InputType.TYPE_TEXT_VARIATION_URI
+);
+
+addressBar.setThreshold(1);
+
+addressBarAdapter =
+        new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_dropdown_item_1line,
+                new ArrayList<>()
+        );
+
+addressBar.setAdapter(
+        addressBarAdapter
 );
 
         GradientDrawable addressBg =
