@@ -100,7 +100,7 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
-                // Continues in Part 2...
+
            new ActivityResultContracts.GetContent(),
                 uri -> {
                     if (fileChooserCallback != null) {
@@ -160,26 +160,43 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean restoreSession() {
+    try {
         String savedTabs = prefs.getString(KEY_OPEN_TABS, "");
-        if (savedTabs.isEmpty()) {
+        if (savedTabs == null || savedTabs.isEmpty()) {
             return false;
         }
+
         for (String url : savedTabs.split("\n")) {
-            if (url.isEmpty()) continue;
+            if (url == null || url.trim().isEmpty() || url.equals("about:blank")) {
+                continue;
+            }
+            // Additional check to ensure it looks like a valid web string
+            if (!url.contains(".") && !url.startsWith("http")) {
+                continue;
+            }
+
             WebView webView = createConfiguredWebView();
             tabs.add(webView);
-            webView.loadUrl(url);
+            webView.loadUrl(url.trim());
         }
+
         if (tabs.isEmpty()) {
             return false;
         }
+
         int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
         if (savedCurrentTab < 0 || savedCurrentTab >= tabs.size()) {
             savedCurrentTab = 0;
         }
+
         switchToTab(savedCurrentTab);
         return true;
+    } catch (Exception e) {
+        android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
+        tabs.clear(); // Clear any partial tabs to avoid half-broken layouts
+        return false; // Fall back to opening a fresh homepage instead of crashing
     }
+}
 
     private void handleIncomingIntent(Intent intent) {
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
@@ -523,12 +540,10 @@ public class MainActivity extends BridgeActivity {
         settings.setDisplayZoomControls(false);
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
     }
-    // Continues in Part 4...
-    // Continues in Part 3...
+
 private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
             @Override
