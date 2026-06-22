@@ -738,6 +738,27 @@ addressBar.setAdapter(
         addressBarAdapter
 );
 
+addressBar.setOnItemClickListener(
+        (parent, view, position, id) -> {
+
+            String url =
+                    addressBarAdapter.getItem(
+                            position
+                    );
+
+            if (url != null) {
+
+                addressBar.setText(
+                        url
+                );
+
+                addressBar.setSelection(
+                        url.length()
+                );
+            }
+        }
+);
+
 addressBar.addTextChangedListener(
         new TextWatcher() {
 
