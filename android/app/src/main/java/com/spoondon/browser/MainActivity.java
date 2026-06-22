@@ -80,6 +80,7 @@ public class MainActivity extends BridgeActivity {
     private WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<String> filePickerLauncher;
+    private String pendingExternalUrl = null;
 
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
@@ -123,32 +124,16 @@ public class MainActivity extends BridgeActivity {
         root.addView(browserContainer);
         setContentView(root);
 
-        setupInitialTab();
-
-        // ========================================================
-        // SAFE INTENT HANDLING FOR COLD STARTS (ADD THIS HERE)
-        // ========================================================
+        // SAFE INTENT CHECK BEFORE WE INITIALIZE THE TAB
         Intent intent = getIntent();
-        if (intent != null) {
-            String action = intent.getAction();
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
             Uri data = intent.getData();
-
-            if (Intent.ACTION_VIEW.equals(action) && data != null) {
-                final String urlToLoad = data.toString();
-
-                // Using root or addressBar to safely queue the execution
-                // until after the UI layout is fully drawn and attached
-                root.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (addressBar != null) {
-                            addressBar.setText(urlToLoad);
-                        }
-                        openUrl(urlToLoad);
-                    }
-                });
+            if (data != null) {
+                pendingExternalUrl = data.toString();
             }
         }
+
+        setupInitialTab();
     }
 
     @Override
@@ -180,15 +165,20 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void setupInitialTab() {
-        Intent intent = getIntent();
-        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+        // 1. Check if an external link is waiting to be opened
+        if (pendingExternalUrl != null) {
             createNewTab();
-            handleIncomingIntent(intent);
+            openUrl(pendingExternalUrl); // Safely open the URL in the brand new tab
+            pendingExternalUrl = null;   // Clear it so it doesn't open again
             return;
         }
+
+        // 2. If no external link, try to restore previous session tabs
         if (restoreSession()) {
             return;
         }
+
+        // 3. Otherwise, just open a clean blank tab and show home layout
         createNewTab();
         showHome();
     }
