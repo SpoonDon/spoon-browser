@@ -95,12 +95,12 @@ public class MainActivity extends BridgeActivity {
     private final HashSet<String> rawFilterRules = new HashSet<>();
 
     @SuppressLint("SetJavaScriptEnabled")
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
-
            new ActivityResultContracts.GetContent(),
                 uri -> {
                     if (fileChooserCallback != null) {
@@ -124,15 +124,49 @@ public class MainActivity extends BridgeActivity {
         setContentView(root);
 
         setupInitialTab();
+
+        // ========================================================
+        // SAFE INTENT HANDLING FOR COLD STARTS (ADD THIS HERE)
+        // ========================================================
+        Intent intent = getIntent();
+        if (intent != null) {
+            String action = intent.getAction();
+            Uri data = intent.getData();
+
+            if (Intent.ACTION_VIEW.equals(action) && data != null) {
+                final String urlToLoad = data.toString();
+
+                // Using root or addressBar to safely queue the execution
+                // until after the UI layout is fully drawn and attached
+                root.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (addressBar != null) {
+                            addressBar.setText(urlToLoad);
+                        }
+                        openUrl(urlToLoad);
+                    }
+                });
+            }
+        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent);
-        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
-            createNewTab();
-            handleIncomingIntent(intent);
+        setIntent(intent); // Overwrites the old startup intent with the new link intent
+        
+        if (intent != null) {
+            String action = intent.getAction();
+            Uri data = intent.getData();
+            
+            if (Intent.ACTION_VIEW.equals(action) && data != null) {
+                String urlToLoad = data.toString();
+                if (addressBar != null) {
+                    addressBar.setText(urlToLoad);
+                }
+                openUrl(urlToLoad);
+            }
         }
     }
 
