@@ -2534,6 +2534,15 @@ if (!matchesUrl &&
     }
 
     addressBarAdapter.notifyDataSetChanged();
+
+if (addressBarAdapter.getCount() > 0) {
+
+    addressBar.showDropDown();
+
+} else {
+
+    addressBar.dismissDropDown();
+}
 }
 
     private void navigate() {
