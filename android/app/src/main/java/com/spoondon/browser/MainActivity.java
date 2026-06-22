@@ -1165,12 +1165,14 @@ startActivity(intent);
 
             } catch (Exception e) {
 
-                Toast.makeText(
-                        MainActivity.this,
-                        "Cannot download file",
-                        Toast.LENGTH_SHORT
-                ).show();
-            }
+    Toast.makeText(
+            MainActivity.this,
+            e.getClass().getSimpleName(),
+            Toast.LENGTH_LONG
+    ).show();
+
+    e.printStackTrace();
+}
         }
     };
 }
