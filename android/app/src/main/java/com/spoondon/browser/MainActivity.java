@@ -168,8 +168,22 @@ public class MainActivity extends BridgeActivity {
         // 1. Check if an external link is waiting to be opened
         if (pendingExternalUrl != null) {
             createNewTab();
-            openUrl(pendingExternalUrl); // Safely open the URL in the brand new tab
-            pendingExternalUrl = null;   // Clear it so it doesn't open again
+            
+            // Capture the URL to a final variable so the handler can see it
+            final String urlToOpen = pendingExternalUrl;
+            pendingExternalUrl = null; // Clear it immediately
+
+            // Use a handler to wait 150 milliseconds for the UI layout to settle
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (addressBar != null) {
+                        addressBar.setText(urlToOpen);
+                    }
+                    openUrl(urlToOpen);
+                }
+            }, 150);
+            
             return;
         }
 
