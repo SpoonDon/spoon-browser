@@ -28,6 +28,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.SafeBrowsingResponse;
 import android.webkit.WebResourceRequest;
+import android.widget.Filter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.AutoCompleteTextView;
@@ -728,11 +729,45 @@ addressBar.setInputType(
 addressBar.setThreshold(0);
 
 addressBarAdapter =
-        new ArrayAdapter<>(
+        new ArrayAdapter<String>(
                 this,
                 android.R.layout.simple_dropdown_item_1line,
                 new ArrayList<>()
-        );
+        ) {
+
+            @Override
+            public android.widget.Filter getFilter() {
+
+                return new android.widget.Filter() {
+
+                    @Override
+                    protected FilterResults performFiltering(
+                            CharSequence constraint
+                    ) {
+
+                        FilterResults results =
+                                new FilterResults();
+
+                        results.values =
+                                addressBarAdapter;
+
+                        results.count =
+                                addressBarAdapter.getCount();
+
+                        return results;
+                    }
+
+                    @Override
+                    protected void publishResults(
+                            CharSequence constraint,
+                            FilterResults results
+                    ) {
+
+                        notifyDataSetChanged();
+                    }
+                };
+            }
+        };
 
 addressBar.setAdapter(
         addressBarAdapter
@@ -2478,12 +2513,6 @@ new AlertDialog.Builder(this)
 private void updateAddressBarSuggestions(
         String query
 ) {
-
-Toast.makeText(
-        this,
-        "History size: " + history.size(),
-        Toast.LENGTH_SHORT
-).show();
 
     addressBarAdapter.clear();
 
