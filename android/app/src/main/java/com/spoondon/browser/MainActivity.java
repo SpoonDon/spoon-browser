@@ -1165,20 +1165,27 @@ private void closeTab(int index) {
     }
 
     private void navigate() {
-        String input = addressBar.getText().toString().trim();
-        if (input.isEmpty()) return;
+    String input = addressBar.getText().toString().trim();
+    if (input.isEmpty()) return;
 
-        String url;
-        if (input.contains(".") && !input.contains(" ")) {
-            url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
-        } else {
-            url = "https://duckduckgo.com/?q=" + Uri.encode(input);
-        }
-
-        if (url.startsWith("javascript:") || url.startsWith("file:") || url.startsWith("content:") || url.startsWith("intent:")) {
-            Toast.makeText(this, "Blocked unsafe URL", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        openUrl(url);
+    // 1. Strict lowercase check for protocol intercepts
+    String lowerInput = input.toLowerCase();
+    if (lowerInput.startsWith("javascript:") || 
+        lowerInput.startsWith("file:") || 
+        lowerInput.startsWith("content:") || 
+        lowerInput.startsWith("intent:")) {
+        
+        Toast.makeText(this, "Blocked unsafe URL", Toast.LENGTH_SHORT).show();
+        return;
     }
-                               }
+
+    // 2. Decide if it's a valid web address or a search query
+    String url;
+    if (input.contains(".") && !input.contains(" ")) {
+        url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
+    } else {
+        url = "https://duckduckgo.com/?q=" + Uri.encode(input);
+    }
+
+    openUrl(url);
+    }
