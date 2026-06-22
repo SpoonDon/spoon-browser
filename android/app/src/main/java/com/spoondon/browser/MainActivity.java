@@ -2485,11 +2485,42 @@ private void updateAddressBarSuggestions(
             continue;
         }
 
-        if (!url.toLowerCase()
-                .contains(lower)) {
+        String host = "";
 
-            continue;
-        }
+try {
+
+    host =
+            URI.create(url)
+                    .getHost();
+
+    if (host != null &&
+            host.startsWith(
+                    "www."
+            )) {
+
+        host =
+                host.substring(
+                        4
+                );
+    }
+
+} catch (Exception ignored) {
+}
+
+boolean matchesUrl =
+        url.toLowerCase()
+                .contains(lower);
+
+boolean matchesHost =
+        host != null &&
+        host.toLowerCase()
+                .contains(lower);
+
+if (!matchesUrl &&
+        !matchesHost) {
+
+    continue;
+}
 
         if (!seen.add(url)) {
             continue;
