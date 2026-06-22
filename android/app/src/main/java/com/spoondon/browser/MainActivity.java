@@ -1191,3 +1191,4 @@ private void closeTab(int index) {
 
     openUrl(url);
     }
+    }
