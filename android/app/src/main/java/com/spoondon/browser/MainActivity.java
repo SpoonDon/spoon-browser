@@ -1140,7 +1140,7 @@ createDownloadListener() {
                 long contentLength
         ) {
 
-            try {
+try {
 
 Intent intent =
         new Intent(
@@ -1162,13 +1162,9 @@ intent.putExtra(
         contentDisposition
 );
 
-if (intent.resolveActivity(
-        getPackageManager()
-) != null) {
+startActivity(intent);
 
-    startActivity(intent);
-
-} else {
+} catch (Exception e) {
 
     Toast.makeText(
             MainActivity.this,
@@ -1177,14 +1173,6 @@ if (intent.resolveActivity(
     ).show();
 }
 
-            } catch (Exception e) {
-
-Toast.makeText(
-        MainActivity.this,
-        "Cannot download file",
-        Toast.LENGTH_SHORT
-).show();
-}
         }
     };
 }
