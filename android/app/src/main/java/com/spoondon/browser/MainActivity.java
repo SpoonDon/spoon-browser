@@ -2458,6 +2458,12 @@ private void updateAddressBarSuggestions(
         String query
 ) {
 
+Toast.makeText(
+        this,
+        "History size: " + history.size(),
+        Toast.LENGTH_SHORT
+).show();
+
     addressBarAdapter.clear();
 
     if (query == null ||
@@ -2480,6 +2486,11 @@ private void updateAddressBarSuggestions(
 
         String url =
                 history.get(i);
+
+android.util.Log.d(
+        "SpoonSuggest",
+        "History: " + url
+);
 
         if (url == null) {
             continue;
