@@ -15,8 +15,6 @@ import android.util.TypedValue;
 import android.view.View;
 import android.view.Gravity;
 import android.view.KeyEvent;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.ViewGroup;
 import android.os.Message;
 import android.webkit.WebView.WebViewTransport;
@@ -46,644 +44,346 @@ import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.net.URI;
-import java.net.URL;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.URL;
 import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import android.webkit.WebChromeClient.FileChooserParams;
 import android.webkit.RenderProcessGoneDetail;
 
-   public class MainActivity extends BridgeActivity {
+public class MainActivity extends BridgeActivity {
 
-   private static final String PREFS_NAME =
-        "spoon_browser";
+    private static final String PREFS_NAME = "spoon_browser";
+    private static final String KEY_BOOKMARKS = "bookmarks";
+    private static final String KEY_HISTORY = "history";
+    private static final String KEY_PAGE_TITLES = "page_titles";
+    private static final String KEY_FILTER_LISTS = "filter_lists";
+    private static final String KEY_FILTER_REFRESH_TIME = "filter_refresh_time";
+    private static final String KEY_OPEN_TABS = "open_tabs";
+    private static final String KEY_CURRENT_TAB = "current_tab";
+    private static final int MAX_HISTORY = 500;
 
-   private static final String KEY_BOOKMARKS =
-        "bookmarks";
+    private AutoCompleteTextView addressBar;
+    private ArrayAdapter<String> addressBarAdapter;
+    private LinearLayout root;
+    private LinearLayout browserContainer;
+    private TextView tabIndicator;
+    private LinearLayout toolbar;
+    private Button forwardButton;
+    private Button prevTabButton;
+    private Button nextTabButton;
+    private Button newTabButton;
+    private Button menuButton;
+    private View customView;
+    private WebChromeClient.CustomViewCallback customViewCallback;
+    private ValueCallback<Uri[]> fileChooserCallback;
+    private ActivityResultLauncher<String> filePickerLauncher;
 
-   private static final String KEY_HISTORY =
-        "history";
-
-   private static final String KEY_PAGE_TITLES =
-        "page_titles";
-
-   private static final String KEY_FILTER_LISTS =
-        "filter_lists";
-
-private static final String KEY_FILTER_REFRESH_TIME =
-        "filter_refresh_time";
-
-private static final String KEY_OPEN_TABS =
-        "open_tabs";
-
-private static final String KEY_CURRENT_TAB =
-        "current_tab";
-
-    private static final int MAX_HISTORY =
-            500;
-
-private AutoCompleteTextView addressBar;
-private ArrayAdapter<String> addressBarAdapter;
-private LinearLayout root;
-private LinearLayout browserContainer;
-private TextView tabIndicator;
-private LinearLayout toolbar;
-private Button forwardButton;
-private Button prevTabButton;
-private Button nextTabButton;
-private Button newTabButton;
-private Button menuButton;
-private View customView;
-private WebChromeClient.CustomViewCallback
-        customViewCallback;
-private ValueCallback<Uri[]>
-        fileChooserCallback;
-private ActivityResultLauncher<String>
-        filePickerLauncher;
-
-    private final ArrayList<WebView> tabs = new ArrayList<>();
-    private final ArrayList<String> bookmarks = new ArrayList<>();
-    private final ArrayList<String> history = new ArrayList<>();
-    private final HashMap<String, String> pageTitles =
-            new HashMap<>();
+    private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<String> history = new CopyOnWriteArrayList<>();
+    private final HashMap<String, String> pageTitles = new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
-private boolean suppressSuggestions = false;
+    private boolean suppressSuggestions = false;
+    private boolean clearSessionOnExit = false;
 
-    private boolean clearSessionOnExit =
-        false;
-
-    private final ArrayList<String>
-    filterLists =
-            new ArrayList<>();
-
-private final HashSet<String>
-blockedDomains =
-        new HashSet<>();
-
-private final HashSet<String>
-rawFilterRules =
-        new HashSet<>();
+    private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
+    private final HashSet<String> blockedDomains = new HashSet<>();
+    private final HashSet<String> rawFilterRules = new HashSet<>();
 
     @SuppressLint("SetJavaScriptEnabled")
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-filePickerLauncher =
-        registerForActivityResult(
-                new ActivityResultContracts.GetContent(),
+        filePickerLauncher = registerForActivityResult(
+                // Continues in Part 2...
+           new ActivityResultContracts.GetContent(),
                 uri -> {
-
                     if (fileChooserCallback != null) {
-
-                        if (uri != null) {
-
-                            fileChooserCallback
-                                    .onReceiveValue(
-                                            new Uri[]{
-                                                    uri
-                                            }
-                                    );
-
-                        } else {
-
-                            fileChooserCallback
-                                    .onReceiveValue(
-                                            null
-                                    );
-                        }
-
-                        fileChooserCallback =
-                                null;
+                        fileChooserCallback.onReceiveValue(uri != null ? new Uri[]{uri} : null);
+                        fileChooserCallback = null;
                     }
                 }
         );
 
-        prefs = getSharedPreferences(
-                PREFS_NAME,
-                MODE_PRIVATE
-        );
+        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-loadSavedData();
+        loadSavedData();
+        setupRootLayout();
+        createToolbarViews();
+        setupToolbarListeners();
+        setupMenuButton();
+        setupBackButtonHandler();
 
-setupRootLayout();
+        root.addView(toolbar);
+        root.addView(browserContainer);
+        setContentView(root);
 
-createToolbarViews();
-setupToolbarListeners();
-setupMenuButton();
-setupBackButtonHandler();
-
-root.addView(
-        toolbar
-);
-
-root.addView(
-        browserContainer
-);
-
-setContentView(root);
-
-setupInitialTab();
-
-}
-
-@Override
-protected void onNewIntent(
-        Intent intent
-) {
-
-super.onNewIntent(intent);
-
-setIntent(intent);
-
-    if (Intent.ACTION_VIEW.equals(
-        intent.getAction()
-) && intent.getData() != null) {
-
-    createNewTab();
-
-    handleIncomingIntent(
-            intent
-    );
-}
-}
-
-@Override
-public void onStop() {
-
-    if (!clearSessionOnExit) {
-
-        saveOpenTabs();
-        saveCurrentTab();
+        setupInitialTab();
     }
 
-    super.onStop();
-}
-
-private void setupInitialTab() {
-
-    Intent intent = getIntent();
-
-    if (Intent.ACTION_VIEW.equals(
-        intent.getAction()
-) && intent.getData() != null) {
-
-    createNewTab();
-
-    handleIncomingIntent(
-        intent
-);
-
-    return;
-}
-
-    if (restoreSession()) {
-        return;
-    }
-
-    createNewTab();
-
-    showHome();
-}
-
-private boolean restoreSession() {
-
-    String savedTabs =
-            prefs.getString(
-                    KEY_OPEN_TABS,
-                    ""
-            );
-
-    if (savedTabs.isEmpty()) {
-        return false;
-    }
-
-    for (String url :
-            savedTabs.split("\n")) {
-
-        if (url.isEmpty()) {
-            continue;
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            createNewTab();
+            handleIncomingIntent(intent);
         }
-
-        WebView webView =
-                createConfiguredWebView();
-
-        tabs.add(webView);
-
-        webView.loadUrl(url);
     }
 
-if (tabs.isEmpty()) {
-    return false;
-}
-
-    int savedCurrentTab =
-            prefs.getInt(
-                    KEY_CURRENT_TAB,
-                    0
-            );
-
-    if (savedCurrentTab < 0 ||
-            savedCurrentTab >= tabs.size()) {
-
-        savedCurrentTab = 0;
+    @Override
+    public void onStop() {
+        if (!clearSessionOnExit) {
+            saveOpenTabs();
+            saveCurrentTab();
+        }
+        super.onStop();
     }
 
-    switchToTab(savedCurrentTab);
+    private void setupInitialTab() {
+        Intent intent = getIntent();
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            createNewTab();
+            handleIncomingIntent(intent);
+            return;
+        }
+        if (restoreSession()) {
+            return;
+        }
+        createNewTab();
+        showHome();
+    }
 
-    return true;
-}
+    private boolean restoreSession() {
+        String savedTabs = prefs.getString(KEY_OPEN_TABS, "");
+        if (savedTabs.isEmpty()) {
+            return false;
+        }
+        for (String url : savedTabs.split("\n")) {
+            if (url.isEmpty()) continue;
+            WebView webView = createConfiguredWebView();
+            tabs.add(webView);
+            webView.loadUrl(url);
+        }
+        if (tabs.isEmpty()) {
+            return false;
+        }
+        int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
+        if (savedCurrentTab < 0 || savedCurrentTab >= tabs.size()) {
+            savedCurrentTab = 0;
+        }
+        switchToTab(savedCurrentTab);
+        return true;
+    }
 
-private void handleIncomingIntent(
-        Intent intent
-) {
+    private void handleIncomingIntent(Intent intent) {
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            getCurrentWebView().loadUrl(intent.getData().toString());
+        }
+    }
 
-    if (Intent.ACTION_VIEW.equals(
-            intent.getAction()
-    ) && intent.getData() != null) {
+    private void setupRootLayout() {
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.BLACK);
 
-        getCurrentWebView().loadUrl(
-                intent.getData().toString()
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, windowInsets) -> {
+            Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return windowInsets;
+        });
+
+        browserContainer = new LinearLayout(this);
+        browserContainer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams browserParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1
         );
+        browserContainer.setLayoutParams(browserParams);
     }
-}
 
-
-
-private void setupRootLayout() {
-
-    root = new LinearLayout(this);
-
-    root.setOrientation(
-            LinearLayout.VERTICAL
-    );
-
-    root.setBackgroundColor(
-            Color.BLACK
-    );
-
-    ViewCompat.setOnApplyWindowInsetsListener(
-            root,
-            (v, windowInsets) -> {
-
-                Insets systemBars =
-                        windowInsets.getInsets(
-                                WindowInsetsCompat.Type.systemBars()
-                        );
-
-                v.setPadding(
-                        systemBars.left,
-                        systemBars.top,
-                        systemBars.right,
-                        systemBars.bottom
-                );
-
-                return windowInsets;
-            }
-    );
-
-    browserContainer = new LinearLayout(this);
-
-    browserContainer.setOrientation(
-            LinearLayout.VERTICAL
-    );
-
-    LinearLayout.LayoutParams browserParams =
-            new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    0,
-                    1
-            );
-
-browserContainer.setLayoutParams(
-        browserParams
-);
-
-}
-
-private void loadSavedData() {
-
-String savedHistory =
-                        prefs.getString(KEY_HISTORY, "");
-
-                if (!savedHistory.isEmpty()) {
-
-                        for (String item :
-            savedHistory.split("\n")) {
-
-            history.add(item);
-
-            while (
-                    history.size()
-                            > MAX_HISTORY
-            ) {
+    private void loadSavedData() {
+        String savedHistory = prefs.getString(KEY_HISTORY, "");
+        if (!savedHistory.isEmpty()) {
+            for (String item : savedHistory.split("\n")) {
+                history.add(item);
+                while (history.size() > MAX_HISTORY) {
                     history.remove(0);
-            }
-}
                 }
+            }
+        }
 
-                String savedBookmarks =
-                        prefs.getString(KEY_BOOKMARKS, "");
+        String savedBookmarks = prefs.getString(KEY_BOOKMARKS, "");
+        if (!savedBookmarks.isEmpty()) {
+            for (String bookmark : savedBookmarks.split("\n")) {
+                if (!bookmarks.contains(bookmark)) {
+                    bookmarks.add(bookmark);
+                }
+            }
+        }
 
-                if (!savedBookmarks.isEmpty()) {
+        String savedFilterLists = prefs.getString(KEY_FILTER_LISTS, "");
+        if (!savedFilterLists.isEmpty()) {
+            for (String filter : savedFilterLists.split("\n")) {
+                if (!filterLists.contains(filter)) {
+                    filterLists.add(filter);
+                }
+            }
+        }
 
-                        for (String bookmark :
-                                savedBookmarks.split("\n")) {
+        if (!filterLists.isEmpty()) {
+            long lastRefresh = prefs.getLong(KEY_FILTER_REFRESH_TIME, 0);
+            if (System.currentTimeMillis() - lastRefresh > 24L * 60 * 60 * 1000) {
+                refreshFilterLists();
+            }
+        }
 
-                                if (!bookmarks.contains(
-        bookmark
-)) {
-        bookmarks.add(
-                bookmark
-        );
-}
+        String savedPageTitles = prefs.getString(KEY_PAGE_TITLES, "");
+        if (!savedPageTitles.isEmpty()) {
+            for (String item : savedPageTitles.split("\n")) {
+                String[] parts = item.split("\\|", 2);
+                if (parts.length == 2) {
+                    pageTitles.put(parts[0], parts[1]);
+                }
+            }
+        }
+        rebuildBlockedDomains();
+    }
+
+    private void setupBackButtonHandler() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView webView = getCurrentWebView();
+                if (webView.canGoBack()) {
+                    webView.goBack();
+                } else if (tabs.size() > 1) {
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setMessage("Close this tab?")
+                            .setPositiveButton("Close", (d, w) -> closeTab(currentTab))
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                } else {
+                    finishAndRemoveTask();
+                }
+            }
+        });
+    }
+   private void setupMenuButton() {
+        menuButton.setOnClickListener(v -> {
+            PopupMenu popup = new PopupMenu(this, menuButton);
+            popup.getMenu().add("New Tab");
+            popup.getMenu().add("Reload");
+            popup.getMenu().add("Bookmarks");
+            popup.getMenu().add("Add Bookmark");
+            popup.getMenu().add("History");
+            popup.getMenu().add("Clear History");
+            popup.getMenu().add("Clear Cache");
+            popup.getMenu().add("Filter Lists");
+            popup.getMenu().add("About");
+            popup.getMenu().add("Exit");
+
+            popup.setOnMenuItemClickListener(item -> {
+                String title = item.getTitle().toString();
+                switch (title) {
+                    case "New Tab":
+                        createNewTab();
+                        showHome();
+                        return true;
+                    case "Reload":
+                        getCurrentWebView().reload();
+                        return true;
+                    case "Bookmarks":
+                        showBookmarks();
+                        return true;
+                    case "Add Bookmark":
+                        String url = getCurrentWebView().getUrl();
+                        if (url != null && !url.isEmpty() && !bookmarks.contains(url)) {
+                            bookmarks.add(url);
+                            saveBookmarks();
+                            Toast.makeText(this, "Bookmark saved", Toast.LENGTH_SHORT).show();
                         }
+                        return true;
+                    case "History":
+                        showHistoryDialog();
+                        return true;
+                    case "Clear History":
+                        history.clear();
+                        saveHistory();
+                        return true;
+                    case "Clear Cache":
+                        getCurrentWebView().clearCache(true);
+                        Toast.makeText(this, "Cache cleared", Toast.LENGTH_SHORT).show();
+                        return true;
+                    case "Filter Lists":
+                        showFilterListsDialog();
+                        return true;
+                    case "About":
+                        showAbout();
+                        return true;
+                    case "Exit":
+                        finishAndRemoveTask();
+                        return true;
                 }
-
-String savedFilterLists =
-        prefs.getString(
-                KEY_FILTER_LISTS,
-                ""
-        );
-
-if (!savedFilterLists.isEmpty()) {
-
-    for (String filter :
-            savedFilterLists.split("\n")) {
-
-        if (!filterLists.contains(
-                filter
-        )) {
-
-            filterLists.add(
-                    filter
-            );
-        }
-    }
-}
-
-if (!savedFilterLists.isEmpty()) {
-
-    long lastRefresh =
-            prefs.getLong(
-                    KEY_FILTER_REFRESH_TIME,
-                    0
-            );
-
-    if (System.currentTimeMillis()
-            - lastRefresh
-            > 24L * 60 * 60 * 1000) {
-
-        refreshFilterLists();
-    }
-}
-
-                String savedPageTitles =
-        prefs.getString(
-                KEY_PAGE_TITLES,
-                ""
-        );
-
-if (!savedPageTitles.isEmpty()) {
-
-    for (String item :
-            savedPageTitles.split(
-                    "\n"
-            )) {
-
-        String[] parts =
-                item.split(
-                        "\\|",
-                        2
-                );
-
-        if (parts.length == 2) {
-
-            pageTitles.put(
-                    parts[0],
-                    parts[1]
-            );
-        }
-}
+                return false;
+            });
+            popup.show();
+        });
     }
 
-rebuildBlockedDomains();
-}
+    private void setupToolbarListeners() {
+        tabIndicator.setOnLongClickListener(v -> {
+            showTabSwitcher();
+            return true;
+        });
 
-
-private void setupBackButtonHandler() {
-
-    getOnBackPressedDispatcher().addCallback(
-            this,
-            new OnBackPressedCallback(true) {
-
-                @Override
-                public void handleOnBackPressed() {
-
-                    WebView webView =
-                            getCurrentWebView();
-
-                    if (webView.canGoBack()) {
-
-    webView.goBack();
-
-} else if (tabs.size() > 1) {
-
-    closeTab(currentTab);
-
-} else {
-
-    finishAndRemoveTask();
-}
-                }
+        addressBar.setOnKeyListener((v, keyCode, event) -> {
+            if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
+                navigate();
+                return true;
             }
-    );
-}
-
-private void setupMenuButton() {
-
-    menuButton.setOnClickListener(v -> {
-
-        PopupMenu popup = new PopupMenu(this, menuButton);
-
-        popup.getMenu().add("New Tab");
-        popup.getMenu().add("Reload");
-        popup.getMenu().add("Bookmarks");
-        popup.getMenu().add("Add Bookmark");
-        popup.getMenu().add("History");
-        popup.getMenu().add("Clear History");
-        popup.getMenu().add("Clear Cache");
-        popup.getMenu().add("Filter Lists");
-        popup.getMenu().add("About");
-        popup.getMenu().add("Exit");
-
-        popup.setOnMenuItemClickListener(item -> {
-
-            String title = item.getTitle().toString();
-
-            switch (title) {
-
-case "New Tab":
-
-    createNewTab();
-    showHome();
-
-    return true;
-
-case "Reload":
-
-    getCurrentWebView().reload();
-
-    return true;
-
-                case "Bookmarks":
-                    showBookmarks();
-                    return true;
-
-                case "Add Bookmark":
-
-    String url =
-            getCurrentWebView()
-                    .getUrl();
-
-    if (url != null &&
-            !url.isEmpty() &&
-            !bookmarks.contains(url)) {
-
-        bookmarks.add(url);
-
-        saveBookmarks();
-
-        Toast.makeText(
-                this,
-                "Bookmark saved",
-                Toast.LENGTH_SHORT
-        ).show();
-    }
-
-    return true;
-
-                case "History":
-                    showHistoryDialog();
-                    return true;
-
-                case "Clear History":
-                    history.clear();
-                    saveHistory();
-                    return true;
-
-                case "Clear Cache":
-                    getCurrentWebView().clearCache(
-                            true
-                    );
-
-                    Toast.makeText(
-                            this,
-                            "Cache cleared",
-                            Toast.LENGTH_SHORT
-                    ).show();
-
-                    return true;
-
-case "Filter Lists":
-    showFilterListsDialog();
-    return true;
-
-case "About":
-    showAbout();
-    return true;
-
-case "Exit":
-    finishAndRemoveTask();
-    return true;
-}
-
             return false;
         });
 
-        popup.show();
-    });
-}
-
-private void setupToolbarListeners() {
-
-    tabIndicator.setOnLongClickListener(v -> {
-
-        showTabSwitcher();
-
-        return true;
-    });
-
-    addressBar.setOnKeyListener((v, keyCode, event) -> {
-
-        if (keyCode == KeyEvent.KEYCODE_ENTER &&
-                event.getAction() == KeyEvent.ACTION_DOWN) {
-
-            navigate();
-            return true;
-        }
-
-        return false;
-    });
-
-    forwardButton.setOnClickListener(v -> {
-
-        WebView webView = getCurrentWebView();
-
-        if (webView.canGoForward()) {
-            webView.goForward();
-        }
-    });
-
-    newTabButton.setOnClickListener(v -> {
-
-        createNewTab();
-        showHome();
-    });
-
-    prevTabButton.setOnClickListener(v -> {
-
-        if (tabs.size() > 1) {
-
-            int previous = currentTab - 1;
-
-            if (previous < 0) {
-                previous = tabs.size() - 1;
+        forwardButton.setOnClickListener(v -> {
+            WebView webView = getCurrentWebView();
+            if (webView.canGoForward()) {
+                webView.goForward();
             }
+        });
 
-            switchToTab(previous);
-        }
-    });
+        newTabButton.setOnClickListener(v -> {
+            createNewTab();
+            showHome();
+        });
 
-    nextTabButton.setOnClickListener(v -> {
+        prevTabButton.setOnClickListener(v -> {
+            if (tabs.size() > 1) {
+                int previous = currentTab - 1;
+                if (previous < 0) {
+                    previous = tabs.size() - 1;
+                }
+                switchToTab(previous);
+            }
+        });
 
-        if (tabs.size() > 1) {
+        nextTabButton.setOnClickListener(v -> {
+            if (tabs.size() > 1) {
+                int next = (currentTab + 1) % tabs.size();
+                switchToTab(next);
+            }
+        });
+    }
 
-            int next = (currentTab + 1) % tabs.size();
-
-            switchToTab(next);
-        }
-    });
-}
-
-private void createToolbarViews() {
-
+    private void createToolbarViews() {
         toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-
-        toolbar.setPadding(
-                dp(8),
-                dp(8),
-                dp(8),
-                dp(8)
-        );
-
+        toolbar.setPadding(dp(8), dp(8), dp(8), dp(8));
         toolbar.setBackgroundColor(Color.parseColor("#111111"));
 
         forwardButton = makeButton("→");
@@ -692,25 +392,13 @@ private void createToolbarViews() {
         newTabButton = makeButton("+");
         menuButton = makeButton("⋮");
 
-int screenWidth =
-        getScreenWidthDp();
-
-if (screenWidth < 400) {
-
-    forwardButton.setVisibility(
-            View.GONE
-    );
-
-    newTabButton.setVisibility(
-            View.GONE
-    );
-
-} else if (screenWidth < 600) {
-
-    forwardButton.setVisibility(
-            View.GONE
-    );
-}
+        int screenWidth = getScreenWidthDp();
+        if (screenWidth < 400) {
+            forwardButton.setVisibility(View.GONE);
+            newTabButton.setVisibility(View.GONE);
+        } else if (screenWidth < 600) {
+            forwardButton.setVisibility(View.GONE);
+        }
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
@@ -718,172 +406,67 @@ if (screenWidth < 400) {
         tabIndicator.setPadding(dp(10), 0, dp(10), 0);
 
         addressBar = new AutoCompleteTextView(this);
-
-        addressBar.setHint(
-        "Search or enter address"
-);
+        addressBar.setHint("Search or enter address");
         addressBar.setTextColor(Color.WHITE);
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
+        addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        addressBar.setThreshold(0);
 
-addressBar.setInputType(
-        android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_URI
-);
-
-addressBar.setThreshold(0);
-
-addressBarAdapter =
-        new ArrayAdapter<String>(
-                this,
-                android.R.layout.simple_dropdown_item_1line,
-                new ArrayList<>()
-        ) {
-
+        addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
             @Override
             public android.widget.Filter getFilter() {
-
                 return new android.widget.Filter() {
-
                     @Override
-                    protected FilterResults performFiltering(
-                            CharSequence constraint
-                    ) {
-
-                        FilterResults results =
-                                new FilterResults();
-
-                        results.values =
-                                addressBarAdapter;
-
-                        results.count =
-                                addressBarAdapter.getCount();
-
+                    protected FilterResults performFiltering(CharSequence constraint) {
+                        FilterResults results = new FilterResults();
+                        results.values = addressBarAdapter;
+                        results.count = addressBarAdapter.getCount();
                         return results;
                     }
-
                     @Override
-                    protected void publishResults(
-                            CharSequence constraint,
-                            FilterResults results
-                    ) {
-
+                    protected void publishResults(CharSequence constraint, FilterResults results) {
                         notifyDataSetChanged();
                     }
                 };
             }
         };
 
-addressBar.setAdapter(
-        addressBarAdapter
-);
-
-addressBar.setOnItemClickListener(
-        (parent, view, position, id) -> {
-
-            String url =
-                    addressBarAdapter.getItem(
-                            position
-                    );
-
-            if (url == null) {
-                return;
-            }
-
+        addressBar.setAdapter(addressBarAdapter);
+        addressBar.setOnItemClickListener((parent, view, position, id) -> {
+            String url = addressBarAdapter.getItem(position);
+            if (url == null) return;
             suppressSuggestions = true;
-
-            addressBar.setText(
-                    url
-            );
-
-            addressBar.setSelection(
-                    url.length()
-            );
-
+            addressBar.setText(url);
+            addressBar.setSelection(url.length());
             addressBar.dismissDropDown();
-
             addressBar.post(() -> {
                 navigate();
                 suppressSuggestions = false;
             });
-        }
-);
+        });
 
-addressBar.addTextChangedListener(
-        new TextWatcher() {
-
+        addressBar.addTextChangedListener(new TextWatcher() {
             @Override
-            public void beforeTextChanged(
-                    CharSequence s,
-                    int start,
-                    int count,
-                    int after
-            ) {
-            }
-
-
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
-            public void onTextChanged(
-                    CharSequence s,
-                    int start,
-                    int before,
-                    int count
-            ) {
-
-if (suppressSuggestions) return;
-
-                updateAddressBarSuggestions(
-                        s.toString()
-                );
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (suppressSuggestions) return;
+                updateAddressBarSuggestions(s.toString());
             }
-
             @Override
-            public void afterTextChanged(
-                    Editable s
-            ) {
-            }
-        }
-);
+            public void afterTextChanged(Editable s) {}
+        });
 
-        GradientDrawable addressBg =
-                new GradientDrawable();
+        GradientDrawable addressBg = new GradientDrawable();
+        addressBg.setColor(Color.parseColor("#262626"));
+        addressBg.setCornerRadius(dp(20));
+        addressBar.setBackground(addressBg);
+        addressBar.setPadding(dp(16), dp(12), dp(16), dp(12));
 
-addressBg.setColor(
-        Color.parseColor("#262626")
-);
-
-addressBg.setCornerRadius(
-        dp(20)
-);
-
-        addressBar.setBackground(
-                addressBg
-        );
-
-        addressBar.setPadding(
-                dp(16),
-                dp(12),
-                dp(16),
-                dp(12)
-        );
-
-        LinearLayout.LayoutParams inputParams =
-                new LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1
-                );
-
-        inputParams.setMargins(
-                dp(8),
-                0,
-                dp(8),
-                0
-        );
-
-        addressBar.setLayoutParams(
-                inputParams
-        );
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        inputParams.setMargins(dp(8), 0, dp(8), 0);
+        addressBar.setLayoutParams(inputParams);
 
         toolbar.addView(forwardButton);
         toolbar.addView(prevTabButton);
@@ -895,9 +478,7 @@ addressBg.setCornerRadius(
     }
 
     private Button makeButton(String text) {
-
         Button button = new Button(this);
-
         button.setText(text);
         button.setTextColor(Color.WHITE);
         button.setAllCaps(false);
@@ -905,1763 +486,684 @@ addressBg.setCornerRadius(
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor("#2a2a2a"));
         bg.setCornerRadius(dp(12));
-
         button.setBackground(bg);
 
-int buttonSize =
-        getToolbarButtonSize();
-
-LinearLayout.LayoutParams params =
-        new LinearLayout.LayoutParams(
-                buttonSize,
-                buttonSize
-        );
-
+        int buttonSize = getToolbarButtonSize();
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(buttonSize, buttonSize);
         params.setMargins(dp(3), 0, dp(3), 0);
-
         button.setLayoutParams(params);
 
         return button;
     }
 
-private int getToolbarButtonSize() {
-
-    int width =
-            getResources()
-                    .getConfiguration()
-                    .screenWidthDp;
-
-    if (width < 400) {
-
-        return dp(36);
-
-    } else if (width < 600) {
-
-        return dp(42);
+    private int getToolbarButtonSize() {
+        int width = getResources().getConfiguration().screenWidthDp;
+        if (width < 400) return dp(36);
+        else if (width < 600) return dp(42);
+        return dp(46);
     }
 
-    return dp(46);
-}
-
-private int getScreenWidthDp() {
-
-    return getResources()
-            .getConfiguration()
-            .screenWidthDp;
-}
+    private int getScreenWidthDp() {
+        return getResources().getConfiguration().screenWidthDp;
+    }
 
     private int dp(int value) {
-
         return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP,
-                value,
-                getResources().getDisplayMetrics()
+                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
 
-private void configureWebSettings(
-        WebSettings settings
-) {
-
-    settings.setJavaScriptEnabled(
-            true
-    );
-
-    settings.setSafeBrowsingEnabled(
-            true
-    );
-
-    settings.setDomStorageEnabled(
-            true
-    );
-
-    settings.setUseWideViewPort(
-            true
-    );
-
-    settings.setLoadWithOverviewMode(
-            true
-    );
-
-    settings.setBuiltInZoomControls(
-            true
-    );
-
-    settings.setDisplayZoomControls(
-            false
-    );
-
-settings.setSupportMultipleWindows(
-        true
-);
-
-settings.setJavaScriptCanOpenWindowsAutomatically(
-        true
-);
-
-}
-
+    private void configureWebSettings(WebSettings settings) {
+        settings.setJavaScriptEnabled(true);
+        settings.setSafeBrowsingEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+        settings.setSupportMultipleWindows(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(true);
+    }
+    // Continues in Part 4...
+    // Continues in Part 3...
 private WebChromeClient createWebChromeClient() {
-
-    return new WebChromeClient() {
-
-        @Override
-        public void onShowCustomView(
-                View view,
-                CustomViewCallback callback
-        ) {
-
-            if (customView != null) {
-
-                callback.onCustomViewHidden();
-
-                return;
+        return new WebChromeClient() {
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                if (customView != null) {
+                    callback.onCustomViewHidden();
+                    return;
+                }
+                if (view.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) view.getParent()).removeView(view);
+                }
+                customView = view;
+                customViewCallback = callback;
+                toolbar.setVisibility(View.GONE);
+                browserContainer.setVisibility(View.GONE);
+                root.addView(customView);
             }
 
-            if (view.getParent()
-                    instanceof ViewGroup) {
-
-                ((ViewGroup) view.getParent())
-                        .removeView(
-                                view
-                        );
+            @Override
+            public void onHideCustomView() {
+                toolbar.setVisibility(View.VISIBLE);
+                browserContainer.setVisibility(View.VISIBLE);
+                if (customView != null) {
+                    root.removeView(customView);
+                }
+                if (customViewCallback != null) {
+                    customViewCallback.onCustomViewHidden();
+                }
+                customView = null;
+                customViewCallback = null;
             }
 
-            customView = view;
-            customViewCallback = callback;
-
-            toolbar.setVisibility(
-                    View.GONE
-            );
-
-            browserContainer.setVisibility(
-                    View.GONE
-            );
-
-            root.addView(
-                    customView
-            );
-        }
-
-        @Override
-        public void onHideCustomView() {
-
-            toolbar.setVisibility(
-                    View.VISIBLE
-            );
-
-            browserContainer.setVisibility(
-                    View.VISIBLE
-            );
-
-            if (customView != null) {
-
-                root.removeView(
-                        customView
-                );
+            @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (fileChooserCallback != null) {
+                    fileChooserCallback.onReceiveValue(null);
+                }
+                fileChooserCallback = filePathCallback;
+                try {
+                    filePickerLauncher.launch("*/*");
+                } catch (Exception e) {
+                    fileChooserCallback = null;
+                    return false;
+                }
+                return true;
             }
 
-            if (customViewCallback != null) {
-
-                customViewCallback
-                        .onCustomViewHidden();
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                createNewTab();
+                WebView newWebView = getCurrentWebView();
+                WebViewTransport transport = (WebViewTransport) resultMsg.obj;
+                transport.setWebView(newWebView);
+                resultMsg.sendToTarget();
+                return true;
             }
 
-            customView = null;
-            customViewCallback = null;
-        }
-
-@Override
-public boolean onShowFileChooser(
-        WebView webView,
-        ValueCallback<Uri[]> filePathCallback,
-        FileChooserParams fileChooserParams
-) {
-
-    if (fileChooserCallback != null) {
-
-        fileChooserCallback.onReceiveValue(
-                null
-        );
-    }
-
-    fileChooserCallback =
-            filePathCallback;
-
-    filePickerLauncher.launch(
-            "*/*"
-    );
-
-    return true;
-}
-
-@Override
-public boolean onCreateWindow(
-        WebView view,
-        boolean isDialog,
-        boolean isUserGesture,
-        Message resultMsg
-) {
-
-    createNewTab();
-
-    WebView newWebView =
-            getCurrentWebView();
-
-    WebViewTransport transport =
-            (WebViewTransport)
-                    resultMsg.obj;
-
-    transport.setWebView(
-            newWebView
-    );
-
-    resultMsg.sendToTarget();
-
-    return true;
-}
-
-        @Override
-        public void onReceivedTitle(
-                WebView view,
-                String title
-        ) {
-
-            String url = view.getUrl();
-
-            if (url != null &&
-                    title != null &&
-                    !title.isEmpty()) {
-
-                pageTitles.put(
-                        url,
-                        title
-                );
-
-                savePageTitles();
-            }
-        }
-    };
-}
-
-private DownloadListener
-createDownloadListener() {
-
-    return new DownloadListener() {
-
-        @Override
-        public void onDownloadStart(
-                String url,
-                String userAgent,
-                String contentDisposition,
-                String mimetype,
-                long contentLength
-        ) {
-
-try {
-
-Intent intent =
-        new Intent(
-                Intent.ACTION_VIEW
-        );
-
-intent.setDataAndType(
-        Uri.parse(url),
-        mimetype
-);
-
-intent.putExtra(
-        "User-Agent",
-        userAgent
-);
-
-intent.putExtra(
-        "Content-Disposition",
-        contentDisposition
-);
-
-startActivity(intent);
-
-} catch (Exception e) {
-
-    Toast.makeText(
-            MainActivity.this,
-            "Cannot download file",
-            Toast.LENGTH_SHORT
-    ).show();
-}
-
-        }
-    };
-}
-
-private View.OnLongClickListener
-createImageLongClickListener(
-        WebView webView
-) {
-
-    return v -> {
-
-        WebView.HitTestResult result =
-                webView.getHitTestResult();
-
-        if (result != null &&
-                (result.getType()
-                        == WebView.HitTestResult.IMAGE_TYPE
-                || result.getType()
-                        == WebView.HitTestResult
-                        .SRC_IMAGE_ANCHOR_TYPE)) {
-
-            try {
-
-                startActivity(
-                        new Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse(
-                                        result.getExtra()
-                                )
-                        )
-                );
-
-            } catch (Exception e) {
-
-                Toast.makeText(
-                        MainActivity.this,
-                        "Cannot download image",
-                        Toast.LENGTH_SHORT
-                ).show();
-            }
-
-            return true;
-        }
-
-        return false;
-    };
-}
-
-private WebViewClient createWebViewClient() {
-
-    return new WebViewClient() {
-
-@Override
-public WebResourceResponse shouldInterceptRequest(
-        WebView view,
-        WebResourceRequest request
-) {
-
-    String host =
-            extractHost(
-                    request.getUrl()
-                            .toString()
-            );
-
-    if (isBlockedDomain(host)) {
-
-        return new WebResourceResponse(
-        "text/plain",
-        "utf-8",
-        new java.io.ByteArrayInputStream(
-                new byte[0]
-        )
-);
-    }
-
-    return super.shouldInterceptRequest(
-            view,
-            request
-    );
-}
-
-        @Override
-        public void onPageStarted(
-                WebView view,
-                String url,
-                Bitmap favicon
-        ) {
-
-if (view == getCurrentWebView()) {
-
-    if (url == null ||
-            url.isEmpty() ||
-            url.equals("about:blank")) {
-
-        addressBar.setText(
-                ""
-        );
-
-    } else {
-
-        addressBar.setText(
-                url
-        );
-    }
-}
-
-
-            if (url != null &&
-                    !url.isEmpty() &&
-                    !url.equals("about:blank") &&
-                    !url.startsWith(
-                            "chrome-error://"
-                    ) &&
-                    !url.startsWith(
-                            "data:"
-                    ) &&
-                    !url.startsWith(
-                            "file://"
-                    )) {
-
-                if (history.isEmpty() ||
-                        !history.get(
-                                history.size() - 1
-                        ).equals(url)) {
-
-                    history.add(url);
-
-                    while (
-                            history.size()
-                                    > MAX_HISTORY
-                    ) {
-                        history.remove(0);
+            @Override
+            public void onReceivedTitle(WebView view, String title) {
+                String url = view.getUrl();
+                if (url != null && title != null && !title.isEmpty()) {
+                    synchronized (pageTitles) {
+                        pageTitles.put(url, title);
                     }
-
-                    saveHistory();
+                    savePageTitles();
                 }
             }
-        }
-
-@Override
-public void onPageFinished(
-        WebView view,
-        String url
-) {
-}
-
-@Override
-public boolean onRenderProcessGone(
-        WebView view,
-        RenderProcessGoneDetail detail
-) {
-
-    String url = null;
-
-    try {
-        url = view.getUrl();
-    } catch (Exception ignored) {
+        };
     }
 
-    WebView replacement =
-            createConfiguredWebView();
-
-    int index =
-            tabs.indexOf(view);
-
-    if (index >= 0) {
-
-    view.stopLoading();
-    view.removeAllViews();
-    view.destroy();
-
-    tabs.set(
-            index,
-            replacement
-    );
-
-        if (index == currentTab) {
-
-            browserContainer.removeAllViews();
-
-            browserContainer.addView(
-                    replacement
-            );
-        }
-
-        if (url != null &&
-                !url.isEmpty()) {
-
-            replacement.loadUrl(
-                    url
-            );
-        }
+    private DownloadListener createDownloadListener() {
+        return (url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(Uri.parse(url), mimetype);
+                intent.putExtra("User-Agent", userAgent);
+                intent.putExtra("Content-Disposition", contentDisposition);
+                startActivity(intent);
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "Cannot download file", Toast.LENGTH_SHORT).show();
+            }
+        };
     }
 
-    Toast.makeText(
-            MainActivity.this,
-            "Web page crashed and was reloaded",
-            Toast.LENGTH_SHORT
-    ).show();
-
-    return true;
-}
-
-@Override
-public void onReceivedError(
-        WebView view,
-        android.webkit.WebResourceRequest request,
-        android.webkit.WebResourceError error
-) {
-
-if (!request.isForMainFrame()) {
-    return;
-}
-
-    Toast.makeText(
-            MainActivity.this,
-            "Page load failed",
-            Toast.LENGTH_SHORT
-    ).show();
-}
-
-@Override
-public void onReceivedHttpError(
-        WebView view,
-        android.webkit.WebResourceRequest request,
-        WebResourceResponse errorResponse
-) {
-
-    if (!request.isForMainFrame()) {
-        return;
+    private View.OnLongClickListener createImageLongClickListener(WebView webView) {
+        return v -> {
+            WebView.HitTestResult result = webView.getHitTestResult();
+            if (result != null && (result.getType() == WebView.HitTestResult.IMAGE_TYPE
+                    || result.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(result.getExtra())));
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Cannot download image", Toast.LENGTH_SHORT).show();
+                }
+                return true;
+            }
+            return false;
+        };
     }
 
-    Toast.makeText(
-            MainActivity.this,
-            "HTTP " + errorResponse.getStatusCode(),
-            Toast.LENGTH_SHORT
-    ).show();
-}
+    private WebViewClient createWebViewClient() {
+        return new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                Uri url = request.getUrl();
+                if (url != null) {
+                    String host = url.getHost();
+                    if (host != null && isBlockedDomain(host.toLowerCase())) {
+                        return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                    }
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
 
-@Override
-public void onReceivedSslError(
-        WebView view,
-        android.webkit.SslErrorHandler handler,
-        android.net.http.SslError error
-) {
+            @Override
+            public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (view == getCurrentWebView()) {
+                    addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
+                }
 
-    handler.cancel();
+                if (url != null && !url.isEmpty() && !url.equals("about:blank") 
+                        && !url.startsWith("chrome-error://") && !url.startsWith("data:") && !url.startsWith("file://")) {
+                    if (history.isEmpty() || !history.get(history.size() - 1).equals(url)) {
+                        history.add(url);
+                        while (history.size() > MAX_HISTORY) {
+                            history.remove(0);
+                        }
+                        saveHistory();
+                    }
+                }
+            }
 
-    android.util.Log.w(
-        "SpoonBrowser",
-        "SSL error: "
-                + error.getPrimaryError()
-);
-}
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                String url = null;
+                try {
+                    url = view.getUrl();
+                } catch (Exception ignored) {}
 
-@Override
-public void onSafeBrowsingHit(
-        WebView view,
-        WebResourceRequest request,
-        int threatType,
-        SafeBrowsingResponse callback
-) {
+                int index = tabs.indexOf(view);
+                if (index >= 0) {
+                    view.stopLoading();
+                    view.removeAllViews();
+                    view.destroy();
+                    
+                    WebView replacement = createConfiguredWebView();
+                    tabs.set(index, replacement);
 
-    callback.backToSafety(
-            true
-    );
+                    if (index == currentTab) {
+                        browserContainer.removeAllViews();
+                        browserContainer.addView(replacement);
+                    }
+                    if (url != null && !url.isEmpty()) {
+                        replacement.loadUrl(url);
+                    }
+                }
+                return true;
+            }
 
-    Toast.makeText(
-            MainActivity.this,
-            "Unsafe website blocked",
-            Toast.LENGTH_SHORT
-    ).show();
-}
+            @Override
+            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
+                if (!request.isForMainFrame()) return;
+                Toast.makeText(MainActivity.this, "Page load failed", Toast.LENGTH_SHORT).show();
+            }
 
-    };
-}
+            @Override
+            public void onReceivedHttpError(WebView view, android.webkit.WebResourceRequest request, WebResourceResponse errorResponse) {
+                if (!request.isForMainFrame()) return;
+                android.util.Log.w("SpoonBrowser", "HTTP Error: " + errorResponse.getStatusCode());
+            }
 
-private WebView createConfiguredWebView() {
+            @Override
+            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                handler.cancel();
+            }
 
+            @Override
+            public void onSafeBrowsingHit(WebView view, WebResourceRequest request, int threatType, SafeBrowsingResponse callback) {
+                callback.backToSafety(true);
+            }
+        };
+    }
+
+    private WebView createConfiguredWebView() {
         WebView webView = new WebView(this);
-
-        LinearLayout.LayoutParams webParams =
-                new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        0,
-                        1
-                );
-
+        LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
 
-configureWebSettings(
-        webView.getSettings()
-);
-
-webView.setWebChromeClient(
-        createWebChromeClient()
-);
-
-webView.setDownloadListener(
-        createDownloadListener()
-);
-
-webView.setOnLongClickListener(
-        createImageLongClickListener(
-                webView
-        )
-);
-
-webView.setWebViewClient(
-        createWebViewClient()
-);
-
-       return webView;
+        configureWebSettings(webView.getSettings());
+        webView.setWebChromeClient(createWebChromeClient());
+        webView.setDownloadListener(createDownloadListener());
+        webView.setOnLongClickListener(createImageLongClickListener(webView));
+        webView.setWebViewClient(createWebViewClient());
+        return webView;
     }
 
     private void createNewTab() {
-
         WebView webView = createConfiguredWebView();
-
         tabs.add(webView);
-
-saveOpenTabs();
-
+        saveOpenTabs();
         switchToTab(tabs.size() - 1);
     }
 
-    // Long press "+" to restore the most recently closed tab.
-
     private void switchToTab(int index) {
-
         if (index < 0 || index >= tabs.size()) return;
-
         currentTab = index;
-
-saveCurrentTab();
-
+        saveCurrentTab();
         updateTabIndicator();
 
         browserContainer.removeAllViews();
         browserContainer.addView(getCurrentWebView());
 
-        String url =
-        getCurrentWebView()
-                .getUrl();
-
-if (url == null ||
-        url.isEmpty() ||
-        url.equals("about:blank")) {
-
-    addressBar.setText(
-            ""
-    );
-
-} else {
-
-    addressBar.setText(
-            url
-    );
-}
-
+        String url = getCurrentWebView().getUrl();
+        addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
     }
-
+    // Continues in Part 5...
 private void closeTab(int index) {
-
         if (tabs.size() == 1) {
+            clearSessionOnExit = true;
+            prefs.edit().remove(KEY_OPEN_TABS).remove(KEY_CURRENT_TAB).apply();
+            finishAndRemoveTask();
+            return;
+        }
 
-    clearSessionOnExit = true;
+        WebView webView = tabs.get(index);
+        String url = webView.getUrl();
+        if (url != null) {
+            synchronized (pageTitles) {
+                pageTitles.remove(url);
+            }
+            savePageTitles();
+        }
 
-    prefs.edit()
-            .remove(KEY_OPEN_TABS)
-            .remove(KEY_CURRENT_TAB)
-            .apply();
+        browserContainer.removeView(webView);
+        tabs.remove(index);
 
-    finishAndRemoveTask();
+        webView.stopLoading();
+        webView.clearHistory();
+        webView.loadUrl("about:blank");
+        webView.removeAllViews();
+        webView.destroy();
 
-    return;
-}
-
-WebView webView =
-        tabs.get(index);
-
-String url =
-        webView.getUrl();
-
-if (url != null &&
-        pageTitles.containsKey(url)) {
-
-    pageTitles.remove(
-            url
-    );
-
-    savePageTitles();
-}
-
-webView.stopLoading();
-webView.clearHistory();
-
-webView.loadUrl("about:blank");
-webView.removeAllViews();
-webView.destroy();
-
-tabs.remove(index);
-
-saveOpenTabs();
-
+        saveOpenTabs();
         if (currentTab >= tabs.size()) {
             currentTab = tabs.size() - 1;
         }
-
         switchToTab(currentTab);
-
-        Toast.makeText(
-                this,
-                "Tab Closed",
-                Toast.LENGTH_SHORT
-        ).show();
     }
 
     private void updateTabIndicator() {
-
-        tabIndicator.setText(
-                (currentTab + 1) + "/" + tabs.size()
-        );
+        tabIndicator.setText((currentTab + 1) + "/" + tabs.size());
     }
 
-    private ArrayList<BrowserItem>
-    buildTabItems() {
-
-             ArrayList<BrowserItem> items =
-                             new ArrayList<>();
-
-        for (int i = 0;
-             i < tabs.size();
-             i++) {
-
-            WebView webView =
-                    tabs.get(i);
-
-            String url =
-                    webView.getUrl();
-
-            String title = null;
-
-            if (url != null) {
-                title =
-                        pageTitles.get(url);
-            }
-
-            if (title == null ||
-                    title.isEmpty()) {
-
-                if (url == null ||
-                        url.isEmpty()) {
-
-                    title = "New Tab";
-
-                } else {
-
-                    title = url;
+    private ArrayList<BrowserItem> buildTabItems() {
+        ArrayList<BrowserItem> items = new ArrayList<>();
+        synchronized (pageTitles) {
+            for (WebView webView : tabs) {
+                String url = webView.getUrl();
+                String title = url != null ? pageTitles.get(url) : null;
+                if (title == null || title.isEmpty()) {
+                    title = (url == null || url.isEmpty()) ? "New Tab" : url;
                 }
+                items.add(new BrowserItem(title, url));
             }
-
-            items.add(
-                    new BrowserItem(
-                            title,
-                            url
-                    )
-            );
         }
-
         return items;
     }
 
     private void showTabSwitcher() {
+        if (tabs.isEmpty()) return;
+        ArrayList<BrowserItem> items = buildTabItems();
+        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
+        ListView listView = new ListView(this);
+        listView.setAdapter(adapter);
 
-        if (tabs.isEmpty()) {
-            return;
-        }
+        listView.setOnItemClickListener((parent, view, which, id) -> switchToTab(which));
+        listView.setOnItemLongClickListener((parent, view, which, id) -> {
+            closeTab(which);
+            items.remove(which);
+            adapter.notifyDataSetChanged();
+            return true;
+        });
 
-        ArrayList<BrowserItem> items =
-                        buildTabItems();
-
-        BrowserItemAdapter adapter =
-                new BrowserItemAdapter(
-                        this,
-                        items
-                );
-
-        ListView listView =
-                new ListView(
-                        this
-                );
-
-                listView.setAdapter(
-                        adapter
-                );
-
-                listView.setOnItemClickListener(
-                        (parent, view, which, id) -> {
-
-            switchToTab(
-                    which
-            );
-        }
-);
-
-listView.setOnItemLongClickListener(
-        (parent, view, which, id) -> {
-
-closeTab(which);
-
-items.remove(which);
-adapter.notifyDataSetChanged();
-
-return true;
-
-        }
-);
-
-AlertDialog dialog =
-        new AlertDialog.Builder(this)
-                .setTitle("Tabs")
-                .setView(
-                        listView
-                )
-                .create();
-
-dialog.show();
-
+        new AlertDialog.Builder(this).setTitle("Tabs").setView(listView).create().show();
     }
 
-    private ArrayList<BrowserItem>
-    buildHistoryItems() {
-
-        ArrayList<BrowserItem> items =
-                new ArrayList<>();
-
-        for (int i = 0;
-             i < history.size();
-             i++) {
-
-            String url = history.get(
-                    history.size() - 1 - i
-            );
-
-            String title =
-                    pageTitles.get(url);
-
-            if (title == null ||
-                    title.isEmpty()) {
-
-                title = url;
+    private ArrayList<BrowserItem> buildHistoryItems() {
+        ArrayList<BrowserItem> items = new ArrayList<>();
+        synchronized (pageTitles) {
+            for (int i = 0; i < history.size(); i++) {
+                String url = history.get(history.size() - 1 - i);
+                String title = pageTitles.get(url);
+                items.add(new BrowserItem(title != null && !title.isEmpty() ? title : url, url));
             }
-
-            items.add(
-                    new BrowserItem(
-                            title,
-                            url
-                    )
-            );
-
         }
-
         return items;
     }
 
-    private ArrayList<BrowserItem>
-    buildBookmarkItems() {
-
-        ArrayList<BrowserItem> items =
-                new ArrayList<>();
-
-        for (int i = 0;
-             i < bookmarks.size();
-             i++) {
-
-            String url =
-                    bookmarks.get(i);
-
-            String title =
-                    pageTitles.get(url);
-
-            if (title == null ||
-                    title.isEmpty()) {
-
-                title = url;
+    private ArrayList<BrowserItem> buildBookmarkItems() {
+        ArrayList<BrowserItem> items = new ArrayList<>();
+        synchronized (pageTitles) {
+            for (String url : bookmarks) {
+                String title = pageTitles.get(url);
+                items.add(new BrowserItem(title != null && !title.isEmpty() ? title : url, url));
             }
-
-
-            items.add(
-                            new BrowserItem(
-                            title,
-                            url
-                    )
-            );
         }
-
         return items;
     }
 
     private void showHistoryDialog() {
+        if (history.isEmpty()) return;
+        ArrayList<BrowserItem> items = buildHistoryItems();
+        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
+        ListView listView = new ListView(this);
+        listView.setAdapter(adapter);
 
-        if (history.isEmpty()) {
-            return;
-        }
-
-        ArrayList<BrowserItem> items =
-                buildHistoryItems();
-
-        BrowserItemAdapter adapter =
-                new BrowserItemAdapter(
-                        this,
-                        items
-                );
-
-        ListView listView =
-                        new ListView(
-                                this
-                        );
-
-                listView.setAdapter(
-                        adapter
-                );
-
-        listView.setOnItemClickListener(
-                        (parent, view, which, id) -> {
-
-                            openUrl(
-        items.get(which).url
-);
-                        }
-                );
-
-        listView.setOnItemLongClickListener(
-                (parent, view, which, id) -> {
-
-                    String[] options = {
-                            "Open in New Tab",
-                            "Add Bookmark"
-                    };
-
-                    new AlertDialog.Builder(
-                            this
-                    )
-                            .setItems(
-                                    options,
-                                    (dialog, item) -> {
-
-    if (item == 0) {
-
-        createNewTab();
-
-        openUrl(
-        items.get(which).url
-);
-
-    } else if (item == 1) {
-
-        String url =
-                items.get(which).url;
-
-        if (!bookmarks.contains(
-                url
-        )) {
-
-            bookmarks.add(
-                    url
-            );
-
-            saveBookmarks();
-
-            Toast.makeText(
-                    this,
-                    "Bookmark added",
-                    Toast.LENGTH_SHORT
-            ).show();
-
-        } else {
-
-            Toast.makeText(
-                    this,
-                    "Already bookmarked",
-                    Toast.LENGTH_SHORT
-            ).show();
-        }
-    }
-}
-
-                            )
-                            .show();
-
-                    return true;
+        listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
+        listView.setOnItemLongClickListener((parent, view, which, id) -> {
+            String[] options = {"Open in New Tab", "Add Bookmark"};
+            new AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
+                if (item == 0) {
+                    createNewTab();
+                    openUrl(items.get(which).url);
+                } else if (item == 1) {
+                    String url = items.get(which).url;
+                    if (!bookmarks.contains(url)) {
+                        bookmarks.add(url);
+                        saveBookmarks();
+                        Toast.makeText(this, "Bookmark added", Toast.LENGTH_SHORT).show();
+                    }
                 }
-        );
+            }).show();
+            return true;
+        });
 
-                new AlertDialog.Builder(this)
-                        .setTitle("History")
-                        .setView(
-                                listView
-                        )
-                        .show();
-
+        new AlertDialog.Builder(this).setTitle("History").setView(listView).show();
     }
-
-    // Utility helpers
 
     private WebView getCurrentWebView() {
         return tabs.get(currentTab);
     }
 
-private void openUrl(
-        String url
-) {
-
-    getCurrentWebView()
-            .loadUrl(
-                    url
-            );
-}
+    private void openUrl(String url) {
+        getCurrentWebView().loadUrl(url);
+    }
 
     private String getAppVersion() {
-
         try {
-
-            return getPackageManager()
-                    .getPackageInfo(
-                            getPackageName(),
-                            0
-                    ).versionName;
-
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
         } catch (Exception e) {
-
             return "?";
         }
     }
 
-    // Persistence helpers
-
     private void saveBookmarks() {
-
-        prefs.edit().putString(
-                KEY_BOOKMARKS,
-                String.join("\n", bookmarks)
-        ).apply();
+        prefs.edit().putString(KEY_BOOKMARKS, String.join("\n", bookmarks)).apply();
     }
 
     private void saveHistory() {
-
-        prefs.edit().putString(
-                KEY_HISTORY,
-                String.join("\n", history)
-        ).apply();
+        prefs.edit().putString(KEY_HISTORY, String.join("\n", history)).apply();
     }
 
-private void rebuildBlockedDomains() {
-
-    blockedDomains.clear();
-
-    for (String rule : rawFilterRules) {
-
-        blockedDomains.add(
-                rule.toLowerCase()
-        );
-    }
-
-android.util.Log.d(
-        "SpoonBlocker",
-        "Blocked domains: "
-                + getBlockedDomainCount()
-);
-
-}
-
-private void refreshFilterLists() {
-
-    new Thread(() -> {
-
-        rawFilterRules.clear();
-
-        try {
-
-    for (String filterUrl : filterLists) {
-
-        try {
-
-            BufferedReader reader =
-                    new BufferedReader(
-                            new InputStreamReader(
-                                    new URL(
-                                            filterUrl
-                                    ).openStream()
-                            )
-                    );
-
-            String line;
-
-            while ((line = reader.readLine()) != null) {
-
-                line = line.trim();
-
-                if (line.isEmpty()) {
-                    continue;
-                }
-
-                if (line.startsWith("!")) {
-                    continue;
-                }
-
-                if (line.startsWith("||")) {
-
-    int end =
-            line.indexOf('^');
-
-    if (end > 2) {
-
-        rawFilterRules.add(
-                line.substring(
-                        2,
-                        end
-                )
-        );
-    }
-}
+    private void rebuildBlockedDomains() {
+        synchronized (blockedDomains) {
+            blockedDomains.clear();
+            for (String rule : rawFilterRules) {
+                blockedDomains.add(rule.toLowerCase());
             }
-
-            reader.close();
-
-        } catch (Exception e) {
-
-    android.util.Log.e(
-            "SpoonBlocker",
-            "Filter download failed",
-            e
-    );
-}
-    }
-
-} catch (Exception e) {
-
-    android.util.Log.e(
-            "SpoonBlocker",
-            "Refresh thread crash",
-            e
-    );
-}
-
-    rebuildBlockedDomains();
-
-prefs.edit()
-        .putLong(
-                KEY_FILTER_REFRESH_TIME,
-                System.currentTimeMillis()
-        )
-        .apply();
-
-    }).start();
-}
-
-private String extractHost(
-        String url
-) {
-
-    try {
-
-        String host =
-        new URI(url)
-                .getHost();
-
-if (host == null) {
-    return null;
-}
-
-return host.toLowerCase();
-
-    } catch (Exception e) {
-
-        return null;
-    }
-}
-
-private boolean isBlockedDomain(
-        String host
-) {
-
-if (host == null) {
-    return false;
-}
-
-for (String blocked : blockedDomains) {
-
-    if (host.equals(blocked) ||
-            host.endsWith(
-                    "." + blocked
-            )) {
-
-        return true;
-    }
-}
-
-return false;
-
-}
-
-private int getBlockedDomainCount() {
-
-    return blockedDomains.size();
-}
-
-    private void saveFilterLists() {
-
-    prefs.edit().putString(
-            KEY_FILTER_LISTS,
-            String.join(
-                    "\n",
-                    filterLists
-            )
-    ).apply();
-
-    rebuildBlockedDomains();
-}
-
-private void saveOpenTabs() {
-
-    ArrayList<String> urls =
-            new ArrayList<>();
-
-    for (WebView tab : tabs) {
-
-        String url =
-                tab.getUrl();
-
-        if (url != null &&
-                !url.isEmpty() &&
-                !url.equals("about:blank")) {
-
-            urls.add(url);
         }
     }
 
-    prefs.edit().putString(
-            KEY_OPEN_TABS,
-            String.join("\n", urls)
-    ).apply();
-}
+    private void refreshFilterLists() {
+        new Thread(() -> {
+            HashSet<String> newRules = new HashSet<>();
+            for (String filterUrl : filterLists) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(new URL(filterUrl).openStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.isEmpty() || line.startsWith("!")) continue;
+                        if (line.startsWith("||")) {
+                            int end = line.indexOf('^');
+                            if (end > 2) {
+                                newRules.add(line.substring(2, end));
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("SpoonBlocker", "Filter download failed: " + filterUrl);
+                }
+            }
+            synchronized (blockedDomains) {
+                rawFilterRules.clear();
+                rawFilterRules.addAll(newRules);
+                rebuildBlockedDomains();
+            }
+            prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
+        }).start();
+    }
 
-private void saveCurrentTab() {
+    private boolean isBlockedDomain(String host) {
+        if (host == null) return false;
+        synchronized (blockedDomains) {
+            if (blockedDomains.contains(host)) return true;
+            int idx = host.indexOf('.');
+            while (idx != -1) {
+                String sub = host.substring(idx + 1);
+                if (blockedDomains.contains(sub)) return true;
+                idx = host.indexOf('.', idx + 1);
+            }
+        }
+        return false;
+    }
 
-    prefs.edit().putInt(
-            KEY_CURRENT_TAB,
-            currentTab
-    ).apply();
-}
+    private void saveFilterLists() {
+        prefs.edit().putString(KEY_FILTER_LISTS, String.join("\n", filterLists)).apply();
+        rebuildBlockedDomains();
+    }
 
-    // Metadata persistence
+    private void saveOpenTabs() {
+        ArrayList<String> urls = new ArrayList<>();
+        for (WebView tab : tabs) {
+            String url = tab.getUrl();
+            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
+                urls.add(url);
+            }
+        }
+        prefs.edit().putString(KEY_OPEN_TABS, String.join("\n", urls)).apply();
+    }
+
+    private void saveCurrentTab() {
+        prefs.edit().putInt(KEY_CURRENT_TAB, currentTab).apply();
+    }
 
     private void savePageTitles() {
-
-    StringBuilder builder =
-            new StringBuilder();
-
-    for (String url :
-            pageTitles.keySet()) {
-
-        builder.append(url)
-                .append("|")
-                .append(
-                        pageTitles.get(url)
-                )
-                .append("\n");
+        StringBuilder builder = new StringBuilder();
+        synchronized (pageTitles) {
+            for (String url : pageTitles.keySet()) {
+                builder.append(url).append("|").append(pageTitles.get(url)).append("\n");
+            }
+        }
+        prefs.edit().putString(KEY_PAGE_TITLES, builder.toString()).apply();
     }
 
-    prefs.edit().putString(
-            KEY_PAGE_TITLES,
-            builder.toString()
-    ).apply();
-}
-
-private void showFilterListsDialog() {
-
-    EditText input = new EditText(this);
-
-    new AlertDialog.Builder(this)
-            .setTitle("Subscribe Filter List")
-            .setMessage(
-        "Subscribed: "
-                + filterLists.size()
-                + "\n\nEnter filter list URL"
-)
-            .setView(input)
-            .setPositiveButton("Save", (d, w) -> {
-
-                String url =
-                        input.getText()
-                                .toString()
-                                .trim();
-
-                if (!url.isEmpty()
-                        && !filterLists.contains(url)) {
-
-                    filterLists.add(url);
-
-refreshFilterLists();
-
-                    saveFilterLists();
-
-                    Toast.makeText(
-                            this,
-                            "Filter list saved",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                }
-            })
-.setNeutralButton(
-        "More",
-        (d, w) -> showFilterListOptions()
-)
-            .setNegativeButton(
-                    "Cancel",
-                    null
-            )
-            .show();
-}
-
-private void showFilterListOptions() {
-
-    String[] options = {
-            "View Subscriptions",
-            "Add EasyList",
-            "Add EasyPrivacy"
-    };
-
-    new AlertDialog.Builder(this)
-            .setTitle("Filter Lists")
-            .setItems(options, (dialog, which) -> {
-
-                if (which == 0) {
-
-                    showSubscribedFilterLists();
-                }
-
-                else if (which == 1) {
-
-                    String url =
-                            "https://easylist.to/easylist/easylist.txt";
-
-                    if (!filterLists.contains(url)) {
-
+    private void showFilterListsDialog() {
+        EditText input = new EditText(this);
+        new AlertDialog.Builder(this)
+                .setTitle("Subscribe Filter List")
+                .setMessage("Subscribed: " + filterLists.size() + "\n\nEnter filter list URL")
+                .setView(input)
+                .setPositiveButton("Save", (d, w) -> {
+                    String url = input.getText().toString().trim();
+                    if (!url.isEmpty() && !filterLists.contains(url)) {
                         filterLists.add(url);
-refreshFilterLists();
-
+                        refreshFilterLists();
                         saveFilterLists();
                     }
-                }
-
-                else if (which == 2) {
-
-                    String url =
-                            "https://easylist.to/easylist/easyprivacy.txt";
-
-                    if (!filterLists.contains(url)) {
-
-                        filterLists.add(url);
-refreshFilterLists();
-
-                        saveFilterLists();
-                    }
-                }
-            })
-            .show();
-}
-
-private void showSubscribedFilterLists() {
-
-    if (filterLists.isEmpty()) {
-
-        Toast.makeText(
-                this,
-                "No filter lists subscribed",
-                Toast.LENGTH_SHORT
-        ).show();
-
-        return;
+                })
+                .setNeutralButton("More", (d, w) -> showFilterListOptions())
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
-    ListView listView =
-            new ListView(this);
+    private void showFilterListOptions() {
+        String[] options = {"View Subscriptions", "Add EasyList", "Add EasyPrivacy"};
+        new AlertDialog.Builder(this)
+                .setTitle("Filter Lists")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        showSubscribedFilterLists();
+                    } else if (which == 1) {
+                        String url = "https://easylist.to/easylist/easylist.txt";
+                        if (!filterLists.contains(url)) {
+                            filterLists.add(url);
+                            refreshFilterLists();
+                            saveFilterLists();
+                        }
+                    } else if (which == 2) {
+                        String url = "https://easylist.to/easylist/easyprivacy.txt";
+                        if (!filterLists.contains(url)) {
+                            filterLists.add(url);
+                            refreshFilterLists();
+                            saveFilterLists();
+                        }
+                    }
+                })
+                .show();
+    }
 
-    ArrayAdapter<String> adapter =
-            new ArrayAdapter<>(
-                    this,
-                    android.R.layout.simple_list_item_1,
-                    filterLists
-            );
+    private void showSubscribedFilterLists() {
+        if (filterLists.isEmpty()) {
+            Toast.makeText(this, "No filter lists subscribed", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-    listView.setAdapter(adapter);
+        ListView listView = new ListView(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, filterLists);
+        listView.setAdapter(adapter);
 
-listView.setOnItemLongClickListener(
-        (parent, view, which, id) -> {
-
-            String url =
-                    filterLists.get(which);
-
+        listView.setOnItemLongClickListener((parent, view, which, id) -> {
+            String url = filterLists.get(which);
             new AlertDialog.Builder(this)
                     .setTitle("Remove Filter List")
                     .setMessage(url)
-                    .setPositiveButton(
-                            "Remove",
-                            (d, w) -> {
-
-                                filterLists.remove(url);
-
-                                adapter.notifyDataSetChanged();
-
-                                saveFilterLists();
-
-                                Toast.makeText(
-                                        this,
-                                        "Filter list removed",
-                                        Toast.LENGTH_SHORT
-                                ).show();
-                            }
-                    )
-                    .setNegativeButton(
-                            "Cancel",
-                            null
-                    )
+                    .setPositiveButton("Remove", (d, w) -> {
+                        filterLists.remove(url);
+                        adapter.notifyDataSetChanged();
+                        saveFilterLists();
+                    })
+                    .setNegativeButton("Cancel", null)
                     .show();
-
             return true;
+        });
+
+        new AlertDialog.Builder(this).setTitle("Subscribed Filter Lists").setView(listView).setPositiveButton("OK", null).show();
+    }
+
+    private void showAbout() {
+        synchronized (blockedDomains) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Spoon Browser")
+                    .setMessage("Version: " + getAppVersion() + "\n\n"
+                            + "Tabs: " + tabs.size() + "\nBookmarks: " + bookmarks.size()
+                            + "\nHistory: " + history.size() + "\nBlocked Domains: " + blockedDomains.size()
+                            + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n-with love, Plaban.")
+                    .setPositiveButton("OK", null)
+                    .show();
         }
-);
-
-    new AlertDialog.Builder(this)
-            .setTitle("Subscribed Filter Lists")
-            .setView(listView)
-            .setPositiveButton(
-                    "OK",
-                    null
-            )
-            .show();
-}
-
-private void showAbout() {
-
-        AlertDialog dialog =
-                new AlertDialog.Builder(
-                        this
-                )
-                        .setTitle(
-                                "Spoon Browser"
-                        )
-                        .setMessage(
-                                "Version: "
-                                        + getAppVersion()
-                                        + "\n\n"
-                                        + "Tabs: "
-                                        + tabs.size()
-                                        + "\nBookmarks: "
-                                        + bookmarks.size()
-                                        + "\nHistory: "
-                                        + history.size()
-                                        + "\n\nBuilt one green commit at a time."
-                                        + "\n\nDesigned to evolve with Android WebView."
-                                        + "\n\n-with love, Plaban."
-                        )
-                        .setPositiveButton(
-                                "OK",
-                                null
-                        )
-                        .create();
-
-        dialog.show();
-
-        dialog.setCanceledOnTouchOutside(
-                false
-        );
-
     }
 
     private void showBookmarks() {
+        if (bookmarks.isEmpty()) {
+            Toast.makeText(this, "No bookmarks saved", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-    if (bookmarks.isEmpty()) {
+        ArrayList<BrowserItem> items = buildBookmarkItems();
+        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
+        ListView listView = new ListView(this);
+        listView.setAdapter(adapter);
 
-        Toast.makeText(
-                this,
-                "No bookmarks saved",
-                Toast.LENGTH_SHORT
-        ).show();
+        listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
+        listView.setOnItemLongClickListener((parent, view, which, id) -> {
+            String[] options = {"Open", "Open in New Tab", "Remove Bookmark"};
+            new AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
+                if (item == 0) {
+                    openUrl(items.get(which).url);
+                } else if (item == 1) {
+                    createNewTab();
+                    openUrl(items.get(which).url);
+                } else if (item == 2) {
+                    bookmarks.remove(items.get(which).url);
+                    saveBookmarks();
+                }
+            }).show();
+            return true;
+        });
 
-        return;
+        new AlertDialog.Builder(this).setTitle("Bookmarks").setView(listView).show();
     }
 
-ArrayList<BrowserItem> items =
-                buildBookmarkItems();
-
-        BrowserItemAdapter adapter =
-                new BrowserItemAdapter(
-                        this,
-                        items
-                );
-
-        ListView listView =
-                new ListView(
-                        this
-                );
-
-        listView.setAdapter(
-                adapter
-        );
-
-                    listView.setOnItemClickListener(
-        (parent, view, which, id) -> {
-
-            openUrl(
-        items.get(which).url
-);
-        }
-);
-
-listView.setOnItemLongClickListener(
-        (parent, view, which, id) -> {
-
-            String[] options = {
-                    "Open",
-                    "Open in New Tab",
-                    "Remove Bookmark"
-            };
-
-            new AlertDialog.Builder(
-                    this
-            )
-                    .setItems(
-                            options,
-                            (dialog, item) -> {
-
-if (item == 0) {
-
-    getCurrentWebView()
-            .loadUrl(
-                    items.get(which).url
-            );
-}
-
-else if (item == 1) {
-
-    createNewTab();
-
-    getCurrentWebView()
-            .loadUrl(
-                    items.get(which).url
-            );
-}
-                                else if (item == 2) {
-
-    bookmarks.remove(
-            items.get(which).url
-    );
-
-    saveBookmarks();
-
-    Toast.makeText(
-            this,
-            "Bookmark removed",
-            Toast.LENGTH_SHORT
-    ).show();
-}
-
-                            }
-                    )
-                    .show();
-
-            return true;
-        }
-);
-
-new AlertDialog.Builder(this)
-        .setTitle("Bookmarks")
-        .setView(
-                listView
-        )
-        .show();
-
-}
-
     private void showHome() {
-
-        String homePage =
-                "<html>" +
-                "<body style='margin:0;background:#000;color:white;" +
-                "font-family:sans-serif;text-align:center;'>" +
-
+        String homePage = "<html>" +
+                "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
                 "<div style='padding-top:20%;'>" +
-
-                "<h1 style='font-size:48px;margin-bottom:40px;'>" +
-                "Spoon Browser</h1>" +
-
-                "<input id='q' type='text' " +
-                "placeholder='Search privately...' " +
-
-                "style='width:72%;padding:20px;border:none;" +
-                "border-radius:18px;background:#1f1f1f;" +
-                "color:white;font-size:18px;outline:none;'/>" +
-
+                "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
+                "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
                 "</div>" +
-
                 "<script>" +
-
                 "function goSearch(){" +
                 "var q=document.getElementById(\"q\").value;" +
                 "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
                 "}" +
-
                 "document.getElementById('q').addEventListener('keydown',function(e){" +
                 "if(e.key==='Enter'){goSearch();}" +
                 "});" +
-
                 "</script>" +
-
                 "</body></html>";
 
-        getCurrentWebView().loadDataWithBaseURL(
-                null,
-                homePage,
-                "text/html",
-                "UTF-8",
-                null
-        );
+        getCurrentWebView().loadDataWithBaseURL(null, homePage, "text/html", "UTF-8", null);
     }
 
-private void updateAddressBarSuggestions(
-        String query
-) {
+    private void updateAddressBarSuggestions(String query) {
+        addressBarAdapter.clear();
+        if (query == null || query.trim().isEmpty()) return;
 
-    addressBarAdapter.clear();
+        String lower = query.toLowerCase();
+        HashSet<String> seen = new HashSet<>();
+        int count = 0;
 
-    if (query == null ||
-            query.trim().isEmpty()) {
+        for (int i = history.size() - 1; i >= 0 && count < 5; i--) {
+            String url = history.get(i);
+            if (url == null) continue;
 
-        return;
-    }
+            String host = null;
+            try {
+                host = Uri.parse(url).getHost();
+                if (host != null && host.startsWith("www.")) {
+                    host = host.substring(4);
+                }
+            } catch (Exception ignored) {}
 
-    String lower =
-            query.toLowerCase();
+            boolean matchesUrl = url.toLowerCase().contains(lower);
+            boolean matchesHost = host != null && host.toLowerCase().contains(lower);
 
-    HashSet<String> seen =
-            new HashSet<>();
+            if (!matchesUrl && !matchesHost) continue;
+            if (!seen.add(url)) continue;
 
-    int count = 0;
-
-    for (int i = history.size() - 1;
-         i >= 0 && count < 5;
-         i--) {
-
-        String url =
-                history.get(i);
-
-        if (url == null) {
-            continue;
+            addressBarAdapter.add(url);
+            count++;
         }
 
-        String host = "";
-
-try {
-
-    host =
-            URI.create(url)
-                    .getHost();
-
-    if (host != null &&
-            host.startsWith(
-                    "www."
-            )) {
-
-        host =
-                host.substring(
-                        4
-                );
-    }
-
-} catch (Exception ignored) {
-}
-
-boolean matchesUrl =
-        url.toLowerCase()
-                .contains(lower);
-
-boolean matchesHost =
-        host != null &&
-        host.toLowerCase()
-                .contains(lower);
-
-if (!matchesUrl &&
-        !matchesHost) {
-
-    continue;
-}
-
-        if (!seen.add(url)) {
-            continue;
+        addressBarAdapter.notifyDataSetChanged();
+        if (addressBarAdapter.getCount() > 0) {
+            addressBar.showDropDown();
+        } else {
+            addressBar.dismissDropDown();
         }
-
-        addressBarAdapter.add(
-                url
-        );
-
-        count++;
     }
-
-    addressBarAdapter.notifyDataSetChanged();
-
-if (addressBarAdapter.getCount() > 0) {
-
-    addressBar.showDropDown();
-
-} else {
-
-    addressBar.dismissDropDown();
-}
-}
 
     private void navigate() {
-
         String input = addressBar.getText().toString().trim();
-
         if (input.isEmpty()) return;
 
         String url;
-
         if (input.contains(".") && !input.contains(" ")) {
-
-            if (!input.startsWith("http://") &&
-                    !input.startsWith("https://")) {
-
-                url = "https://" + input;
-
-            } else {
-
-                url = input;
-            }
-
+            url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
         } else {
-
-            url = "https://duckduckgo.com/?q=" +
-                    input.replace(" ", "+");
+            url = "https://duckduckgo.com/?q=" + Uri.encode(input);
         }
 
-if (url.startsWith(
-        "javascript:"
-)
-        || url.startsWith(
-                "file:"
-        )
-        || url.startsWith(
-                "content:"
-        )
-        || url.startsWith(
-                "intent:"
-        )) {
-
-    Toast.makeText(
-            this,
-            "Blocked unsafe URL",
-            Toast.LENGTH_SHORT
-    ).show();
-
-    return;
-}
-
-openUrl(
-        url
-);
+        if (url.startsWith("javascript:") || url.startsWith("file:") || url.startsWith("content:") || url.startsWith("intent:")) {
+            Toast.makeText(this, "Blocked unsafe URL", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        openUrl(url);
     }
-
-}
+                               }
