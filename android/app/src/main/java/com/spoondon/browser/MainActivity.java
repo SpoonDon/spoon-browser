@@ -111,8 +111,11 @@ private ActivityResultLauncher<String>
             new HashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
+private boolean suppressSuggestions = false;
+
     private boolean clearSessionOnExit =
         false;
+
     private final ArrayList<String>
     filterLists =
             new ArrayList<>();
@@ -783,16 +786,26 @@ addressBar.setOnItemClickListener(
                             position
                     );
 
-            if (url != null) {
-
-                addressBar.setText(
-                        url
-                );
-
-                addressBar.setSelection(
-                        url.length()
-                );
+            if (url == null) {
+                return;
             }
+
+            suppressSuggestions = true;
+
+            addressBar.setText(
+                    url
+            );
+
+            addressBar.setSelection(
+                    url.length()
+            );
+
+            addressBar.dismissDropDown();
+
+            addressBar.post(() -> {
+                navigate();
+                suppressSuggestions = false;
+            });
         }
 );
 
@@ -808,6 +821,7 @@ addressBar.addTextChangedListener(
             ) {
             }
 
+
             @Override
             public void onTextChanged(
                     CharSequence s,
@@ -815,6 +829,8 @@ addressBar.addTextChangedListener(
                     int before,
                     int count
             ) {
+
+if (suppressSuggestions) return;
 
                 updateAddressBarSuggestions(
                         s.toString()
