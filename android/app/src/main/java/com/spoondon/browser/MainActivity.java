@@ -1147,8 +1147,9 @@ Intent intent =
                 Intent.ACTION_VIEW
         );
 
-intent.setData(
-        Uri.parse(url)
+intent.setDataAndType(
+        Uri.parse(url),
+        mimetype
 );
 
 intent.putExtra(
@@ -1161,17 +1162,28 @@ intent.putExtra(
         contentDisposition
 );
 
-startActivity(intent);
+if (intent.resolveActivity(
+        getPackageManager()
+) != null) {
 
-            } catch (Exception e) {
+    startActivity(intent);
+
+} else {
 
     Toast.makeText(
             MainActivity.this,
-            e.getClass().getSimpleName(),
-            Toast.LENGTH_LONG
+            "Cannot download file",
+            Toast.LENGTH_SHORT
     ).show();
+}
 
-    e.printStackTrace();
+            } catch (Exception e) {
+
+Toast.makeText(
+        MainActivity.this,
+        "Cannot download file",
+        Toast.LENGTH_SHORT
+).show();
 }
         }
     };
