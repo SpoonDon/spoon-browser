@@ -1147,9 +1147,8 @@ Intent intent =
                 Intent.ACTION_VIEW
         );
 
-intent.setDataAndType(
-        Uri.parse(url),
-        mimetype
+intent.setData(
+        Uri.parse(url)
 );
 
 intent.putExtra(
