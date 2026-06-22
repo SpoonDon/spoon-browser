@@ -716,7 +716,9 @@ if (screenWidth < 400) {
 
         addressBar = new AutoCompleteTextView(this);
 
-        addressBar.setHint("Enter URL");
+        addressBar.setHint(
+        "Search or enter address"
+);
         addressBar.setTextColor(Color.WHITE);
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
@@ -830,13 +832,13 @@ addressBar.addTextChangedListener(
         GradientDrawable addressBg =
                 new GradientDrawable();
 
-        addressBg.setColor(
-                Color.parseColor("#1e1e1e")
-        );
+addressBg.setColor(
+        Color.parseColor("#262626")
+);
 
-        addressBg.setCornerRadius(
-                dp(14)
-        );
+addressBg.setCornerRadius(
+        dp(20)
+);
 
         addressBar.setBackground(
                 addressBg
@@ -2476,15 +2478,6 @@ new AlertDialog.Builder(this)
                 "border-radius:18px;background:#1f1f1f;" +
                 "color:white;font-size:18px;outline:none;'/>" +
 
-                "<br><br>" +
-
-                "<button onclick='goSearch()' " +
-                "style='padding:14px 32px;border:none;" +
-                "border-radius:14px;background:#333;" +
-                "color:white;font-size:16px;'>" +
-
-                "Search</button>" +
-
                 "</div>" +
 
                 "<script>" +
@@ -2537,11 +2530,6 @@ private void updateAddressBarSuggestions(
 
         String url =
                 history.get(i);
-
-android.util.Log.d(
-        "SpoonSuggest",
-        "History: " + url
-);
 
         if (url == null) {
             continue;
