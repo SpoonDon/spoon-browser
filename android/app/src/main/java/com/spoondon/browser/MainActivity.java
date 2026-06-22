@@ -1,5 +1,7 @@
 package com.spoondon.browser;
 
+import android.text.TextWatcher;
+import android.text.Editable;
 import android.net.Uri;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
@@ -723,7 +725,7 @@ addressBar.setInputType(
                 | android.text.InputType.TYPE_TEXT_VARIATION_URI
 );
 
-addressBar.setThreshold(1);
+addressBar.setThreshold(0);
 
 addressBarAdapter =
         new ArrayAdapter<>(
@@ -734,6 +736,39 @@ addressBarAdapter =
 
 addressBar.setAdapter(
         addressBarAdapter
+);
+
+addressBar.addTextChangedListener(
+        new TextWatcher() {
+
+            @Override
+            public void beforeTextChanged(
+                    CharSequence s,
+                    int start,
+                    int count,
+                    int after
+            ) {
+            }
+
+            @Override
+            public void onTextChanged(
+                    CharSequence s,
+                    int start,
+                    int before,
+                    int count
+            ) {
+
+                updateAddressBarSuggestions(
+                        s.toString()
+                );
+            }
+
+            @Override
+            public void afterTextChanged(
+                    Editable s
+            ) {
+            }
+        }
 );
 
         GradientDrawable addressBg =
@@ -2418,6 +2453,57 @@ new AlertDialog.Builder(this)
                 null
         );
     }
+
+private void updateAddressBarSuggestions(
+        String query
+) {
+
+    addressBarAdapter.clear();
+
+    if (query == null ||
+            query.trim().isEmpty()) {
+
+        return;
+    }
+
+    String lower =
+            query.toLowerCase();
+
+    HashSet<String> seen =
+            new HashSet<>();
+
+    int count = 0;
+
+    for (int i = history.size() - 1;
+         i >= 0 && count < 5;
+         i--) {
+
+        String url =
+                history.get(i);
+
+        if (url == null) {
+            continue;
+        }
+
+        if (!url.toLowerCase()
+                .contains(lower)) {
+
+            continue;
+        }
+
+        if (!seen.add(url)) {
+            continue;
+        }
+
+        addressBarAdapter.add(
+                url
+        );
+
+        count++;
+    }
+
+    addressBarAdapter.notifyDataSetChanged();
+}
 
     private void navigate() {
 
