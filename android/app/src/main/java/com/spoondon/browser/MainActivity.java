@@ -28,6 +28,7 @@ import android.webkit.SafeBrowsingResponse;
 import android.webkit.WebResourceRequest;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.AutoCompleteTextView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -81,7 +82,7 @@ private static final String KEY_CURRENT_TAB =
     private static final int MAX_HISTORY =
             500;
 
-private EditText addressBar;
+private AutoCompleteTextView addressBar;
 private LinearLayout root;
     // Reserved for future WebView container features
 private LinearLayout browserContainer;
@@ -710,7 +711,7 @@ if (screenWidth < 400) {
         tabIndicator.setTextSize(15);
         tabIndicator.setPadding(dp(10), 0, dp(10), 0);
 
-        addressBar = new EditText(this);
+        addressBar = new AutoCompleteTextView(this);
 
         addressBar.setHint("Enter URL");
         addressBar.setTextColor(Color.WHITE);
