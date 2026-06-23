@@ -205,12 +205,6 @@ public class MainActivity extends BridgeActivity {
     }
 }
 
-    private void handleIncomingIntent(Intent intent) {
-        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
-            getCurrentWebView().loadUrl(intent.getData().toString());
-        }
-    }
-
     private void setupRootLayout() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
