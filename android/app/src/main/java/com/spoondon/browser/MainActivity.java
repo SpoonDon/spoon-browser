@@ -791,10 +791,9 @@ private WebChromeClient createWebChromeClient() {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 android.webkit.CookieManager.getInstance().flush();
-                
-                // Defends fresh installs against cold start UI reference misses
-                if (dropdownMenu != null) {
-                    dropdownMenu.setVisibility(View.GONE);
+
+                if (addressBar != null) {
+                    addressBar.dismissDropDown();
                 }
             }
         });
@@ -810,9 +809,9 @@ private WebChromeClient createWebChromeClient() {
     }
 
     private void switchToTab(int index) {
-        // Safe check for uninitialized data trees on fresh setups
+
         if (tabs == null || index < 0 || index >= tabs.size()) return;
-        
+
         currentTab = index;
         saveCurrentTab();
         updateTabIndicator();
@@ -835,9 +834,9 @@ private WebChromeClient createWebChromeClient() {
             }
         }
 
-        // Tames dropdown engine immediately following view translation updates
-        if (dropdownMenu != null) {
-            dropdownMenu.setVisibility(View.GONE);
+        if (addressBar != null) {
+            addressBar.dismissDropDown();
+            addressBar.clearFocus();
         }
     }
 
