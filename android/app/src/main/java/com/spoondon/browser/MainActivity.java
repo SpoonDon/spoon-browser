@@ -37,6 +37,7 @@ import android.widget.Toast;
 import android.widget.PopupMenu;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.text.TextUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -97,7 +98,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-        super.onCreate(null);
+        super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
@@ -182,17 +183,40 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
 
-            for (String url : savedTabs.split("\n")) {
-                if (url == null || url.trim().isEmpty() || url.equals("about:blank")) {
-                    continue;
-                }
-                if (!url.contains(".") && !url.startsWith("http")) {
+            String[] urls = savedTabs.split("\\n");
+            // Limit how many tabs we restore at once to avoid OOM on startup.
+            final int MAX_RESTORE_TABS = Math.min(3, urls.length);
+
+            for (int i = 0; i < MAX_RESTORE_TABS; i++) {
+                String raw = urls[i];
+                if (raw == null) continue;
+                String url = raw.trim();
+                if (url.isEmpty() || url.equals("about:blank")) continue;
+                if (!url.contains(".") && !url.startsWith("http")) continue;
+
+                WebView webView;
+                try {
+                    webView = createConfiguredWebView();
+                } catch (Exception e) {
+                    android.util.Log.e("SpoonBrowser", "createConfiguredWebView failed during restore", e);
                     continue;
                 }
 
-                WebView webView = createConfiguredWebView();
+                // Add the WebView on the current thread (should be UI thread here) and post the load.
                 tabs.add(webView);
-                webView.loadUrl(url.trim());
+                try {
+                    final String toLoad = url;
+                    webView.post(() -> {
+                        try {
+                            webView.loadUrl(toLoad);
+                        } catch (Exception e) {
+                            android.util.Log.e("SpoonBrowser", "Failed loading restored url: " + toLoad, e);
+                            try { webView.destroy(); } catch (Exception ignored) {}
+                        }
+                    });
+                } catch (Exception e) {
+                    android.util.Log.e("SpoonBrowser", "Failed to post load for url: " + url, e);
+                }
             }
 
             if (tabs.isEmpty()) {
@@ -208,6 +232,9 @@ public class MainActivity extends AppCompatActivity {
             return true;
         } catch (Exception e) {
             android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
+            for (WebView w : tabs) {
+                try { w.destroy(); } catch (Exception ignored) {}
+            }
             tabs.clear();
             return false;
         }
@@ -234,7 +261,7 @@ public class MainActivity extends AppCompatActivity {
     private void loadSavedData() {
         String savedHistory = prefs.getString(KEY_HISTORY, "");
         if (!savedHistory.isEmpty()) {
-            for (String item : savedHistory.split("\n")) {
+            for (String item : savedHistory.split("\\n")) {
                 history.add(item);
                 while (history.size() > MAX_HISTORY) {
                     history.remove(0);
@@ -244,7 +271,7 @@ public class MainActivity extends AppCompatActivity {
 
         String savedBookmarks = prefs.getString(KEY_BOOKMARKS, "");
         if (!savedBookmarks.isEmpty()) {
-            for (String bookmark : savedBookmarks.split("\n")) {
+            for (String bookmark : savedBookmarks.split("\\n")) {
                 if (!bookmarks.contains(bookmark)) {
                     bookmarks.add(bookmark);
                 }
@@ -253,7 +280,7 @@ public class MainActivity extends AppCompatActivity {
 
         String savedFilterLists = prefs.getString(KEY_FILTER_LISTS, "");
         if (!savedFilterLists.isEmpty()) {
-            for (String filter : savedFilterLists.split("\n")) {
+            for (String filter : savedFilterLists.split("\\n")) {
                 if (!filterLists.contains(filter)) {
                     filterLists.add(filter);
                 }
@@ -269,7 +296,7 @@ public class MainActivity extends AppCompatActivity {
 
         String savedPageTitles = prefs.getString(KEY_PAGE_TITLES, "");
         if (!savedPageTitles.isEmpty()) {
-            for (String item : savedPageTitles.split("\n")) {
+            for (String item : savedPageTitles.split("\\n")) {
                 String[] parts = item.split("\\|", 2);
                 if (parts.length == 2) {
                     pageTitles.put(parts[0], parts[1]);
@@ -437,7 +464,9 @@ public class MainActivity extends AppCompatActivity {
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
         addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        addressBar.setThreshold(0);
+
+        // Avoid immediate popup on focus/startup — threshold 1 reduces race conditions.
+        addressBar.setThreshold(1);
 
         addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
             @Override
@@ -459,14 +488,24 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-        addressBar.setAdapter(addressBarAdapter);
+        // Defer adapter attachment until after layout to reduce early-popup races.
+        addressBar.post(() -> {
+            try {
+                addressBar.setAdapter(addressBarAdapter);
+            } catch (Exception ignored) {}
+        });
+
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
             String url = addressBarAdapter.getItem(position);
             if (url == null) return;
             suppressSuggestions = true;
             addressBar.setText(url);
             addressBar.setSelection(url.length());
-            addressBar.dismissDropDown();
+            try {
+                if (addressBar.isAttachedToWindow()) {
+                    addressBar.dismissDropDown();
+                }
+            } catch (Exception ignored) {}
             addressBar.post(() -> {
                 navigate();
                 suppressSuggestions = false;
@@ -616,12 +655,17 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onReceivedTitle(WebView view, String title) {
-                String url = view.getUrl();
-                if (url != null && title != null && !title.isEmpty()) {
-                    synchronized (pageTitles) {
-                        pageTitles.put(url, title);
+                try {
+                    String url = null;
+                    try { url = view.getUrl(); } catch (Exception ignored) {}
+                    if (url != null && title != null && !title.isEmpty()) {
+                        synchronized (pageTitles) {
+                            pageTitles.put(url, title);
+                        }
+                        savePageTitles();
                     }
-                    savePageTitles();
+                } catch (Exception e) {
+                    android.util.Log.w("SpoonBrowser", "onReceivedTitle failed", e);
                 }
             }
         };
@@ -681,7 +725,11 @@ public class MainActivity extends AppCompatActivity {
                 android.webkit.CookieManager.getInstance().flush();
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
-                    addressBar.dismissDropDown();
+                    try {
+                        if (addressBar.isAttachedToWindow()) {
+                            addressBar.dismissDropDown();
+                        }
+                    } catch (Exception ignored) {}
                 }
                 updateTabIndicator();
                 saveOpenTabs();
@@ -812,7 +860,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (addressBar != null) {
-            addressBar.dismissDropDown();
+            try {
+                if (addressBar.isAttachedToWindow()) {
+                    addressBar.dismissDropDown();
+                }
+            } catch (Exception ignored) {}
             addressBar.clearFocus();
         }
     }
@@ -962,15 +1014,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveBookmarks() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_BOOKMARKS, String.join("\n", bookmarks)).apply();
-        }
+        prefs.edit().putString(KEY_BOOKMARKS, TextUtils.join("\n", bookmarks)).apply();
     }
 
     private void saveHistory() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_HISTORY, String.join("\n", history)).apply();
-        }
+        prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
     }
 
     private void rebuildBlockedDomains() {
@@ -1026,9 +1074,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveFilterLists() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_FILTER_LISTS, String.join("\n", filterLists)).apply();
-        }
+        prefs.edit().putString(KEY_FILTER_LISTS, TextUtils.join("\n", filterLists)).apply();
         rebuildBlockedDomains();
     }
 
@@ -1040,9 +1086,7 @@ public class MainActivity extends AppCompatActivity {
                 urls.add(url);
             }
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_OPEN_TABS, String.join("\n", urls)).apply();
-        }
+        prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", urls)).apply();
     }
 
     private void saveCurrentTab() {
@@ -1181,8 +1225,7 @@ public class MainActivity extends AppCompatActivity {
                 "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
                 "<div style='padding-top:20%;'>" +
                 "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
-                "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
-                "</div>" +
+                "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>[...]\n                "</div>" +
                 "<script>" +
                 "function goSearch(){" +
                 "var q=document.getElementById(\"q\").value;" +
@@ -1202,7 +1245,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateAddressBarSuggestions(String query) {
         addressBarAdapter.clear();
-        if (query == null || query.trim().isEmpty()) return;
+        if (query == null || query.trim().isEmpty()) {
+            try {
+                if (addressBar != null && addressBar.isAttachedToWindow()) {
+                    addressBar.dismissDropDown();
+                }
+            } catch (Exception ignored) {}
+            return;
+        }
 
         String lower = query.toLowerCase();
         HashSet<String> seen = new HashSet<>();
@@ -1231,11 +1281,26 @@ public class MainActivity extends AppCompatActivity {
         }
 
         addressBarAdapter.notifyDataSetChanged();
-        if (addressBarAdapter.getCount() > 0) {
-            addressBar.showDropDown();
-        } else {
-            addressBar.dismissDropDown();
-        }
+
+        try {
+            if (addressBar != null && addressBar.isAttachedToWindow()) {
+                if (addressBarAdapter.getCount() > 0) {
+                    addressBar.showDropDown();
+                } else {
+                    addressBar.dismissDropDown();
+                }
+            } else if (addressBar != null) {
+                // Post a safe attempt after layout if not attached yet.
+                addressBar.post(() -> {
+                    try {
+                        if (addressBar.isAttachedToWindow()) {
+                            if (addressBarAdapter.getCount() > 0) addressBar.showDropDown();
+                            else addressBar.dismissDropDown();
+                        }
+                    } catch (Exception ignored) {}
+                });
+            }
+        } catch (Exception ignored) {}
     }
 
     private void navigate() {
@@ -1260,5 +1325,20 @@ public class MainActivity extends AppCompatActivity {
         }
 
         openUrl(url);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        for (WebView w : tabs) {
+            try {
+                w.stopLoading();
+                w.clearHistory();
+                w.loadUrl("about:blank");
+                w.removeAllViews();
+                w.destroy();
+            } catch (Exception ignored) {}
+        }
+        tabs.clear();
     }
 }
