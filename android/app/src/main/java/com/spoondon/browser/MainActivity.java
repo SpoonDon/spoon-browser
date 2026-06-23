@@ -65,6 +65,7 @@ public class MainActivity extends BridgeActivity {
     private static final String KEY_CURRENT_TAB = "current_tab";
     private static final int MAX_HISTORY = 500;
 
+    private String pendingExternalUrl = null;
     private AutoCompleteTextView addressBar;
     private ArrayAdapter<String> addressBarAdapter;
     private LinearLayout root;
@@ -80,7 +81,6 @@ public class MainActivity extends BridgeActivity {
     private WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<String> filePickerLauncher;
-    private String pendingExternalUrl = null;
 
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
@@ -99,27 +99,18 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // 1. Detect if this cold start is triggered by an external link app intent
+        super.onCreate(savedInstanceState);
+
+        // 1. SAFELY EXTRACT LINK INTERCEPT (No UI touching here)
         Intent intent = getIntent();
-        boolean isExternalLink = intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null;
-
-        // 2. If it IS an external link, pass NULL to super to wipe out any crashing saved states
-        if (isExternalLink) {
-            super.onCreate(null);
-            pendingExternalUrl = intent.getData().toString();
-        } else {
-            super.onCreate(savedInstanceState);
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
+            android.net.Uri data = intent.getData();
+            if (data != null) {
+                pendingExternalUrl = data.toString();
+            }
         }
 
-        // 3. Keep your engine pre-warming logic active
-        try {
-            android.webkit.WebView.startSafeBrowsing(this, null);
-            new android.webkit.WebView(this); 
-        } catch (Exception e) {
-            android.util.Log.e("SpoonBrowser", "WebView pre-warming failed", e);
-        }
-
-        // 4. Run your clean layout registration
+        // 2. RUN REGISTRATION SEQUENCES
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -132,6 +123,7 @@ public class MainActivity extends BridgeActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
+        // 3. BUILD THE ARCHITECTURE SKELETON
         loadSavedData();
         setupRootLayout();
         createToolbarViews();
@@ -143,24 +135,39 @@ public class MainActivity extends BridgeActivity {
         root.addView(browserContainer);
         setContentView(root);
 
-        setupInitialTab();
+        // 4. WAIT UNTIL THE WINDOW IS FULLY DRAWN TO INITIALIZE TABS
+        root.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                // Instantly remove the listener so it only fires once on boot
+                root.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                
+                // Now it is 100% safe to initialize tabs without racing the UI thread
+                setupInitialTab();
+            }
+        });
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent); // Overwrites the old startup intent with the new link intent
+        setIntent(intent); 
         
-        if (intent != null) {
-            String action = intent.getAction();
-            Uri data = intent.getData();
-            
-            if (Intent.ACTION_VIEW.equals(action) && data != null) {
-                String urlToLoad = data.toString();
-                if (addressBar != null) {
-                    addressBar.setText(urlToLoad);
-                }
-                openUrl(urlToLoad);
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
+            final android.net.Uri data = intent.getData();
+            if (data != null) {
+                // Ensure the layout thread finishes processing the app switch event before executing
+                root.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        createNewTab(); // Force a clean, separate tab
+                        String urlToLoad = data.toString();
+                        if (addressBar != null) {
+                            addressBar.setText(urlToLoad);
+                        }
+                        openUrl(urlToLoad);
+                    }
+                });
             }
         }
     }
@@ -175,23 +182,23 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void setupInitialTab() {
-        // 1. Check if an external link is waiting to be opened
         if (pendingExternalUrl != null) {
-            createNewTab();
+            createNewTab(); // Safely creates the clean tab instance
+            
             if (addressBar != null) {
                 addressBar.setText(pendingExternalUrl);
             }
-            openUrl(pendingExternalUrl); 
-            pendingExternalUrl = null;   // Clear it
+            openUrl(pendingExternalUrl); // Loads the page seamlessly
+            
+            pendingExternalUrl = null; // Reset the holder completely
             return;
         }
 
-        // 2. If no external link, try to restore previous session tabs
+        // Standard clean boot fallback options
         if (restoreSession()) {
             return;
         }
 
-        // 3. Otherwise, just open a clean blank tab and show home layout
         createNewTab();
         showHome();
     }
