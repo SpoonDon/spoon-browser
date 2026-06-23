@@ -99,17 +99,27 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        // 1. Detect if this cold start is triggered by an external link app intent
+        Intent intent = getIntent();
+        boolean isExternalLink = intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null;
 
-        // FORCE WEBVIEW ENGINE TO INITIALIZE BEFORE LOADING LAYOUTS OR INTENTS
+        // 2. If it IS an external link, pass NULL to super to wipe out any crashing saved states
+        if (isExternalLink) {
+            super.onCreate(null);
+            pendingExternalUrl = intent.getData().toString();
+        } else {
+            super.onCreate(savedInstanceState);
+        }
+
+        // 3. Keep your engine pre-warming logic active
         try {
             android.webkit.WebView.startSafeBrowsing(this, null);
-            // Creating a temporary dummy WebView forces the system to load the Chromium libraries immediately
             new android.webkit.WebView(this); 
         } catch (Exception e) {
             android.util.Log.e("SpoonBrowser", "WebView pre-warming failed", e);
         }
 
+        // 4. Run your clean layout registration
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -132,15 +142,6 @@ public class MainActivity extends BridgeActivity {
         root.addView(toolbar);
         root.addView(browserContainer);
         setContentView(root);
-
-        // SAFE INTENT CHECK BEFORE WE INITIALIZE THE TAB
-        Intent intent = getIntent();
-        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
-            Uri data = intent.getData();
-            if (data != null) {
-                pendingExternalUrl = data.toString();
-            }
-        }
 
         setupInitialTab();
     }
