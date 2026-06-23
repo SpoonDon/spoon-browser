@@ -40,6 +40,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AppCompatActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -48,7 +49,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
 import android.webkit.ValueCallback;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.RenderProcessGoneDetail;
@@ -93,13 +93,9 @@ public class MainActivity extends AppCompatActivity {
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
     private final HashSet<String> blockedDomains = new HashSet<>();
     private final HashSet<String> rawFilterRules = new HashSet<>();
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // 1. ANCHOR GUARD: Safely switch from cold boot/splash theme to valid AppCompat container style
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-        
-        // 2. LIFECYCLE RESTORE: Maintain normal Android OS state persistence hooks
         super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
@@ -140,8 +136,8 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         handleIncomingIntent(getIntent());
     }
+
     private void handleIncomingIntent(Intent intent) {
-        // 1. Handle explicit external links clicked from other apps
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
@@ -150,18 +146,15 @@ public class MainActivity extends AppCompatActivity {
                 addressBar.setText(urlToLoad);
             }
             openUrl(urlToLoad);
-            
-            // Mark this specific action as handled so it doesn't open again on casual resume
-            intent.setAction(null); 
-            
-        // 2. If no tabs exist (Cold Start or Screen Rotation), initialize the workspace
-        } else if (tabs.isEmpty()) {
-            if (!restoreSession()) {
-                createNewTab();
-                showHome();
+            setIntent(new Intent()); 
+        } else if (intent != null && intent.getAction() != null) {
+            if (restoreSession()) {
+                return;
             }
+            createNewTab();
+            showHome();
+            setIntent(new Intent());
         }
-        // 3. If tabs are already in memory, do nothing and keep the user's state intact
     }
 
     @Override
@@ -210,7 +203,6 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
-
     private void setupRootLayout() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -277,6 +269,7 @@ public class MainActivity extends AppCompatActivity {
         }
         rebuildBlockedDomains();
     }
+
     private void setupBackButtonHandler() {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -359,7 +352,6 @@ public class MainActivity extends AppCompatActivity {
             popup.show();
         });
     }
-
     private void setupToolbarListeners() {
         tabIndicator.setOnLongClickListener(v -> {
             showTabSwitcher();
@@ -444,17 +436,14 @@ public class MainActivity extends AppCompatActivity {
                 return new android.widget.Filter() {
                     @Override
                     protected FilterResults performFiltering(CharSequence constraint) {
-                        // Complete thread isolation: Return a dummy result container 
-                        // without touching or inspecting the adapter from the background.
                         FilterResults results = new FilterResults();
                         if (constraint != null) {
-                            results.count = 1; 
+                            results.count = 1;
                         }
                         return results;
                     }
                     @Override
                     protected void publishResults(CharSequence constraint, FilterResults results) {
-                        // Executed safely back on the Main UI Thread
                         notifyDataSetChanged();
                     }
                 };
@@ -539,7 +528,6 @@ public class MainActivity extends AppCompatActivity {
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
-
     private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
         settings.setSafeBrowsingEnabled(true);
@@ -552,10 +540,9 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
 
-        // STABILITY & AUTO-WEBVIEW COMPATIBILITY FIXES:
-        settings.setDomStorageEnabled(true);              // ENABLED: Prevents JS DOM Exception 18 Freezes
-        settings.setDatabaseEnabled(true);               // ENABLED: Supports modern WebSQL fallback architectures
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);  // RESTORED: Standard compliance and cache efficiency
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
     }
 
     private WebChromeClient createWebChromeClient() {
