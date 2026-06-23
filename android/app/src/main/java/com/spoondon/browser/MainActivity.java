@@ -1,5 +1,6 @@
 package com.spoondon.browser;
 
+import android.os.Build;
 import android.text.TextWatcher;
 import android.text.Editable;
 import android.net.Uri;
@@ -97,7 +98,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
         super.onCreate(null);
-
+,
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -120,6 +121,14 @@ public class MainActivity extends AppCompatActivity {
             if (toolbar != null) root.addView(toolbar);
             if (browserContainer != null) root.addView(browserContainer);
             setContentView(root);
+
+            // FIX: Prevent Autofill from spawning a rogue popup window before the layout pass finishes
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+                if (browserContainer != null) {
+                    browserContainer.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+                }
+            }
         }
 
         loadSavedData();
