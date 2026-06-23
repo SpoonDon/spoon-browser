@@ -174,43 +174,85 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean restoreSession() {
-    try {
-        String savedTabs = prefs.getString(KEY_OPEN_TABS, "");
-        if (savedTabs == null || savedTabs.isEmpty()) {
-            return false;
-        }
-
-        for (String url : savedTabs.split("\n")) {
-            if (url == null || url.trim().isEmpty() || url.equals("about:blank")) {
-                continue;
-            }
-            // Additional check to ensure it looks like a valid web string
-            if (!url.contains(".") && !url.startsWith("http")) {
-                continue;
+        try {
+            String savedTabs = prefs.getString(KEY_OPEN_TABS, "");
+            if (savedTabs == null || savedTabs.isEmpty()) {
+                return false;
             }
 
-            WebView webView = createConfiguredWebView();
-            tabs.add(webView);
-            webView.loadUrl(url.trim());
-        }
+            // Always clear the tracking pool before recovery to prevent ghost tabs
+            tabs.clear();
 
-        if (tabs.isEmpty()) {
-            return false;
-        }
+            for (String url : savedTabs.split("\n")) {
+                if (url == null || url.trim().isEmpty() || url.equals("about:blank")) {
+                    continue;
+                }
+                if (!url.contains(".") && !url.startsWith("http")) {
+                    continue;
+                }
 
-        int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
-        if (savedCurrentTab < 0 || savedCurrentTab >= tabs.size()) {
-            savedCurrentTab = 0;
-        }
+                // Explicitly configure layout metrics back-to-back here
+                WebView webView = new WebView(this);
+                configureWebSettings(webView.getSettings());
+                webView.setWebChromeClient(createWebChromeClient());
+                webView.setOnLongClickListener(createImageLongClickListener(webView));
+                webView.setWebViewClient(createWebViewClient());
+                
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                );
+                webView.setLayoutParams(params);
+                
+                tabs.add(webView);
+                webView.loadUrl(url.trim());
+            }
 
-        switchToTab(savedCurrentTab);
-        return true;
-    } catch (Exception e) {
-        android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
-        tabs.clear(); // Clear any partial tabs to avoid half-broken layouts
-        return false; // Fall back to opening a fresh homepage instead of crashing
+            if (tabs.isEmpty()) {
+                return false;
+            }
+
+            int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
+            if (savedCurrentTab < 0 || savedCurrentTab >= tabs.size()) {
+                savedCurrentTab = 0;
+            }
+
+            currentTab = savedCurrentTab;
+            updateTabIndicator();
+
+            // Handle injection cleanly into the container frame
+            if (browserContainer != null) {
+                browserContainer.removeAllViews();
+                WebView activeWebView = tabs.get(currentTab);
+                if (activeWebView != null) {
+                    LinearLayout.LayoutParams containerParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 
+                        LinearLayout.LayoutParams.MATCH_PARENT
+                    );
+                    browserContainer.addView(activeWebView, containerParams);
+                    
+                    String currentUrl = activeWebView.getUrl();
+                    if (addressBar != null) {
+                        addressBar.setText((currentUrl == null || currentUrl.isEmpty() || "about:blank".equals(currentUrl)) ? "" : currentUrl);
+                    }
+                }
+            }
+
+            if (addressBar != null) {
+                addressBar.dismissDropDown();
+                addressBar.clearFocus();
+            }
+
+            return true;
+        } catch (Exception e) {
+            android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
+            tabs.clear(); 
+            if (browserContainer != null) {
+                browserContainer.removeAllViews();
+            }
+            return false; 
+        }
     }
-}
 
     private void setupRootLayout() {
         root = new LinearLayout(this);
