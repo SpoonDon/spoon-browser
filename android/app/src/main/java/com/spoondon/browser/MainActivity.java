@@ -134,7 +134,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // The UI is guaranteed to be fully inflated, attached, and stable here
         handleIncomingIntent(getIntent());
