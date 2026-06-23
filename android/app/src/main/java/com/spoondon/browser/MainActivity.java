@@ -112,19 +112,20 @@ public class MainActivity extends BridgeActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-        // Build infrastructure ONLY
-        loadSavedData();
         setupRootLayout();
         createToolbarViews();
         setupToolbarListeners();
         setupMenuButton();
         setupBackButtonHandler();
 
-        root.addView(toolbar);
-        root.addView(browserContainer);
-        setContentView(root);
-        
-        // Notice: handleIncomingIntent is REMOVED from here entirely!
+        if (root != null) {
+            if (toolbar != null) root.addView(toolbar);
+            if (browserContainer != null) root.addView(browserContainer);
+            setContentView(root);
+        }
+
+        // 2. NOW it is safe to load data because the views are alive in memory
+        loadSavedData();
     }
 
     @Override
