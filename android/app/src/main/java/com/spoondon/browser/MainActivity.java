@@ -96,7 +96,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        super.onCreate(null);
 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
@@ -527,10 +527,10 @@ public class MainActivity extends BridgeActivity {
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
+
     private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
         settings.setSafeBrowsingEnabled(true);
-        settings.setDomStorageEnabled(true);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setBuiltInZoomControls(true);
@@ -539,6 +539,11 @@ public class MainActivity extends BridgeActivity {
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
+
+        // STABILITY & ROCK-SOLID LAUNCH FIXES:
+        settings.setDomStorageEnabled(false);            // Changed from true to false
+        settings.setDatabaseEnabled(false);              // Added to disable local SQL dbs
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE); // Added to bypass disk cache corruption
     }
 
     private WebChromeClient createWebChromeClient() {
