@@ -735,18 +735,18 @@ private WebChromeClient createWebChromeClient() {
     }
 
     private void createNewTab() {
-
         WebView webView = new WebView(this);
-
+        
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-
+        
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
+        // Native Handover to External Download Managers
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -768,6 +768,7 @@ private WebChromeClient createWebChromeClient() {
             }
         });
 
+        // Custom Protocol & Gesture Navigation Dropdown Tamer
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -785,18 +786,23 @@ private WebChromeClient createWebChromeClient() {
                 }
                 return false;
             }
-
+            
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 android.webkit.CookieManager.getInstance().flush();
+                
+                // Defends fresh installs against cold start UI reference misses
+                if (dropdownMenu != null) {
+                    dropdownMenu.setVisibility(View.GONE);
+                }
             }
         });
 
         if (browserContainer != null) {
-            browserContainer.removeAllViews();
+            browserContainer.removeAllViews(); 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT, 
                 LinearLayout.LayoutParams.MATCH_PARENT
             );
             browserContainer.addView(webView, params);
@@ -804,16 +810,35 @@ private WebChromeClient createWebChromeClient() {
     }
 
     private void switchToTab(int index) {
-        if (index < 0 || index >= tabs.size()) return;
+        // Safe check for uninitialized data trees on fresh setups
+        if (tabs == null || index < 0 || index >= tabs.size()) return;
+        
         currentTab = index;
         saveCurrentTab();
         updateTabIndicator();
 
-        browserContainer.removeAllViews();
-        browserContainer.addView(getCurrentWebView());
+        if (browserContainer != null) {
+            browserContainer.removeAllViews();
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 
+                LinearLayout.LayoutParams.MATCH_PARENT
+            );
+            
+            WebView currentWebView = getCurrentWebView();
+            if (currentWebView != null) {
+                browserContainer.addView(currentWebView, params);
+                
+                String url = currentWebView.getUrl();
+                if (addressBar != null) {
+                    addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
+                }
+            }
+        }
 
-        String url = getCurrentWebView().getUrl();
-        addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
+        // Tames dropdown engine immediately following view translation updates
+        if (dropdownMenu != null) {
+            dropdownMenu.setVisibility(View.GONE);
+        }
     }
 
 private void closeTab(int index) {
