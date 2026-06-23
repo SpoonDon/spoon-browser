@@ -621,33 +621,7 @@ private WebChromeClient createWebChromeClient() {
         };
     }
 
-    webView.setDownloadListener(new DownloadListener() {
-    @Override
-    public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-
-            String resolvedMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
-
-            intent.setDataAndType(Uri.parse(url), mimeType);
-
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            
-            
-            startActivity(intent);
-        } catch (Exception e) {
-            
-            try {
-                Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(fallbackIntent);
-            } catch (Exception fatal) {
-                // Keep a fallback toast only if the OS has absolutely no browser/download handler available
-                Toast.makeText(MainActivity.this, "No external download application found", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-});
+    
 
     private View.OnLongClickListener createImageLongClickListener(WebView webView) {
         return v -> {
@@ -755,42 +729,35 @@ private WebChromeClient createWebChromeClient() {
 
         configureWebSettings(webView.getSettings());
         webView.setWebChromeClient(createWebChromeClient());
-        webView.setDownloadListener(createDownloadListener());
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(createWebViewClient());
         return webView;
     }
 
     private void createNewTab() {
-        // 1. Initialize the WebView instance securely inside the Context
+
         WebView webView = new WebView(this);
-        
-        // 2. Configure standard browser WebSettings
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        
-        // Performance Tweak: Enable hardware layer acceleration
+
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
-        // 3. Setup the External Handover Download Listener
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW);
-                    // Handle missing MIME types with a generic binary stream fallback
                     String resolvedMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
-                    
                     intent.setDataAndType(Uri.parse(url), resolvedMimeType);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(intent);
                 } catch (Exception e) {
                     try {
-                        // Total fallback: Pass the raw URL stream directly to the OS
                         Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(fallbackIntent);
@@ -801,42 +768,35 @@ private WebChromeClient createWebChromeClient() {
             }
         });
 
-        // 4. Setup the WebViewClient for Protocol Interception
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String url = request.getUrl().toString();
-                
-                // Intercept magnet protocols and hand over to external client
                 if (url.startsWith("magnet:") || url.endsWith(".torrent")) {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         view.getContext().startActivity(intent);
-                        return true; // Stop the WebView from loading the raw protocol layout
+                        return true;
                     } catch (Exception e) {
                         Toast.makeText(view.getContext(), "No app found to handle magnet links", Toast.LENGTH_SHORT).show();
                         return true;
                     }
                 }
-                return false; // Permit normal web links to render internally
+                return false;
             }
-            
+
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                // Synchronize session cookies to disk asynchronously safely
                 android.webkit.CookieManager.getInstance().flush();
             }
         });
 
-        // 5. Attach the newly created engine instance to your layout container view tree
         if (browserContainer != null) {
-            // Remove previous view to swap tabs cleanly if not using a multi-view layout stack
-            browserContainer.removeAllViews(); 
-            
+            browserContainer.removeAllViews();
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             );
             browserContainer.addView(webView, params);
