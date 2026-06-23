@@ -65,7 +65,6 @@ public class MainActivity extends BridgeActivity {
     private static final String KEY_CURRENT_TAB = "current_tab";
     private static final int MAX_HISTORY = 500;
 
-    private String pendingExternalUrl = null;
     private AutoCompleteTextView addressBar;
     private ArrayAdapter<String> addressBarAdapter;
     private LinearLayout root;
@@ -101,16 +100,6 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // 1. SAFELY EXTRACT LINK INTERCEPT (No UI touching here)
-        Intent intent = getIntent();
-        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
-            android.net.Uri data = intent.getData();
-            if (data != null) {
-                pendingExternalUrl = data.toString();
-            }
-        }
-
-        // 2. RUN REGISTRATION SEQUENCES
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -123,7 +112,7 @@ public class MainActivity extends BridgeActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-        // 3. BUILD THE ARCHITECTURE SKELETON
+        // 1. Initialize empty data & base view containers
         loadSavedData();
         setupRootLayout();
         createToolbarViews();
@@ -135,41 +124,37 @@ public class MainActivity extends BridgeActivity {
         root.addView(browserContainer);
         setContentView(root);
 
-        // 4. WAIT UNTIL THE WINDOW IS FULLY DRAWN TO INITIALIZE TABS
-        root.getViewTreeObserver().addOnGlobalLayoutListener(new android.view.ViewTreeObserver.OnGlobalLayoutListener() {
-            @Override
-            public void onGlobalLayout() {
-                // Instantly remove the listener so it only fires once on boot
-                root.getViewTreeObserver().removeOnGlobalLayoutListener(this);
-                
-                // Now it is 100% safe to initialize tabs without racing the UI thread
-                setupInitialTab();
+        // 2. Run the decoupled intent distributor
+        handleIncomingIntent(getIntent());
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            String urlToLoad = intent.getData().toString();
+            
+            // Replicate FOSS Browser: Initialize the tab controller allocation first
+            createNewTab(); 
+            
+            if (addressBar != null) {
+                addressBar.setText(urlToLoad);
             }
-        });
+            openUrl(urlToLoad);
+        } else {
+            // Normal Launch sequence
+            if (restoreSession()) {
+                return;
+            }
+            createNewTab();
+            showHome();
+        }
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent); 
-        
-        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction())) {
-            final android.net.Uri data = intent.getData();
-            if (data != null) {
-                // Ensure the layout thread finishes processing the app switch event before executing
-                root.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        createNewTab(); // Force a clean, separate tab
-                        String urlToLoad = data.toString();
-                        if (addressBar != null) {
-                            addressBar.setText(urlToLoad);
-                        }
-                        openUrl(urlToLoad);
-                    }
-                });
-            }
-        }
+        setIntent(intent);
+
+        handleIncomingIntent(intent);
     }
 
     @Override
@@ -179,28 +164,6 @@ public class MainActivity extends BridgeActivity {
             saveCurrentTab();
         }
         super.onStop();
-    }
-
-    private void setupInitialTab() {
-        if (pendingExternalUrl != null) {
-            createNewTab(); // Safely creates the clean tab instance
-            
-            if (addressBar != null) {
-                addressBar.setText(pendingExternalUrl);
-            }
-            openUrl(pendingExternalUrl); // Loads the page seamlessly
-            
-            pendingExternalUrl = null; // Reset the holder completely
-            return;
-        }
-
-        // Standard clean boot fallback options
-        if (restoreSession()) {
-            return;
-        }
-
-        createNewTab();
-        showHome();
     }
 
     private boolean restoreSession() {
