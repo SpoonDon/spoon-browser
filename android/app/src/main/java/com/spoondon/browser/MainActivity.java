@@ -799,6 +799,11 @@ private WebChromeClient createWebChromeClient() {
             }
         });
 
+        // FIX: Register the new WebView into the tabs array collection 
+        tabs.add(webView);
+        currentTab = tabs.size() - 1; // Update track pointer to this new tab
+        updateTabIndicator();
+
         if (browserContainer != null) {
             browserContainer.removeAllViews(); 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
