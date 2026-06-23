@@ -112,7 +112,7 @@ public class MainActivity extends BridgeActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-        // 1. Initialize empty data & base view containers
+        // Build infrastructure ONLY
         loadSavedData();
         setupRootLayout();
         createToolbarViews();
@@ -123,8 +123,20 @@ public class MainActivity extends BridgeActivity {
         root.addView(toolbar);
         root.addView(browserContainer);
         setContentView(root);
+        
+        // Notice: handleIncomingIntent is REMOVED from here entirely!
+    }
 
-        // 2. Run the decoupled intent distributor
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent); // Overwrites old intent context with the new incoming link
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // The UI is guaranteed to be fully inflated, attached, and stable here
         handleIncomingIntent(getIntent());
     }
 
@@ -132,29 +144,23 @@ public class MainActivity extends BridgeActivity {
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
-            // Replicate FOSS Browser: Initialize the tab controller allocation first
             createNewTab(); 
-            
             if (addressBar != null) {
                 addressBar.setText(urlToLoad);
             }
             openUrl(urlToLoad);
-        } else {
-            // Normal Launch sequence
+            
+            // Clean the intent state immediately to avoid reload loops on rotation
+            setIntent(new Intent()); 
+        } else if (intent != null && intent.getAction() != null) {
             if (restoreSession()) {
                 return;
             }
             createNewTab();
             showHome();
+            
+            setIntent(new Intent());
         }
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-
-        handleIncomingIntent(intent);
     }
 
     @Override
