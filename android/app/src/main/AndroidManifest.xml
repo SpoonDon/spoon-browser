@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Essential permissions for a browser -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -10,13 +11,13 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@androidx.appcompat.R.style.Theme_AppCompat_NoActionBar">
+        android:theme="@style/AppTheme">
 
         <activity
             android:name=".MainActivity"
             android:label="@string/app_name"
-            android:theme="@androidx.appcompat.R.style.Theme_AppCompat_NoActionBar"
-            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:theme="@style/AppTheme"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode"
             android:launchMode="singleTask"
             android:exported="true">
 
