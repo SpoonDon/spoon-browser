@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-        super.onCreate(savedInstanceState);
+        super.onCreate(null);
 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
