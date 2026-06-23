@@ -1,20 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <!-- Base application theme: Modern Material Components -->
-    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Brand Colors -->
-        <item name="colorPrimary">#6200EE</item>
-        <item name="colorPrimaryVariant">#3700B3</item>
-        <item name="colorSecondary">#03DAC6</item>
-        
-        <!-- Sleek Surface Colors -->
-        <item name="android:windowBackground">?android:attr/colorBackground</item>
-        <item name="android:statusBarColor">?android:attr/colorBackground</item>
-        <item name="android:windowLightStatusBar">true</item>
-        
-        <!-- Removes window transition delays for a faster launch feel -->
-        <item name="android:windowAnimationStyle">@null</item>
-    </style>
-
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <item name="colorPrimary">#6200EE</item>
+    <item name="colorPrimaryDark">#3700B3</item>
+    <item name="colorAccent">#03DAC6</item>
+    <!-- This prevents the white flash on startup -->
+    <item name="android:windowBackground">?android:attr/colorBackground</item>
+</style>
 </resources>
