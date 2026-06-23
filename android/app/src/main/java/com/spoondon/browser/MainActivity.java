@@ -40,7 +40,6 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.activity.OnBackPressedCallback;
-import com.getcapacitor.BridgeActivity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,11 +48,12 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
 import android.webkit.ValueCallback;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.RenderProcessGoneDetail;
 
-public class MainActivity extends BridgeActivity {
+public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS_NAME = "spoon_browser";
     private static final String KEY_BOOKMARKS = "bookmarks";
@@ -96,7 +96,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(null);
+        // 1. ANCHOR GUARD: Safely switch from cold boot/splash theme to valid AppCompat container style
+        setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
+        
+        // 2. LIFECYCLE RESTORE: Maintain normal Android OS state persistence hooks
+        super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
@@ -137,6 +141,7 @@ public class MainActivity extends BridgeActivity {
         handleIncomingIntent(getIntent());
     }
     private void handleIncomingIntent(Intent intent) {
+        // 1. Handle explicit external links clicked from other apps
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
@@ -145,15 +150,18 @@ public class MainActivity extends BridgeActivity {
                 addressBar.setText(urlToLoad);
             }
             openUrl(urlToLoad);
-            setIntent(new Intent()); 
-        } else if (intent != null && intent.getAction() != null) {
-            if (restoreSession()) {
-                return;
+            
+            // Mark this specific action as handled so it doesn't open again on casual resume
+            intent.setAction(null); 
+            
+        // 2. If no tabs exist (Cold Start or Screen Rotation), initialize the workspace
+        } else if (tabs.isEmpty()) {
+            if (!restoreSession()) {
+                createNewTab();
+                showHome();
             }
-            createNewTab();
-            showHome();
-            setIntent(new Intent());
         }
+        // 3. If tabs are already in memory, do nothing and keep the user's state intact
     }
 
     @Override
@@ -436,13 +444,17 @@ public class MainActivity extends BridgeActivity {
                 return new android.widget.Filter() {
                     @Override
                     protected FilterResults performFiltering(CharSequence constraint) {
+                        // Complete thread isolation: Return a dummy result container 
+                        // without touching or inspecting the adapter from the background.
                         FilterResults results = new FilterResults();
-                        results.values = addressBarAdapter;
-                        results.count = addressBarAdapter.getCount();
+                        if (constraint != null) {
+                            results.count = 1; 
+                        }
                         return results;
                     }
                     @Override
                     protected void publishResults(CharSequence constraint, FilterResults results) {
+                        // Executed safely back on the Main UI Thread
                         notifyDataSetChanged();
                     }
                 };
@@ -540,10 +552,10 @@ public class MainActivity extends BridgeActivity {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
 
-        // STABILITY & ROCK-SOLID LAUNCH FIXES:
-        settings.setDomStorageEnabled(false);            // Changed from true to false
-        settings.setDatabaseEnabled(false);              // Added to disable local SQL dbs
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE); // Added to bypass disk cache corruption
+        // STABILITY & AUTO-WEBVIEW COMPATIBILITY FIXES:
+        settings.setDomStorageEnabled(true);              // ENABLED: Prevents JS DOM Exception 18 Freezes
+        settings.setDatabaseEnabled(true);               // ENABLED: Supports modern WebSQL fallback architectures
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);  // RESTORED: Standard compliance and cache efficiency
     }
 
     private WebChromeClient createWebChromeClient() {
