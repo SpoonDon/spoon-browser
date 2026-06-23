@@ -621,19 +621,33 @@ private WebChromeClient createWebChromeClient() {
         };
     }
 
-    private DownloadListener createDownloadListener() {
-        return (url, userAgent, contentDisposition, mimetype, contentLength) -> {
+    webView.setDownloadListener(new DownloadListener() {
+    @Override
+    public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+
+            String resolvedMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
+
+            intent.setDataAndType(Uri.parse(url), mimeType);
+
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            
+            
+            startActivity(intent);
+        } catch (Exception e) {
+            
             try {
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(Uri.parse(url), mimetype);
-                intent.putExtra("User-Agent", userAgent);
-                intent.putExtra("Content-Disposition", contentDisposition);
-                startActivity(intent);
-            } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "Cannot download file", Toast.LENGTH_SHORT).show();
+                Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(fallbackIntent);
+            } catch (Exception fatal) {
+                // Keep a fallback toast only if the OS has absolutely no browser/download handler available
+                Toast.makeText(MainActivity.this, "No external download application found", Toast.LENGTH_SHORT).show();
             }
-        };
+        }
     }
+});
 
     private View.OnLongClickListener createImageLongClickListener(WebView webView) {
         return v -> {
