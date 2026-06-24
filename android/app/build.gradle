@@ -33,28 +33,35 @@ android {
         }
     }
 
-    signingConfigs {
+        signingConfigs {
         release {
-            // Guard the properties inside the signing configuration block
+            // Check if local file properties exist OR if GitHub Actions Secrets environment variables are present
             if (keystoreProperties["storeFile"] != null) {
                 storeFile file(keystoreProperties["storeFile"])
                 storePassword keystoreProperties["storePassword"]
                 keyAlias keystoreProperties["keyAlias"]
                 keyPassword keystoreProperties["storePassword"]
+            } else if (System.getenv("SIGNING_STORE_FILE") != null) {
+                // Safely read the environment variables passed from your GitHub Secrets
+                storeFile file(System.getenv("SIGNING_STORE_FILE"))
+                storePassword System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword System.getenv("SIGNING_KEY_PASSWORD")
             }
         }
     }
 
     buildTypes {
         release {
-            // Guard the assignment block
-            if (keystoreProperties["storeFile"] != null) {
+            // Guard the assignment so it only binds if a signing path was found via file or environment
+            if (keystoreProperties["storeFile"] != null || System.getenv("SIGNING_STORE_FILE") != null) {
                 signingConfig signingConfigs.release
             }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
 
 
 repositories {
