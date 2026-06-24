@@ -5,22 +5,32 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up NodeJS Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up Java JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Make gradlew executable
+      - name: Install Dependencies & Sync Capacitor
+        run: |
+          npm ci
+          npx cap sync android
+
+      - name: Make Gradlew Executable
         run: |
           if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
 
@@ -30,8 +40,9 @@ jobs:
           cd android
           ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK artifact
+      - name: Upload Compiled APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoon-browser-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
+
