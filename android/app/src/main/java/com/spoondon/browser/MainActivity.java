@@ -608,6 +608,20 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPermissionRequest(final android.webkit.PermissionRequest request) {
+                String[] resources = request.getResources();
+                for (String resource : resources) {
+                    if (resource.equals(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) || 
+                        resource.equals(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                        request.deny();
+                        return;
+                    }
+                }
+                super.onPermissionRequest(request);
+            }
+
+
+            @Override
             public void onHideCustomView() {
                 toolbar.setVisibility(View.VISIBLE);
                 browserContainer.setVisibility(View.VISIBLE);
