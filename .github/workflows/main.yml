@@ -1,0 +1,36 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ 'fix/autocomplete-popup' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Make gradlew executable
+        run: |
+          if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
+
+      - name: Build Debug APK
+        run: |
+          set -e
+          cd android
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spoon-browser-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
