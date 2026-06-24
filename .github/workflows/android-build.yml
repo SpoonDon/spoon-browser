@@ -1,81 +1,36 @@
-name: Build Android APK
+name: Build APK
 
 on:
   push:
-    branches:
-      - main
-      - "feature/**"
+    branches: [ 'fix/autocomplete-popup' ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------------- NODE ----------------
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      # ---------------- INSTALL ----------------
-      - name: Install dependencies
-        run: npm ci || npm install
-
-      - name: Install Capacitor CLI
-        run: npm install @capacitor/cli
-
-      - name: Verify Capacitor
-        run: npx cap --version
-
-      # ---------------- BUILD WEB ----------------
-      - name: Build web assets
-        run: npm run build || echo "No build step found"
-
-      # ---------------- ANDROID SYNC ----------------
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      # ---------------- JAVA ----------------
-      - name: Setup Java 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
-      - name: Force Gradle Java Home
-        run: echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
-
-      - name: Restore signing keystore
+      - name: Make gradlew executable
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spoon-browser.jks
+          if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
 
-      - name: Create keystore.properties
+      - name: Build Debug APK
         run: |
-          cat > android/keystore.properties <<EOF
-          storeFile=${GITHUB_WORKSPACE}/spoon-browser.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
-
-      # ---------------- BUILD APK ----------------
-      - name: Build Release APK
-        run: |
+          set -e
           cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      # ---------------- UPLOAD APK ----------------
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spoon-browser-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: spoon-browser-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
