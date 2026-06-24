@@ -34,15 +34,21 @@ jobs:
         run: |
           if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
 
-      - name: Build Debug APK
+      - name: Build Release APK
+        env:
+          # Inject your GitHub Secrets into the environment variables expected by build.gradle
+          SIGNING_STORE_FILE: ${{ secrets.SIGNING_STORE_FILE }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
           set -e
           cd android
-          ./gradlew clean assembleDebug --no-daemon --stacktrace
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-      - name: Upload Compiled APK Artifact
+      - name: Upload Compiled Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spoon-browser-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: spoon-browser-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
 
