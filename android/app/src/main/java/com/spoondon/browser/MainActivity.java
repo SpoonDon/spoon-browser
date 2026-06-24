@@ -94,9 +94,13 @@ public class MainActivity extends AppCompatActivity {
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
     private final HashSet<String> blockedDomains = new HashSet<>();
     private final HashSet<String> rawFilterRules = new HashSet<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
+        if (savedInstanceState != null) {
+            savedInstanceState.clear();
+        }
         super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
@@ -157,9 +161,6 @@ public class MainActivity extends AppCompatActivity {
             openUrl(urlToLoad);
             setIntent(new Intent()); 
         } else if (intent != null && intent.getAction() != null) {
-            if (restoreSession()) {
-                return;
-            }
             createNewTab();
             showHome();
             setIntent(new Intent());
@@ -168,10 +169,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onStop() {
-        if (!clearSessionOnExit) {
-            saveOpenTabs();
-            saveCurrentTab();
-        }
         super.onStop();
     }
 
