@@ -860,24 +860,34 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
 
+        // Configure default native web settings
         configureWebSettings(webView.getSettings());
+
+        // Native Anti-Tracking: Block third-party cross-site cookies natively in the engine
+        android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(webView, false);
+        }
+
         webView.setWebChromeClient(createWebChromeClient());
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(createWebViewClient());
 
+        // Configure system intent delegation for downloads (e.g., GitHub raw files)
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW);
-                    // Use standard fallback if mimeType is broad or empty
+                    // Use standard fallback if mimeType is broad, empty, or plain text
                     String resolvedMimeType = (mimeType == null || mimeType.isEmpty() || mimeType.contains("text/plain")) ? "*/*" : mimeType;
                     intent.setDataAndType(Uri.parse(url), resolvedMimeType);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(intent);
                 } catch (Exception e) {
                     try {
-                        // Fallback: Drop the MIME enforcement altogether and let the OS choose via URL extension schema
+                        // Fallback: Drop strict MIME enforcement completely and let OS handle via URL routing schema
                         Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(fallbackIntent);
@@ -890,6 +900,7 @@ public class MainActivity extends AppCompatActivity {
 
         return webView;
     }
+
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
         tabs.add(webView);
