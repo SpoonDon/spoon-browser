@@ -183,59 +183,63 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
 
+            // Find the first valid URL to restore (the active/primary tab).
             String[] urls = savedTabs.split("\\n");
-            // Limit how many tabs we restore at once to avoid OOM on startup.
-            final int MAX_RESTORE_TABS = Math.min(3, urls.length);
-
-            for (int i = 0; i < MAX_RESTORE_TABS; i++) {
-                String raw = urls[i];
+            String firstValid = null;
+            for (String raw : urls) {
                 if (raw == null) continue;
                 String url = raw.trim();
                 if (url.isEmpty() || url.equals("about:blank")) continue;
                 if (!url.contains(".") && !url.startsWith("http")) continue;
-
-                WebView webView;
-                try {
-                    webView = createConfiguredWebView();
-                } catch (Exception e) {
-                    android.util.Log.e("SpoonBrowser", "createConfiguredWebView failed during restore", e);
-                    continue;
-                }
-
-                // Add the WebView on the current thread (should be UI thread here) and post the load.
-                tabs.add(webView);
-                try {
-                    final String toLoad = url;
-                    webView.post(() -> {
-                        try {
-                            webView.loadUrl(toLoad);
-                        } catch (Exception e) {
-                            android.util.Log.e("SpoonBrowser", "Failed loading restored url: " + toLoad, e);
-                            try { webView.destroy(); } catch (Exception ignored) {}
-                        }
-                    });
-                } catch (Exception e) {
-                    android.util.Log.e("SpoonBrowser", "Failed to post load for url: " + url, e);
-                }
+                firstValid = url;
+                break;
             }
 
-            if (tabs.isEmpty()) {
+            if (firstValid == null) {
                 return false;
             }
 
-            int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
-            if (savedCurrentTab < 0 || savedCurrentTab >= tabs.size()) {
-                savedCurrentTab = 0;
-            }
+            final String toLoad = firstValid;
+            // Create and add the WebView on the UI thread after layout is available.
+            runOnUiThread(() -> {
+                try {
+                    WebView webView = createConfiguredWebView();
+                    tabs.add(webView);
+                    // Make this tab the current one and attach its view.
+                    currentTab = tabs.size() - 1;
+                    if (browserContainer != null) {
+                        browserContainer.removeAllViews();
+                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.MATCH_PARENT
+                        );
+                        browserContainer.addView(webView, params);
+                    }
+                    updateTabIndicator();
+                    try {
+                        webView.loadUrl(toLoad);
+                        android.util.Log.i("SpoonBrowser", "Restored single tab: " + toLoad);
+                    } catch (Exception e) {
+                        android.util.Log.w("SpoonBrowser", "Failed to load restored url: " + toLoad, e);
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("SpoonBrowser", "createConfiguredWebView failed during restore", e);
+                }
+            });
 
-            switchToTab(savedCurrentTab);
+            int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
+            if (savedCurrentTab < 0) savedCurrentTab = 0;
+            // We'll keep currentTab as set above (only one tab restored).
             return true;
         } catch (Exception e) {
             android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
-            for (WebView w : tabs) {
-                try { w.destroy(); } catch (Exception ignored) {}
-            }
-            tabs.clear();
+            // Clean up any created WebViews
+            runOnUiThread(() -> {
+                for (WebView w : tabs) {
+                    try { w.destroy(); } catch (Exception ignored) {}
+                }
+                tabs.clear();
+            });
             return false;
         }
     }
@@ -1228,7 +1232,7 @@ public class MainActivity extends AppCompatActivity {
                 "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>[...]\n                "</div>" +
                 "<script>" +
                 "function goSearch(){" +
-                "var q=document.getElementById(\"q\").value;" +
+                "var q=document.getElementById(\\\"q\\\").value;" +
                 "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
                 "}" +
                 "document.getElementById('q').addEventListener('keydown',function(e){" +
