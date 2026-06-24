@@ -36,13 +36,13 @@ jobs:
 
       - name: Build Release APK
         env:
-          # Inject your GitHub Secrets into the environment variables expected by build.gradle
-          SIGNING_STORE_FILE: ${{ secrets.SIGNING_STORE_FILE }}
-          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
-          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
-          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SIGNING_STORE_FILE: "../release.keystore"
         run: |
           set -e
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release.keystore || echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" > android/release.keystore
           cd android
           ./gradlew clean assembleRelease --no-daemon --stacktrace
 
