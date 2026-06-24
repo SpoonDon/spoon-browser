@@ -6,19 +6,7 @@ A lightweight Android browser focused on stability, simplicity, and long-term co
 
 ## Version
 
-Current release: v1.3
-
-## Features
-
-### Browsing
-
-- Multi-tab browsing
-- Smart address bar
-- Back and forward navigation
-- Home button
-- Pull-to-refresh
-- Fullscreen video support
-- Crash recovery for WebView renderer failures
+Current release: v1.4.5
 
 ### Privacy
 
