@@ -713,6 +713,30 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri url = request.getUrl();
+                if (url != null) {
+                    String urlString = url.toString();
+                    
+                    // Route magnet links and torrent files to external download managers
+                    if (urlString.startsWith("magnet:") || urlString.endsWith(".torrent")) {
+                        try {
+                            Intent intent = new Intent(Intent.ACTION_VIEW, url);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            view.getContext().startActivity(intent);
+                            return true; // Tells WebView we handled the link externally
+                        } catch (Exception e) {
+                            android.widget.Toast.makeText(view.getContext(), 
+                                "No app found to handle torrent/magnet links", 
+                                android.widget.Toast.LENGTH_SHORT).show();
+                            return true;
+                        }
+                    }
+                }
+                return super.shouldOverrideUrlLoading(view, request);
+            }
+
+            @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
