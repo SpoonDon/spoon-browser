@@ -567,7 +567,7 @@ public class MainActivity extends AppCompatActivity {
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
-    private void configureWebSettings(WebSettings settings) {
+        private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
         settings.setSafeBrowsingEnabled(true);
         settings.setUseWideViewPort(true);
@@ -576,13 +576,18 @@ public class MainActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        
+        // Step 1: Hardened File System & Resource Isolation
         settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(true);
+        settings.setAllowContentAccess(false); 
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
 
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
     }
+
 
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
@@ -629,6 +634,12 @@ public class MainActivity extends AppCompatActivity {
                     return false;
                 }
                 return true;
+            }
+
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+                // Deny geolocation permissions automatically to keep container security maintenance-free
+                callback.invoke(origin, false, false);
             }
 
             @Override
@@ -757,9 +768,47 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
-                handler.cancel();
+            public void onReceivedSslError(WebView view, final android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+                // Build a native dialog to warn the user, giving them explicit choice to bypass
+                final androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this);
+                
+                String message = "The security certificate for this website is invalid or untrusted.\n\n"
+                               + "Error Code: " + error.getPrimaryError() + "\n"
+                               + "URL: " + error.getUrl() + "\n\n"
+                               + "Do you want to proceed anyway at your own risk?";
+                
+                builder.setTitle("Security Certificate Warning");
+                builder.setMessage(message);
+                
+                // If they insist, allow the engine to proceed
+                builder.setPositiveButton("Proceed Anyway", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        handler.proceed();
+                    }
+                });
+                
+                // If they back out, drop the network line instantly
+                builder.setNegativeButton("Go Back", new android.content.DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(android.content.DialogInterface dialog, int which) {
+                        handler.cancel();
+                    }
+                });
+
+                // Ensure that tapping outside the dialog cancels the request safely
+                builder.setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(android.content.DialogInterface dialog) {
+                        handler.cancel();
+                    }
+                });
+
+                // Display the warning overlay contextually on the main thread
+                androidx.appcompat.app.AlertDialog dialog = builder.create();
+                dialog.show();
             }
+
 
             @Override
             public void onSafeBrowsingHit(WebView view, WebResourceRequest request, int threatType, SafeBrowsingResponse callback) {
@@ -1164,12 +1213,19 @@ public class MainActivity extends AppCompatActivity {
 
     private void showAbout() {
         synchronized (blockedDomains) {
+            String webViewVer = "Unknown";
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                android.content.pm.PackageInfo pi = android.webkit.WebView.getCurrentWebViewPackage();
+                if (pi != null) webViewVer = pi.versionName;
+            }
+
             new AlertDialog.Builder(this)
                     .setTitle("Spoon Browser")
-                    .setMessage("Version: " + getAppVersion() + "\n\n"
+                    .setMessage("Version: " + getAppVersion() + "\n"
+                            + "Engine: WebView " + webViewVer + "\n\n"
                             + "Tabs: " + tabs.size() + "\nBookmarks: " + bookmarks.size()
                             + "\nHistory: " + history.size() + "\nBlocked Domains: " + blockedDomains.size()
-                            + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n-with love, Plaban.")
+                            + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
                     .setPositiveButton("OK", null)
                     .show();
         }
