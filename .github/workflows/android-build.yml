@@ -1,9 +1,10 @@
-name: Build APK
+name: Android Build
 
 on:
   push:
-    branches: [ 'fix/autocomplete-popup' ]
+    branches: [ main ]
   workflow_dispatch:
+
 
 jobs:
   build:
