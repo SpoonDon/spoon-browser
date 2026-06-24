@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-        super.onCreate(null);
+        super.onCreate(savedInstanceState);
 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
@@ -175,24 +175,56 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
     }
 
-    private boolean restoreSession() {
+        @Override
+    protected void onDestroy() {
+        if (tabs != null) {
+            for (WebView w : tabs) {
+                if (w != null) {
+                    try {
+                        w.stopLoading();
+                        w.clearHistory();
+                        w.clearCache(true);
+                        w.loadUrl("about:blank");
+                        w.destroy();
+                    } catch (Exception e) {
+                        android.util.Log.e("SpoonBrowser", "Error cleaning up WebView instance", e);
+                    }
+                }
+            }
+        }
+        super.onDestroy();
+    }
+
+
+        private boolean restoreSession() {
         try {
             String savedTabs = prefs.getString(KEY_OPEN_TABS, "");
             if (savedTabs == null || savedTabs.isEmpty()) {
                 return false;
             }
 
-            for (String url : savedTabs.split("\n")) {
+            String[] urls = savedTabs.split("\n");
+            int count = 0;
+
+            for (String url : urls) {
                 if (url == null || url.trim().isEmpty() || url.equals("about:blank")) {
                     continue;
                 }
                 if (!url.contains(".") && !url.startsWith("http")) {
                     continue;
                 }
+                
+                // Cap at 3 simultaneous tabs to completely prevent startup OOM crashes
+                if (count >= 3) break;
 
-                WebView webView = createConfiguredWebView();
-                tabs.add(webView);
-                webView.loadUrl(url.trim());
+                try {
+                    WebView webView = createConfiguredWebView();
+                    tabs.add(webView);
+                    webView.loadUrl(url.trim());
+                    count++;
+                } catch (Exception e) {
+                    android.util.Log.e("SpoonBrowser", "Failed to restore single tab: " + url, e);
+                }
             }
 
             if (tabs.isEmpty()) {
@@ -212,6 +244,7 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
+
     private void setupRootLayout() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
