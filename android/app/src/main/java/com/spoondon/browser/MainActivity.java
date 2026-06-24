@@ -870,12 +870,14 @@ public class MainActivity extends AppCompatActivity {
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 try {
                     Intent intent = new Intent(Intent.ACTION_VIEW);
-                    String resolvedMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
+                    // Use standard fallback if mimeType is broad or empty
+                    String resolvedMimeType = (mimeType == null || mimeType.isEmpty() || mimeType.contains("text/plain")) ? "*/*" : mimeType;
                     intent.setDataAndType(Uri.parse(url), resolvedMimeType);
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(intent);
                 } catch (Exception e) {
                     try {
+                        // Fallback: Drop the MIME enforcement altogether and let the OS choose via URL extension schema
                         Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(fallbackIntent);
@@ -885,6 +887,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
         return webView;
     }
     private void createNewTab() {
