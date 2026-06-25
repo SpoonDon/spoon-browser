@@ -19,3 +19,18 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# Keep WebKit and Javascript Interface bindings intact
+-keepattributes JavaScriptInterface,Annotation,Signature,InnerClasses,EnclosingMethod
+
+# Protect the native WebView components from reflection stripping
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+-keep class android.webkit.** { *; }
+-dontkeepclassmembers class android.webkit.** { *; }
+
+# Optimize and shrink code structures aggressively
+-repackageclasses ''
+-allowaccessmodification
+

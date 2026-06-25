@@ -173,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
     }
 
-        @Override
+    @Override
     protected void onDestroy() {
         if (tabs != null) {
             for (WebView w : tabs) {
@@ -190,6 +190,18 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
+
+        // Global Storage & Cookie Trimming (Merged Point #7)
+        try {
+            android.webkit.WebStorage.getInstance().deleteAllData();
+            if (clearSessionOnExit) {
+                android.webkit.CookieManager.getInstance().removeAllCookies(null);
+                android.webkit.CookieManager.getInstance().flush();
+            }
+        } catch (Exception e) {
+            android.util.Log.e("SpoonBrowser", "Error cleaning up storage systems", e);
+        }
+
         super.onDestroy();
     }
 
