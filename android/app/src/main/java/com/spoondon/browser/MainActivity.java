@@ -102,6 +102,10 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        }
+
         setContentView(R.layout.activity_main);
         // ... rest of your initialization
 
@@ -1425,33 +1429,40 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showHome() {
-        // High-Performance Lazy Initialization String Caching (Point #3)
+        // High-Performance Lazy Initialization String Caching (Preserved!)
         if (cachedHomeHtml == null) {
-            cachedHomeHtml = "<html>" +
-                    "<head>" +
-                    "<style>" +
-                    "  @media (max-width: 600px) {" +
-                    "    #q { display: none !important; }" +
-                    "  }" +
-                    "</style>" +
-                    "</head>" +
-                    "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
-                    "<div style='padding-top:20%;'>" +
-                    "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
-                    "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
-                    "</div>" +
-                    "<script>" +
-                    "function goSearch(){" +
-                    "var q=document.getElementById(\"q\").value;" +
-                    "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
-                    "}" +
-                    "if(document.getElementById('q')) {" +
-                    "  document.getElementById('q').addEventListener('keydown',function(e){" +
-                    "    if(e.key==='Enter'){goSearch();}" +
-                    "  });" +
-                    "}" +
-                    "</script>" +
-                    "</body></html>";
+            // Check screen width once during initialization
+            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(metrics);
+            float widthDp = metrics.widthPixels / metrics.density;
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("<html>")
+              .append("<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>")
+              .append("<div style='padding-top:20%;'>")
+              .append("<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>");
+
+            // Only add the input block to the cached memory string if it's a tablet
+            if (widthDp >= 600) {
+                sb.append("<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>");
+            }
+
+            sb.append("</div>")
+              .append("<script>")
+              .append("function goSearch(){")
+              .append("  var q=document.getElementById(\"q\").value;")
+              .append("  window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);")
+              .append("}")
+              .append("var inputEl = document.getElementById('q');")
+              .append("if(inputEl) {")
+              .append("  inputEl.addEventListener('keydown',function(e){")
+              .append("    if(e.key==='Enter'){goSearch();}")
+              .append("  });")
+              .append("}")
+              .append("</script>")
+              .append("</body></html>");
+
+            cachedHomeHtml = sb.toString();
         }
 
         WebView wv = getCurrentWebView();
@@ -1459,7 +1470,6 @@ public class MainActivity extends AppCompatActivity {
             wv.loadDataWithBaseURL("about:blank", cachedHomeHtml, "text/html", "UTF-8", null);
         }
     }
-
 
     private void updateAddressBarSuggestions(String query) {
         addressBarAdapter.clear();
