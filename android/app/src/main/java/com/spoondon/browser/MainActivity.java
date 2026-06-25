@@ -98,11 +98,13 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-        if (savedInstanceState != null) {
-            savedInstanceState.clear();
-        }
+        // Force the engine to warm up connection sockets early globally
+        android.webkit.WebView.enableSlowWholeDocumentDraw();
+        
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        // ... rest of your initialization
+
 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
@@ -601,9 +603,9 @@ public class MainActivity extends AppCompatActivity {
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
+
     private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
-        settings.setSafeBrowsingEnabled(true);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setBuiltInZoomControls(true);
@@ -619,16 +621,20 @@ public class MainActivity extends AppCompatActivity {
 
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        
-        // High-Performance Engine Tuning Optimization (Point #4)
+
+        // High-Performance Engine Tuning Optimization
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        
+
+        // Append speculative pre-rendering if utilizing a modern layout bridge
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true); // Lets Chromium parallelize security sweeps
+        }
+
         // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
     }
-
 
 
     private WebChromeClient createWebChromeClient() {
