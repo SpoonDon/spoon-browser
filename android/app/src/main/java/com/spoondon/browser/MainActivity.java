@@ -1004,11 +1004,20 @@ public class MainActivity extends AppCompatActivity {
         }
         tabs.remove(index);
 
+        // Comprehensive WebView Memory Teardown Sequence (Point #5)
         webView.stopLoading();
+        webView.setDownloadListener(null);
+        webView.setWebChromeClient(null);
+        webView.setWebViewClient(null);
+        
         webView.clearHistory();
+        webView.clearCache(true);
         webView.loadUrl("about:blank");
         webView.removeAllViews();
+        
+        // Final explicit teardown to signal Chromium to release its native layer RAM immediately
         webView.destroy();
+
 
         saveOpenTabs();
         if (currentTab >= tabs.size()) {
