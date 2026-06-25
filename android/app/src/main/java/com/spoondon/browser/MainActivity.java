@@ -747,7 +747,7 @@ public class MainActivity extends AppCompatActivity {
                 Uri url = request.getUrl();
                 if (url != null) {
                     String urlString = url.toString();
-                    
+
                     // Route magnet links and torrent files to external download managers
                     if (urlString.startsWith("magnet:") || urlString.endsWith(".torrent")) {
                         try {
@@ -756,15 +756,32 @@ public class MainActivity extends AppCompatActivity {
                             view.getContext().startActivity(intent);
                             return true; // Tells WebView we handled the link externally
                         } catch (Exception e) {
-                            android.widget.Toast.makeText(view.getContext(), 
-                                "No app found to handle torrent/magnet links", 
+                            android.widget.Toast.makeText(view.getContext(),
+                                "No app found to handle torrent/magnet links",
                                 android.widget.Toast.LENGTH_SHORT).show();
                             return true;
                         }
                     }
+
+                    // Fail-Safe: Intercept App Intents & Custom Deep-Links (Point #4/Engine Safety Patch)
+                    // This stops native rendering engines from crashing when web apps force a redirect
+                    if (!urlString.startsWith("http://") && !urlString.startsWith("https://") && !urlString.startsWith("javascript:")) {
+                        try {
+                            Intent intent = Intent.parseUri(urlString, Intent.URI_INTENT_SCHEME);
+                            if (intent != null) {
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                view.getContext().startActivity(intent);
+                                return true; // Block the WebView from trying to compile a custom URI scheme
+                            }
+                        } catch (Exception e) {
+                            // If no deep-link app handler exists on device, drop the unrenderable URL silently
+                            return true;
+                        }
+                    }
                 }
-                return super.shouldOverrideUrlLoading(view, request);
+                return false; // Force internal loading of standard web addresses instead of dropping back to super
             }
+
 
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
