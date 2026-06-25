@@ -510,11 +510,12 @@ public class MainActivity extends AppCompatActivity {
         addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         addressBar.setThreshold(0);
         
-        // Modernized Address Bar Background styling - Reusing existing addressBg variable
-        addressBg = new android.graphics.drawable.GradientDrawable();
-        addressBg.setColor(Color.parseColor("#222222"));
-        addressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
-        addressBar.setBackground(addressBg);
+        // Modernized Address Bar Background styling - Isolated unique variable name
+        android.graphics.drawable.GradientDrawable customAddressBg = new android.graphics.drawable.GradientDrawable();
+        customAddressBg.setColor(Color.parseColor("#222222"));
+        customAddressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
+        addressBar.setBackground(customAddressBg);
+
 
         addressBar.setPadding(dp(16), dp(8), dp(16), dp(8));
 
