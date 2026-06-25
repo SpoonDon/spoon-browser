@@ -32,5 +32,9 @@
 
 # Optimize and shrink code structures aggressively
 -allowaccessmodification
--flattenpackagehierarchy ''
+-flattenpackagehierarchy
+
+# Production Diagnostics: Retain source lines for clean stack traces without increasing APK size
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
