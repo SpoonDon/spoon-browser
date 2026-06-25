@@ -273,19 +273,21 @@ public class MainActivity extends AppCompatActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
 
+        // Apply window insets cleanly without shrinking side dimensions
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, windowInsets) -> {
             Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            v.setPadding(0, systemBars.top, 0, 0); // Only pad the status bar area
             return windowInsets;
         });
 
         browserContainer = new LinearLayout(this);
         browserContainer.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams browserParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f
         );
         browserContainer.setLayoutParams(browserParams);
     }
+
 
     private void loadSavedData() {
         String savedHistory = prefs.getString(KEY_HISTORY, "");
@@ -465,8 +467,8 @@ public class MainActivity extends AppCompatActivity {
         toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(8), dp(8), dp(8));
-        toolbar.setBackgroundColor(Color.parseColor("#111111"));
+        toolbar.setPadding(dp(12), dp(10), dp(12), dp(10)); // Increased padding for touch targets
+        toolbar.setBackgroundColor(Color.parseColor("#141414")); // Sleek modern dark mode accent
 
         forwardButton = makeButton("→");
         prevTabButton = makeButton("◀");
@@ -474,18 +476,31 @@ public class MainActivity extends AppCompatActivity {
         newTabButton = makeButton("+");
         menuButton = makeButton("⋮");
 
+        // Responsive UI Logic for Phones vs Tablets
         int screenWidth = getScreenWidthDp();
-        if (screenWidth < 400) {
+        if (screenWidth < 600) {
+            // True Mobile Mode: Hide back/forward/tabs to maximize space for the URL bar
             forwardButton.setVisibility(View.GONE);
+            prevTabButton.setVisibility(View.GONE);
+            nextTabButton.setVisibility(View.GONE);
             newTabButton.setVisibility(View.GONE);
-        } else if (screenWidth < 600) {
-            forwardButton.setVisibility(View.GONE);
+        } else {
+            // Tablet Mode: Ensure everything is explicitly visible when rotated
+            forwardButton.setVisibility(View.VISIBLE);
+            prevTabButton.setVisibility(View.VISIBLE);
+            nextTabButton.setVisibility(View.VISIBLE);
+            newTabButton.setVisibility(View.VISIBLE);
         }
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
-        tabIndicator.setTextSize(15);
-        tabIndicator.setPadding(dp(10), 0, dp(10), 0);
+        tabIndicator.setTextSize(14);
+        tabIndicator.setPadding(dp(8), 0, dp(8), 0);
+        
+        // Hide tab counter on small phones if it crowds the bar
+        if (screenWidth < 360) {
+            tabIndicator.setVisibility(View.GONE);
+        }
 
         addressBar = new AutoCompleteTextView(this);
         addressBar.setHint("Search or enter address");
@@ -494,6 +509,21 @@ public class MainActivity extends AppCompatActivity {
         addressBar.setSingleLine(true);
         addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         addressBar.setThreshold(0);
+        
+        // Modernized Address Bar Background styling
+        android.graphics.drawable.GradientDrawable addressBg = new android.graphics.drawable.GradientDrawable();
+        addressBg.setColor(Color.parseColor("#222222"));
+        addressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
+        addressBar.setBackground(addressBg);
+        addressBar.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        // CRITICAL FIX: Give address bar dynamic layout weight so it stretches elegantly
+        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        addressParams.setMargins(dp(6), 0, dp(6), 0);
+        addressBar.setLayoutParams(addressParams);
+
+        // Keep your existing adapter and text watcher setups underneath...
+
 
         addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
             @Override
