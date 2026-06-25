@@ -1428,6 +1428,13 @@ public class MainActivity extends AppCompatActivity {
         // High-Performance Lazy Initialization String Caching (Point #3)
         if (cachedHomeHtml == null) {
             cachedHomeHtml = "<html>" +
+                    "<head>" +
+                    "<style>" +
+                    "  @media (max-width: 600px) {" +
+                    "    #q { display: none !important; }" +
+                    "  }" +
+                    "</style>" +
+                    "</head>" +
                     "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
                     "<div style='padding-top:20%;'>" +
                     "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
@@ -1438,9 +1445,11 @@ public class MainActivity extends AppCompatActivity {
                     "var q=document.getElementById(\"q\").value;" +
                     "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
                     "}" +
-                    "document.getElementById('q').addEventListener('keydown',function(e){" +
-                    "if(e.key==='Enter'){goSearch();}" +
-                    "});" +
+                    "if(document.getElementById('q')) {" +
+                    "  document.getElementById('q').addEventListener('keydown',function(e){" +
+                    "    if(e.key==='Enter'){goSearch();}" +
+                    "  });" +
+                    "}" +
                     "</script>" +
                     "</body></html>";
         }
