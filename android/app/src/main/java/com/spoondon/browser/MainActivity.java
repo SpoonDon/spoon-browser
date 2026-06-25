@@ -78,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private Button nextTabButton;
     private Button newTabButton;
     private Button menuButton;
+    private Button tabBadgeButton;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -619,7 +620,7 @@ public class MainActivity extends AppCompatActivity {
             newTabButton.setVisibility(View.GONE);
 
             // Create a gorgeous modern Tab Switcher Badge [ 1 ]
-            Button tabBadgeButton = new Button(this);
+            tabBadgeButton = new Button(this);
             int tabCount = (tabs != null) ? tabs.size() : 1; 
             tabBadgeButton.setText(String.valueOf(tabCount));
             tabBadgeButton.setTextColor(Color.WHITE);
@@ -1076,6 +1077,8 @@ public class MainActivity extends AppCompatActivity {
         currentTab = index;
         saveCurrentTab();
         updateTabIndicator();
+        updateTabBadgeCount();
+        updateTabBadgeCount();
 
         if (browserContainer != null) {
             // High-Performance Visibility Toggle Pattern
@@ -1150,6 +1153,14 @@ public class MainActivity extends AppCompatActivity {
     private void updateTabIndicator() {
         if (tabIndicator != null) {
             tabIndicator.setText((currentTab + 1) + "/" + tabs.size());
+        }
+    }
+
+    private void updateTabBadgeCount() {
+        if (tabBadgeButton != null && tabs != null) {
+            runOnUiThread(() -> {
+                tabBadgeButton.setText(String.valueOf(tabs.size()));
+            });
         }
     }
 
@@ -1518,6 +1529,15 @@ public class MainActivity extends AppCompatActivity {
         WebView wv = getCurrentWebView();
         if (wv != null) {
             wv.loadDataWithBaseURL("about:blank", cachedHomeHtml, "text/html", "UTF-8", null);
+        }
+    }
+
+    public void updateTabBadgeCount() {
+        if (tabBadgeButton != null && tabs != null) {
+            // Run on UI thread to guarantee instant rendering updates
+            runOnUiThread(() -> {
+                tabBadgeButton.setText(String.valueOf(tabs.size()));
+            });
         }
     }
 
