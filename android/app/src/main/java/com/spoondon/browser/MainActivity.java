@@ -217,11 +217,22 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     WebView webView = createConfiguredWebView();
                     tabs.add(webView);
+                    
+                    if (browserContainer != null) {
+                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.MATCH_PARENT
+                        );
+                        webView.setVisibility(View.GONE);
+                        browserContainer.addView(webView, params);
+                    }
+
                     webView.loadUrl(url.trim());
                     count++;
                 } catch (Exception e) {
                     android.util.Log.e("SpoonBrowser", "Failed to restore single tab: " + url, e);
                 }
+
             }
 
             if (tabs.isEmpty()) {
@@ -905,16 +916,18 @@ public class MainActivity extends AppCompatActivity {
         WebView webView = createConfiguredWebView();
         tabs.add(webView);
         currentTab = tabs.size() - 1;
-        
+
         if (browserContainer != null) {
-            browserContainer.removeAllViews(); 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
+                LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             );
+            // Natively attach to layout tree immediately, default to hidden
+            webView.setVisibility(View.GONE);
             browserContainer.addView(webView, params);
         }
-        updateTabIndicator();
+        
+        switchToTab(currentTab);
     }
 
     private void switchToTab(int index) {
@@ -925,28 +938,30 @@ public class MainActivity extends AppCompatActivity {
         updateTabIndicator();
 
         if (browserContainer != null) {
-            browserContainer.removeAllViews();
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 
-                LinearLayout.LayoutParams.MATCH_PARENT
-            );
-            
-            WebView currentWebView = getCurrentWebView();
-            if (currentWebView != null) {
-                browserContainer.addView(currentWebView, params);
-                
-                String url = currentWebView.getUrl();
-                if (addressBar != null) {
-                    addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
+            // High-Performance Visibility Toggle Pattern
+            for (int i = 0; i < tabs.size(); i++) {
+                WebView wv = tabs.get(i);
+                if (wv != null) {
+                    if (i == index) {
+                        wv.setVisibility(View.VISIBLE);
+                        // Prevent background rendering freezes by requesting window focus
+                        wv.onResume();
+                        wv.resumeTimers();
+                        
+                        String url = wv.getUrl();
+                        if (addressBar != null) {
+                            addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
+                        }
+                    } else {
+                        wv.setVisibility(View.GONE);
+                        // Pause inactive tabs to preserve battery and CPU limits natively
+                        wv.onPause();
+                    }
                 }
             }
         }
-
-        if (addressBar != null) {
-            addressBar.dismissDropDown();
-            addressBar.clearFocus();
-        }
     }
+
 
     private void closeTab(int index) {
         if (tabs.size() == 1) {
