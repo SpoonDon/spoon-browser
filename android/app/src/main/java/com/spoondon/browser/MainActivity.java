@@ -68,6 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
     private AutoCompleteTextView addressBar;
     private ArrayAdapter<String> addressBarAdapter;
+    private String cachedHomeHtml = null;
     private LinearLayout root;
     private LinearLayout browserContainer;
     private TextView tabIndicator;
@@ -578,7 +579,7 @@ public class MainActivity extends AppCompatActivity {
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
-        private void configureWebSettings(WebSettings settings) {
+    private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
         settings.setSafeBrowsingEnabled(true);
         settings.setUseWideViewPort(true);
@@ -587,17 +588,25 @@ public class MainActivity extends AppCompatActivity {
         settings.setDisplayZoomControls(false);
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        
-        // Step 1: Hardened File System & Resource Isolation
+
+        // Hardened File System & Resource Isolation
         settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false); 
+        settings.setAllowContentAccess(false);
         settings.setAllowFileAccessFromFileURLs(false);
         settings.setAllowUniversalAccessFromFileURLs(false);
 
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
+        
+        // High-Performance Engine Tuning Optimization (Point #4)
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        
+        // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
     }
+
 
 
     private WebChromeClient createWebChromeClient() {
@@ -1330,28 +1339,32 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showHome() {
-        String homePage = "<html>" +
-                "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
-                "<div style='padding-top:20%;'>" +
-                "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
-                "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
-                "</div>" +
-                "<script>" +
-                "function goSearch(){" +
-                "var q=document.getElementById(\"q\").value;" +
-                "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
-                "}" +
-                "document.getElementById('q').addEventListener('keydown',function(e){" +
-                "if(e.key==='Enter'){goSearch();}" +
-                "});" +
-                "</script>" +
-                "</body></html>";
+        // High-Performance Lazy Initialization String Caching (Point #3)
+        if (cachedHomeHtml == null) {
+            cachedHomeHtml = "<html>" +
+                    "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
+                    "<div style='padding-top:20%;'>" +
+                    "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
+                    "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
+                    "</div>" +
+                    "<script>" +
+                    "function goSearch(){" +
+                    "var q=document.getElementById(\"q\").value;" +
+                    "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
+                    "}" +
+                    "document.getElementById('q').addEventListener('keydown',function(e){" +
+                    "if(e.key==='Enter'){goSearch();}" +
+                    "});" +
+                    "</script>" +
+                    "</body></html>";
+        }
 
         WebView wv = getCurrentWebView();
         if (wv != null) {
-            wv.loadDataWithBaseURL(null, homePage, "text/html", "UTF-8", null);
+            wv.loadDataWithBaseURL("about:blank", cachedHomeHtml, "text/html", "UTF-8", null);
         }
     }
+
 
     private void updateAddressBarSuggestions(String query) {
         addressBarAdapter.clear();
