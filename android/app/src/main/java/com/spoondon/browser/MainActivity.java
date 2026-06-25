@@ -737,6 +737,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 customView = view;
                 customViewCallback = callback;
+                customView.setKeepScreenOn(true);
                 toolbar.setVisibility(View.GONE);
                 browserContainer.setVisibility(View.GONE);
                 root.addView(customView);
