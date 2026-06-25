@@ -31,6 +31,6 @@
 -dontkeepclassmembers class android.webkit.** { *; }
 
 # Optimize and shrink code structures aggressively
--repackageclasses ''
 -allowaccessmodification
+-flattenpackagehierarchy ''
 
