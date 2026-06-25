@@ -595,13 +595,63 @@ public class MainActivity extends AppCompatActivity {
         inputParams.setMargins(dp(8), 0, dp(8), 0);
         addressBar.setLayoutParams(inputParams);
 
-        toolbar.addView(forwardButton);
-        toolbar.addView(prevTabButton);
-        toolbar.addView(tabIndicator);
-        toolbar.addView(nextTabButton);
-        toolbar.addView(newTabButton);
-        toolbar.addView(addressBar);
-        toolbar.addView(menuButton);
+        // Calculate device width profile dynamically
+        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        float widthDp = metrics.widthPixels / metrics.density;
+
+        if (widthDp >= 600) {
+            // TABLET LAYOUT: Show all individual controls side-by-side
+            toolbar.addView(forwardButton);
+            toolbar.addView(prevTabButton);
+            toolbar.addView(tabIndicator);
+            toolbar.addView(nextTabButton);
+            toolbar.addView(newTabButton);
+            toolbar.addView(addressBar);
+            toolbar.addView(menuButton);
+        } else {
+            // MOBILE LAYOUT: Pure minimalism
+            // Hide the redundant desktop buttons entirely
+            forwardButton.setVisibility(View.GONE);
+            prevTabButton.setVisibility(View.GONE);
+            tabIndicator.setVisibility(View.GONE);
+            nextTabButton.setVisibility(View.GONE);
+            newTabButton.setVisibility(View.GONE);
+
+            // Create a gorgeous modern Tab Switcher Badge [ 1 ]
+            Button tabBadgeButton = new Button(this);
+            int tabCount = (tabs != null) ? tabs.size() : 1; 
+            tabBadgeButton.setText(String.valueOf(tabCount));
+            tabBadgeButton.setTextColor(Color.WHITE);
+            tabBadgeButton.setTextSize(14);
+            tabBadgeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            tabBadgeButton.setGravity(Gravity.CENTER);
+
+            // Give it a sleek rounded border look
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setColor(Color.TRANSPARENT);
+            badgeBg.setStroke(dp(2), Color.parseColor("#CCCCCC"));
+            badgeBg.setCornerRadius(dp(6));
+            tabBadgeButton.setBackground(badgeBg);
+
+            // Fit it nicely inside the toolbar layout
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(28), dp(28));
+            badgeParams.setMargins(dp(4), 0, dp(8), 0);
+            tabBadgeButton.setLayoutParams(badgeParams);
+
+            // Setup button action: Tapping it brings up your existing tab options menu
+            tabBadgeButton.setOnClickListener(v -> {
+                if (menuButton != null) {
+                    menuButton.performClick(); // Triggers menu layout natively
+                }
+            });
+
+            // Add only the vital elements to the mobile view
+            toolbar.addView(addressBar);
+            toolbar.addView(tabBadgeButton);
+            toolbar.addView(menuButton);
+        }
+
     }
 
     private Button makeButton(String text) {
