@@ -503,11 +503,21 @@ public class MainActivity extends AppCompatActivity {
 
         addressBar.setAdapter(addressBarAdapter);
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
-            String url = addressBarAdapter.getItem(position);
-            if (url == null) return;
+            String rawItem = addressBarAdapter.getItem(position);
+            if (rawItem == null) return;
+            
+            // Clean the input string: extract the actual URL if it contains a label or CSS scrap
+            String cleanUrl = rawItem;
+            if (rawItem.contains("http://") || rawItem.contains("https://")) {
+                int httpIndex = rawItem.indexOf("http://");
+                int httpsIndex = rawItem.indexOf("https://");
+                int startUrl = (httpIndex != -1 && httpsIndex != -1) ? Math.min(httpIndex, httpsIndex) : (httpIndex != -1 ? httpIndex : httpsIndex);
+                cleanUrl = rawItem.substring(startUrl).trim();
+            }
+
             suppressSuggestions = true;
-            addressBar.setText(url);
-            addressBar.setSelection(url.length());
+            addressBar.setText(cleanUrl);
+            addressBar.setSelection(cleanUrl.length());
             addressBar.dismissDropDown();
             addressBar.post(() -> {
                 navigate();
