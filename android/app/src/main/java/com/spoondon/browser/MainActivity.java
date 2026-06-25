@@ -1156,14 +1156,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void updateTabBadgeCount() {
-        if (tabBadgeButton != null && tabs != null) {
-            runOnUiThread(() -> {
-                tabBadgeButton.setText(String.valueOf(tabs.size()));
-            });
-        }
-    }
-
     private ArrayList<BrowserItem> buildTabItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
         synchronized (pageTitles) {
