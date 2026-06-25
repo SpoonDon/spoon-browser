@@ -1,40 +1,32 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ==============================================================================
+# Spoon Browser - Production R8/ProGuard Optimization Profile
+# ==============================================================================
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 1. Core Code Optimization & Shrinking Directives
+-allowaccessmodification
+-flattenpackagehierarchy
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-# Keep WebKit and Javascript Interface bindings intact
+# 2. Advanced Metadata Retention (Preserves reflection architectures)
 -keepattributes JavaScriptInterface,Annotation,Signature,InnerClasses,EnclosingMethod
 
-# Protect the native WebView components from reflection stripping
+# 3. Production Diagnostics & Stack Trace De-obfuscation
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# 4. Strict Android WebKit & WebView Engine Protection
+-keep class android.webkit.** { *; }
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
 
--keep class android.webkit.** { *; }
--dontkeepclassmembers class android.webkit.** { *; }
+# 5. Maintain View constructors for XML layout inflaters
+-keepclasseswithmembers class * {
+    public <init>(android.content.Context, android.util.AttributeSet);
+}
+-keepclasseswithmembers class * {
+    public <init>(android.content.Context, android.util.AttributeSet, int);
+}
 
-# Optimize and shrink code structures aggressively
--allowaccessmodification
--flattenpackagehierarchy
-
-# Production Diagnostics: Retain source lines for clean stack traces without increasing APK size
--keepattributes SourceFile,LineNumberTable
--renamesourcefileattribute SourceFile
+# 6. Suppress safe compiler warning noise from core dependencies
+-dontwarn android.webkit.**
 
