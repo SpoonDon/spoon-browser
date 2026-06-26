@@ -1,61 +1,74 @@
 package com.spoondon.browser;
 
-import android.os.Build;
-import android.text.TextWatcher;
-import android.text.Editable;
-import android.net.Uri;
+// Core Android System, OS, and Lifecycle
 import android.annotation.SuppressLint;
-import android.app.AlertDialog;
+import android.os.Bundle;
+import android.os.Build;
+import android.os.Message;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.util.TypedValue;
+
+// Android Graphics, Themes, and Windowing
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Bundle;
-import android.util.TypedValue;
-import android.view.View;
+import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
-import android.os.Message;
-import android.webkit.WebView.WebViewTransport;
-import android.webkit.WebResourceResponse;
+import android.view.Window;
+
+// Android View Framework and Native UI Widgets
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Filter;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.PopupMenu;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.app.AlertDialog;
+
+// Android WebKit (Core Browser Engine Dependencies)
 import android.webkit.DownloadListener;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.SafeBrowsingResponse;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.SafeBrowsingResponse;
-import android.webkit.WebResourceRequest;
-import android.widget.Filter;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.AutoCompleteTextView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.PopupMenu;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
+import android.webkit.WebView.WebViewTransport;
+
+// AndroidX Jetpack Components (Activity, Window Insets, Contracts)
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.activity.OnBackPressedCallback;
-import androidx.appcompat.app.AppCompatActivity;
+
+// Java Standard Core Utilities & I/O Packages
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.URL;
-import android.webkit.ValueCallback;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
-import android.webkit.RenderProcessGoneDetail;
-import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
-import android.view.Window;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -365,9 +378,10 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void setupMenuButton() {
-        menuButton.setOnClickListener(v -> {
-            PopupMenu popup = new PopupMenu(this, menuButton);
+private void setupMenuButton() {
+    menuButton.setOnClickListener(v -> {
+        Context wrapper = new ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
+        PopupMenu popup = new PopupMenu(wrapper, menuButton, Gravity.END);
             popup.getMenu().add("New Tab");
             popup.getMenu().add("Reload");
             popup.getMenu().add("Bookmarks");
@@ -535,7 +549,7 @@ public class MainActivity extends AppCompatActivity {
         // Keep your existing adapter and text watcher setups underneath...
 
 
-        addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
+        addressBarAdapter = new ArrayAdapter<String>(this, R.layout.modern_list_item, new ArrayList<>()) {
             @Override
             public android.widget.Filter getFilter() {
                 return new android.widget.Filter() {
@@ -555,11 +569,18 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
+        // STYLING ADDITION: Apply matching dark, rounded design to the dropdown panel itself
         addressBar.setAdapter(addressBarAdapter);
+        addressBar.setDropDownBackgroundDrawable(new android.graphics.drawable.GradientDrawable() {{
+            setColor(android.graphics.Color.parseColor("#1F1F1F")); // Subtle contrast dark accent
+            setCornerRadius(dp(16));                               // Premium rounded corner profiles
+        }});
+        addressBar.setDropDownVerticalOffset(dp(4));               // Floating gap separation
+
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
             String rawItem = addressBarAdapter.getItem(position);
             if (rawItem == null) return;
-            
+
             // Clean the input string: extract the actual URL if it contains a label or CSS scrap
             String cleanUrl = rawItem;
             if (rawItem.contains("http://") || rawItem.contains("https://")) {
@@ -586,7 +607,8 @@ public class MainActivity extends AppCompatActivity {
                 if (suppressSuggestions) return;
                 updateAddressBarSuggestions(s.toString());
             }
-            @Override public void afterTextChanged(Editable s) {}
+            @Override public void afterTextChanged(android.text.Editable s) {}
+            // Explicitly declared android.text.Editable signature package target to avoid any lookup failures
         });
 
         GradientDrawable addressBg = new GradientDrawable();
