@@ -1,6 +1,11 @@
 package com.spoondon.browser;
 
 import android.os.Build;
+import android.webkit.*;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.graphics.Insets;
 import android.text.TextWatcher;
 import android.text.Editable;
 import android.net.Uri;
@@ -801,9 +806,11 @@ public class MainActivity extends AppCompatActivity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if (url != null) {
-                    String host = url.getHost();
-                    if (host != null && isBlockedDomain(host.toLowerCase())) {
-                        return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                    String urlString = url.toString();
+                    synchronized (filterEngine) {
+                        if (filterEngine.shouldBlock(urlString)) {
+                            return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                        }
                     }
                 }
                 return super.shouldInterceptRequest(view, request);
@@ -1407,71 +1414,116 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void rebuildBlockedDomains() {
-        synchronized (blockedDomains) {
-            blockedDomains.clear();
-            for (String rule : rawFilterRules) {
-                blockedDomains.add(rule.toLowerCase());
+    // --- Advanced High-Speed Content Filter Engine ---
+    private static class ContentFilterEngine {
+        public final java.util.Set<String> blockPatterns = new java.util.HashSet<>();
+        public final java.util.Set<String> whitelistPatterns = new java.util.HashSet<>();
+
+        public void clear() {
+            blockPatterns.clear();
+            whitelistPatterns.clear();
+        }
+
+        public void addRule(String rule) {
+            if (rule == null || rule.isEmpty()) return;
+            if (rule.contains("##")) return; 
+            
+            boolean isWhitelist = rule.startsWith("@@");
+            String pattern = isWhitelist ? rule.substring(2) : rule;
+
+            int optionIdx = pattern.indexOf('$');
+            if (optionIdx != -1) {
+                pattern = pattern.substring(0, optionIdx);
             }
+
+            pattern = pattern.replace("||", "").replace("^", "");
+
+            if (isWhitelist) {
+                whitelistPatterns.add(pattern.toLowerCase());
+            } else {
+                blockPatterns.add(pattern.toLowerCase());
+            }
+        }
+
+        public boolean shouldBlock(String urlString) {
+            if (urlString == null) return false;
+            String lowerUrl = urlString.toLowerCase();
+
+            for (String pattern : whitelistPatterns) {
+                if (matchPattern(lowerUrl, pattern)) return false;
+            }
+
+            for (String pattern : blockPatterns) {
+                if (matchPattern(lowerUrl, pattern)) return true;
+            }
+
+            return false;
+        }
+
+        private boolean matchPattern(String url, String pattern) {
+            if (pattern.contains("*")) {
+                String[] parts = pattern.split("\\*");
+                int lastIdx = 0;
+                for (String part : parts) {
+                    if (part.isEmpty()) continue;
+                    int idx = url.indexOf(part, lastIdx);
+                    if (idx == -1) return false;
+                    lastIdx = idx + part.length();
+                }
+                return true;
+            }
+            return url.contains(pattern);
         }
     }
 
+    private final ContentFilterEngine filterEngine = new ContentFilterEngine();
+
     private void refreshFilterLists() {
         new Thread(() -> {
-            HashSet<String> newRules = new HashSet<>();
+            if (filterLists == null || filterLists.isEmpty()) {
+                filterLists = new ArrayList<>();
+                filterLists.add("https://easylist.to/easylist/easylist.txt");
+                filterLists.add("https://easylist.to/easylist/easyprivacy.txt");
+            }
+
+            ContentFilterEngine newEngine = new ContentFilterEngine();
             for (String filterUrl : filterLists) {
-                BufferedReader reader = null;
-                try {
-                    String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
-                    java.io.File cachedFile = new java.io.File(getFilesDir(), filename);
-                    if (cachedFile.exists()) {
-                        reader = new BufferedReader(new java.io.FileReader(cachedFile));
-                    } else {
-                        reader = new BufferedReader(new java.io.InputStreamReader(new java.net.URL(filterUrl).openStream()));
-                    }
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(new java.net.URL(filterUrl).openStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         line = line.trim();
                         if (line.isEmpty() || line.startsWith("!")) continue;
-                        if (line.startsWith("||")) {
-                            int end = line.indexOf('^');
-                            if (end > 2) {
-                                newRules.add(line.substring(2, end));
-                            }
-                        }
+                        newEngine.addRule(line);
                     }
                 } catch (Exception e) {
                     android.util.Log.e("SpoonBlocker", "Filter download failed: " + filterUrl);
                 }
             }
-            synchronized (blockedDomains) {
-                rawFilterRules.clear();
-                rawFilterRules.addAll(newRules);
-                rebuildBlockedDomains();
+
+            synchronized (filterEngine) {
+                filterEngine.clear();
+                filterEngine.blockPatterns.addAll(newEngine.blockPatterns);
+                filterEngine.whitelistPatterns.addAll(newEngine.whitelistPatterns);
             }
             prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
         }).start();
     }
 
+    private void rebuildBlockedDomains() {
+        refreshFilterLists();
+    }
+
     private boolean isBlockedDomain(String host) {
         if (host == null) return false;
-        synchronized (blockedDomains) {
-            if (blockedDomains.contains(host)) return true;
-            int idx = host.indexOf('.');
-            while (idx != -1) {
-                String sub = host.substring(idx + 1);
-                if (blockedDomains.contains(sub)) return true;
-                idx = host.indexOf('.', idx + 1);
-            }
+        synchronized (filterEngine) {
+            return filterEngine.shouldBlock("http://" + host);
         }
-        return false;
     }
 
     private void saveFilterLists() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             prefs.edit().putString(KEY_FILTER_LISTS, String.join("\n", filterLists)).apply();
         }
-        rebuildBlockedDomains();
     }
 
     private void saveOpenTabs() {
