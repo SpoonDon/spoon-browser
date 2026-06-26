@@ -1193,23 +1193,67 @@ public class MainActivity extends AppCompatActivity {
         return items;
     }
 
-    private void showTabSwitcher() {
-        if (tabs.isEmpty()) return;
-        ArrayList<BrowserItem> items = buildTabItems();
-        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        ListView listView = new ListView(this);
-        listView.setAdapter(adapter);
+private void showTabSwitcher() {
+    // 1. Create a vertical container layout to hold both our hint and the list
+    LinearLayout dialogContainer = new LinearLayout(this);
+    dialogContainer.setOrientation(LinearLayout.VERTICAL);
+    dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
+    dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
 
-        listView.setOnItemClickListener((parent, view, which, id) -> switchToTab(which));
-        listView.setOnItemLongClickListener((parent, view, which, id) -> {
-            closeTab(which);
-            items.remove(which);
-            adapter.notifyDataSetChanged();
-            return true;
-        });
+    // 2. Build a gorgeous, subtle instruction hint banner
+    TextView hintTextView = new TextView(this);
+    hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
+    hintTextView.setTextColor(Color.parseColor("#8A8A8A")); // Soft muted gray so it doesn't shout
+    hintTextView.setTextSize(13);
+    hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
+    hintTextView.setPadding(0, 0, 0, dp(14)); // Generous separation gap before the list starts
+    hintTextView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+    
+    // Add the hint to the top of our layout container
+    dialogContainer.addView(hintTextView);
 
-        new AlertDialog.Builder(this).setTitle("Tabs").setView(listView).create().show();
-    }
+    // 3. Configure the main ListView container
+    ListView listView = new ListView(this);
+    listView.setBackgroundColor(Color.parseColor("#141414"));
+    listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
+    listView.setDividerHeight(dp(1));
+    
+    // Append the ListView right beneath our tip banner inside the layout container
+    dialogContainer.addView(listView);
+
+    // 4. Map your Tab adapter to the list view (Keep your existing adapter assignment line here)
+    // For example: listView.setAdapter(new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles));
+    
+    // 5. Build and launch the premium Dark Dialog modal frame
+    AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Active Tabs")
+            .setView(dialogContainer) // Swap raw listView for our newly built compound dialogContainer!
+            .create();
+
+    // 6. Style the dialog window frame on launch
+    dialog.setOnShowListener(d -> {
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new GradientDrawable() {{
+                setColor(Color.parseColor("#141414"));
+                setCornerRadius(dp(24)); // Smooth rounded overlay card
+            }});
+            
+            // Enforce sharp crisp white header styling
+            int titleId = getResources().getIdentifier("alertTitle", "id", "android");
+            TextView titleView = dialog.findViewById(titleId);
+            if (titleView != null) {
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(18);
+                titleView.setTypeface(Typeface.DEFAULT_BOLD);
+                titleView.setPadding(dp(8), dp(8), 0, dp(6));
+            }
+        }
+    });
+
+    dialog.show();
+}
+
 
     private ArrayList<BrowserItem> buildHistoryItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
