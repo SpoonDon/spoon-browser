@@ -461,12 +461,13 @@ public class MainActivity extends AppCompatActivity {
         });
     }
     private void setupToolbarListeners() {
-        tabIndicator.setOnLongClickListener(v -> {
-            showTabSwitcher();
-            return true;
-        });
+        // Feature Removed: Disabled long press behavior entirely
+        tabIndicator.setOnLongClickListener(null);
+        tabIndicator.setLongClickable(false);
+        tabIndicator.setOnClickListener(v -> showTabSwitcher());
 
         addressBar.setOnKeyListener((v, keyCode, event) -> {
+
             if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
                 navigate();
                 return true;
@@ -1218,14 +1219,14 @@ public class MainActivity extends AppCompatActivity {
     TextView hintTextView = new TextView(this);
     boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
     if (isTablet) {
-        hintTextView.setText("💡 Tip: Tap a tab item to switch views");
+        hintTextView.setText("💡 Tip: Long-press an item to close it / Tap to switch views");
     } else {
         hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
     }
-    hintTextView.setTextColor(Color.parseColor("#8A8A8A")); 
+    hintTextView.setTextColor(Color.parseColor("#8A8A8A"));
     hintTextView.setTextSize(13);
     hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-    hintTextView.setPadding(0, 0, 0, dp(14)); 
+    hintTextView.setPadding(0, 0, 0, dp(14));
     hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
     dialogContainer.addView(hintTextView);
 
@@ -1256,64 +1257,40 @@ public class MainActivity extends AppCompatActivity {
     // 5. Build the dialog frame so click listeners can reference it
     final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Active Tabs")
-            .setView(dialogContainer) 
+            .setView(dialogContainer)
             .create();
 
     // 6. Hook up navigation click actions using our mapped index parameters
     listView.setOnItemClickListener((parent, view, position, id) -> {
         currentTab = position;
         if (tabs != null && position < tabs.size()) {
-            switchTab(position); // ACTIVATED backend view switcher
+            switchToTab(position); // Mapped backend view switcher
         }
         dialog.dismiss();
     });
 
-    // Restore long-press action to close a tab cleanly
+    // Unified long-press action to close a tab cleanly (Works perfectly on mobile & tablet)
     listView.setOnItemLongClickListener((parent, view, position, id) -> {
         if (tabs != null && position < tabs.size()) {
-            WebView tabToRemove = tabs.get(position);
-            
-            // Invoke actual functional backend tab management removal logic
-            closeTab(position); // ACTIVATED backend closer loop
-            
-            // Clear memory hooks securely
-            if (tabToRemove != null) {
-                tabToRemove.stopLoading();
-                tabToRemove.loadUrl("about:blank");
-                tabToRemove.destroy();
-            }
+            // 1. Let backend handle array removal, view removal, and memory cleanup safely
+            closeTab(position); 
 
-            // Sync visual list arrays
-            tabs.remove(position);
+            // 2. Sync the local dialog layout tracking array strings
             tabTitles.remove(position);
 
-            // Bounds protection check
+            // 3. Bounds protection check
             if (currentTab >= tabs.size()) {
                 currentTab = Math.max(0, tabs.size() - 1);
             }
 
-            // Instantly decrement your tab count layout badge variable
-            // 5. FIXED: Dynamic runtime lookup that bypasses top-level variable checks entirely
-            int buttonId = getResources().getIdentifier("tab_button", "id", getPackageName());
-            if (buttonId == 0) {
-                // Try your other common project layout ID naming style just in case
-                buttonId = getResources().getIdentifier("count_button", "id", getPackageName());
-            }
-
-            if (buttonId != 0) {
-                android.view.View layoutView = findViewById(buttonId);
-                if (layoutView instanceof TextView) {
-                    ((TextView) layoutView).setText(String.valueOf(tabs.size()));
-                } else if (layoutView instanceof Button) {
-                    ((Button) layoutView).setText(String.valueOf(tabs.size()));
-                }
-            }
+            // 4. Update badge UI using the native method verified at line 1697
+            updateTabBadgeCount();
 
             tabAdapter.notifyDataSetChanged();
 
-            // Switch to a safe remaining container if we just killed the active view
+            // 5. Safely switch to remaining tab if any are left open
             if (!tabs.isEmpty()) {
-                switchTab(currentTab);
+                switchToTab(currentTab);
             }
         }
 
@@ -1324,14 +1301,13 @@ public class MainActivity extends AppCompatActivity {
         return true;
     });
 
-
     // 7. Style the dialog window frame on launch
     dialog.setOnShowListener(d -> {
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new GradientDrawable() {{
                 setColor(Color.parseColor("#141414"));
-                setCornerRadius(dp(24)); 
+                setCornerRadius(dp(24));
             }});
 
             int titleId = getResources().getIdentifier("alertTitle", "id", "android");
