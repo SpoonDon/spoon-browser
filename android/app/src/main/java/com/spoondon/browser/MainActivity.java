@@ -1480,8 +1480,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshFilterLists() {
         new Thread(() -> {
-            if (filterLists == null || filterLists.isEmpty()) {
-                filterLists = new ArrayList<>();
+            if (filterLists.isEmpty()) {
                 filterLists.add("https://easylist.to/easylist/easylist.txt");
                 filterLists.add("https://easylist.to/easylist/easyprivacy.txt");
             }
