@@ -53,6 +53,9 @@ import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.RenderProcessGoneDetail;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.view.Window;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -1207,7 +1210,7 @@ private void showTabSwitcher() {
     hintTextView.setTextSize(13);
     hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
     hintTextView.setPadding(0, 0, 0, dp(14)); // Generous separation gap before the list starts
-    hintTextView.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+    hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
     
     // Add the hint to the top of our layout container
     dialogContainer.addView(hintTextView);
