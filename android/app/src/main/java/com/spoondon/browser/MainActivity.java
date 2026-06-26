@@ -769,7 +769,6 @@ private void setupMenuButton() {
         }
     }
 
-
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
             @Override
@@ -1228,12 +1227,12 @@ private void showTabSwitcher() {
     // 2. Build a gorgeous, subtle instruction hint banner
     TextView hintTextView = new TextView(this);
     hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
-    hintTextView.setTextColor(Color.parseColor("#8A8A8A")); // Soft muted gray so it doesn't shout
+    hintTextView.setTextColor(Color.parseColor("#8A8A8A")); 
     hintTextView.setTextSize(13);
     hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-    hintTextView.setPadding(0, 0, 0, dp(14)); // Generous separation gap before the list starts
+    hintTextView.setPadding(0, 0, 0, dp(14)); 
     hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-    
+
     // Add the hint to the top of our layout container
     dialogContainer.addView(hintTextView);
 
@@ -1242,38 +1241,72 @@ private void showTabSwitcher() {
     listView.setBackgroundColor(Color.parseColor("#141414"));
     listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
     listView.setDividerHeight(dp(1));
-    
+
     // Append the ListView right beneath our tip banner inside the layout container
     dialogContainer.addView(listView);
 
-    // 4. Map your Tab adapter to the list view (Keep your existing adapter assignment line here)
-    // For example: listView.setAdapter(new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles));
-    
-    // 5. Build and launch the premium Dark Dialog modal frame
-    AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+    // 4. FIX: Extract string titles or URLs from the active WebView tab list
+    ArrayList<String> tabTitles = new ArrayList<>();
+    if (tabs != null) {
+        for (int i = 0; i < tabs.size(); i++) {
+            WebView webView = tabs.get(i);
+            String title = (webView != null) ? webView.getTitle() : null;
+            // Fall back to the URL or a placeholder if the title is blank
+            if (title == null || title.isEmpty()) {
+                title = (webView != null && webView.getUrl() != null) ? webView.getUrl() : "New Tab";
+            }
+            tabTitles.add(title);
+        }
+    }
+
+    // Map your new text list to the polished item layout adapter
+    ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles);
+    listView.setAdapter(tabAdapter);
+
+    // 5. Build the dialog frame so click listeners can reference it
+    final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Active Tabs")
-            .setView(dialogContainer) // Swap raw listView for our newly built compound dialogContainer!
+            .setView(dialogContainer) 
             .create();
 
-    // 6. Style the dialog window frame on launch
+    // 6. Hook up navigation click actions using our mapped index parameters
+    listView.setOnItemClickListener((parent, view, position, id) -> {
+        currentTab = position;
+        // Load the actual WebView tab based on its position index
+        if (tabs != null && position < tabs.size()) {
+            // Verify your exact method hook name down below:
+            // switchTab(position); 
+        }
+        dialog.dismiss();
+    });
+
+    listView.setOnItemLongClickListener((parent, view, position, id) -> {
+        // Ensure this matches your browser tab closing logic method name
+        // closeTab(position); 
+        dialog.dismiss();
+        showTabSwitcher(); // Refresh the dialog view state
+        return true;
+    });
+
+    // 7. Style the dialog window frame on launch
     dialog.setOnShowListener(d -> {
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new GradientDrawable() {{
                 setColor(Color.parseColor("#141414"));
-                setCornerRadius(dp(24)); // Smooth rounded overlay card
+                setCornerRadius(dp(24)); 
             }});
-            
+
             // Enforce sharp crisp white header styling
             int titleId = getResources().getIdentifier("alertTitle", "id", "android");
             TextView titleView = dialog.findViewById(titleId);
             if (titleView != null) {
                 titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(18);
+                titleView.setTextSize(18);                                                                                                                                                                   
                 titleView.setTypeface(Typeface.DEFAULT_BOLD);
-                titleView.setPadding(dp(8), dp(8), 0, dp(6));
+                titleView.setPadding(dp(8), dp(8), 0, dp(6));                                                                                                                                                
             }
-        }
+        }                                                                                                                                                                                                    
     });
 
     dialog.show();
