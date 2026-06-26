@@ -1303,12 +1303,24 @@ private void showTabSwitcher() {
             }
 
             // Instantly decrement your tab count layout badge variable
-            if (tabButton != null) {
-                tabButton.setText(String.valueOf(tabs.size()));
+            // 5. FIXED: Dynamic runtime lookup that bypasses top-level variable checks entirely
+            int buttonId = getResources().getIdentifier("tab_button", "id", getPackageName());
+            if (buttonId == 0) {
+                // Try your other common project layout ID naming style just in case
+                buttonId = getResources().getIdentifier("count_button", "id", getPackageName());
+            }
+
+            if (buttonId != 0) {
+                android.view.View layoutView = findViewById(buttonId);
+                if (layoutView instanceof TextView) {
+                    ((TextView) layoutView).setText(String.valueOf(tabs.size()));
+                } else if (layoutView instanceof Button) {
+                    ((Button) layoutView).setText(String.valueOf(tabs.size()));
+                }
             }
 
             tabAdapter.notifyDataSetChanged();
-            
+
             // Switch to a safe remaining container if we just killed the active view
             if (!tabs.isEmpty()) {
                 switchTab(currentTab);
@@ -1321,6 +1333,7 @@ private void showTabSwitcher() {
         }
         return true;
     });
+
 
     // 7. Style the dialog window frame on launch
     dialog.setOnShowListener(d -> {
