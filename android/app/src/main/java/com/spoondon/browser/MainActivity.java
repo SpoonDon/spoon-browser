@@ -621,12 +621,16 @@ public class MainActivity extends AppCompatActivity {
 
             // Create a gorgeous modern Tab Switcher Badge [ 1 ]
             tabBadgeButton = new Button(this);
-            int tabCount = (tabs != null) ? tabs.size() : 1; 
+            int tabCount = (tabs != null) ? tabs.size() : 1;
             tabBadgeButton.setText(String.valueOf(tabCount));
             tabBadgeButton.setTextColor(Color.WHITE);
-            tabBadgeButton.setTextSize(14);
+            tabBadgeButton.setTextSize(12); // Slightly lowered font size to sit comfortably inside the box
             tabBadgeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             tabBadgeButton.setGravity(Gravity.CENTER);
+            
+            // CRITICAL FIX: Strip default Android button paddings to keep text perfectly centered
+            tabBadgeButton.setPadding(0, 0, 0, 0);
+            tabBadgeButton.setIncludeFontPadding(false);
 
             // Give it a sleek rounded border look
             GradientDrawable badgeBg = new GradientDrawable();
@@ -635,17 +639,20 @@ public class MainActivity extends AppCompatActivity {
             badgeBg.setCornerRadius(dp(6));
             tabBadgeButton.setBackground(badgeBg);
 
-            // Fit it nicely inside the toolbar layout
-            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(28), dp(28));
-            badgeParams.setMargins(dp(4), 0, dp(8), 0);
+            // Expand touch target to 36dp x 36dp for smaller screens so it registers clicks easily
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+            badgeParams.setMargins(dp(6), 0, dp(6), 0);
             tabBadgeButton.setLayoutParams(badgeParams);
 
-            // Setup button action: Tapping it brings up your existing tab options menu
+            // Setup button action: Bring up your existing native tab picker action directly
             tabBadgeButton.setOnClickListener(v -> {
+                // If performClick on menuButton isn't working on small screens, 
+                // replace this with your direct method invocation (e.g., openTabManagementDialog();)
                 if (menuButton != null) {
-                    menuButton.performClick(); // Triggers menu layout natively
+                    menuButton.performClick(); 
                 }
             });
+
 
             // Add only the vital elements to the mobile view
             toolbar.addView(addressBar);
