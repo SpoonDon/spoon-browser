@@ -479,7 +479,7 @@ public class MainActivity extends AppCompatActivity {
         prevTabButton = makeButton("◀");
         nextTabButton = makeButton("▶");
         newTabButton = makeButton("+");
-        menuButton = makeButton("⋮");
+        menuButton = makeButton("☰");
 
         // Responsive UI Logic for Phones vs Tablets
         int screenWidth = getScreenWidthDp();
@@ -644,14 +644,20 @@ public class MainActivity extends AppCompatActivity {
             badgeParams.setMargins(dp(6), 0, dp(6), 0);
             tabBadgeButton.setLayoutParams(badgeParams);
 
-            // Setup button action: Bring up your existing native tab picker action directly
+            // DIRECT FIX: Fire your browser's native tab layout window directly!
             tabBadgeButton.setOnClickListener(v -> {
-                // If performClick on menuButton isn't working on small screens, 
-                // replace this with your direct method invocation (e.g., openTabManagementDialog();)
-                if (menuButton != null) {
-                    menuButton.performClick(); 
-                }
+                showTabSwitcher();
             });
+
+            // MENU OVERLAY ALIGNMENT FIX: Strip implicit button boundaries so the icon is perfectly squared
+            if (menuButton != null) {
+                menuButton.setPadding(0, 0, 0, 0);
+                menuButton.setIncludeFontPadding(false);
+            }
+
+            // Add only the vital elements to the mobile view
+            toolbar.addView(addressBar);
+
 
 
             // Add only the vital elements to the mobile view
