@@ -1224,16 +1224,19 @@ private void showTabSwitcher() {
     dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
     dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
 
-    // 2. Build a gorgeous, subtle instruction hint banner
+    // 2. Build a responsive instruction hint banner based on screen width profile
     TextView hintTextView = new TextView(this);
-    hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
+    boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+    if (isTablet) {
+        hintTextView.setText("💡 Tip: Tap a tab item to switch views");
+    } else {
+        hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
+    }
     hintTextView.setTextColor(Color.parseColor("#8A8A8A")); 
     hintTextView.setTextSize(13);
     hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
     hintTextView.setPadding(0, 0, 0, dp(14)); 
     hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-
-    // Add the hint to the top of our layout container
     dialogContainer.addView(hintTextView);
 
     // 3. Configure the main ListView container
@@ -1241,17 +1244,14 @@ private void showTabSwitcher() {
     listView.setBackgroundColor(Color.parseColor("#141414"));
     listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
     listView.setDividerHeight(dp(1));
-
-    // Append the ListView right beneath our tip banner inside the layout container
     dialogContainer.addView(listView);
 
-    // 4. FIX: Extract string titles or URLs from the active WebView tab list
+    // 4. Extract string titles or URLs from the active WebView tab list
     ArrayList<String> tabTitles = new ArrayList<>();
     if (tabs != null) {
         for (int i = 0; i < tabs.size(); i++) {
             WebView webView = tabs.get(i);
             String title = (webView != null) ? webView.getTitle() : null;
-            // Fall back to the URL or a placeholder if the title is blank
             if (title == null || title.isEmpty()) {
                 title = (webView != null && webView.getUrl() != null) ? webView.getUrl() : "New Tab";
             }
@@ -1259,7 +1259,7 @@ private void showTabSwitcher() {
         }
     }
 
-    // Map your new text list to the polished item layout adapter
+    // Map your text list to the polished custom item layout adapter
     ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles);
     listView.setAdapter(tabAdapter);
 
@@ -1272,19 +1272,53 @@ private void showTabSwitcher() {
     // 6. Hook up navigation click actions using our mapped index parameters
     listView.setOnItemClickListener((parent, view, position, id) -> {
         currentTab = position;
-        // Load the actual WebView tab based on its position index
         if (tabs != null && position < tabs.size()) {
-            // Verify your exact method hook name down below:
-            // switchTab(position); 
+            switchTab(position); // ACTIVATED backend view switcher
         }
         dialog.dismiss();
     });
 
+    // Restore long-press action to close a tab cleanly
     listView.setOnItemLongClickListener((parent, view, position, id) -> {
-        // Ensure this matches your browser tab closing logic method name
-        // closeTab(position); 
+        if (tabs != null && position < tabs.size()) {
+            WebView tabToRemove = tabs.get(position);
+            
+            // Invoke actual functional backend tab management removal logic
+            closeTab(position); // ACTIVATED backend closer loop
+            
+            // Clear memory hooks securely
+            if (tabToRemove != null) {
+                tabToRemove.stopLoading();
+                tabToRemove.loadUrl("about:blank");
+                tabToRemove.destroy();
+            }
+
+            // Sync visual list arrays
+            tabs.remove(position);
+            tabTitles.remove(position);
+
+            // Bounds protection check
+            if (currentTab >= tabs.size()) {
+                currentTab = Math.max(0, tabs.size() - 1);
+            }
+
+            // Instantly decrement your tab count layout badge variable
+            if (tabButton != null) {
+                tabButton.setText(String.valueOf(tabs.size()));
+            }
+
+            tabAdapter.notifyDataSetChanged();
+            
+            // Switch to a safe remaining container if we just killed the active view
+            if (!tabs.isEmpty()) {
+                switchTab(currentTab);
+            }
+        }
+
         dialog.dismiss();
-        showTabSwitcher(); // Refresh the dialog view state
+        if (tabs != null && !tabs.isEmpty()) {
+            showTabSwitcher(); // Clean redraw loop
+        }
         return true;
     });
 
@@ -1297,16 +1331,15 @@ private void showTabSwitcher() {
                 setCornerRadius(dp(24)); 
             }});
 
-            // Enforce sharp crisp white header styling
             int titleId = getResources().getIdentifier("alertTitle", "id", "android");
             TextView titleView = dialog.findViewById(titleId);
             if (titleView != null) {
                 titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(18);                                                                                                                                                                   
+                titleView.setTextSize(18);
                 titleView.setTypeface(Typeface.DEFAULT_BOLD);
-                titleView.setPadding(dp(8), dp(8), 0, dp(6));                                                                                                                                                
+                titleView.setPadding(dp(8), dp(8), 0, dp(6));
             }
-        }                                                                                                                                                                                                    
+        }
     });
 
     dialog.show();
