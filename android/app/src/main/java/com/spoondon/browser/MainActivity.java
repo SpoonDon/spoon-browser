@@ -612,6 +612,14 @@ public class MainActivity extends AppCompatActivity {
             toolbar.addView(menuButton);
         } else {
             // MOBILE LAYOUT: Pure minimalism
+            // SAFEST PRE-EMPTIVE FIX: Force detach mobile elements from any previous parent trees to prevent layout crashes
+            if (addressBar != null && addressBar.getParent() instanceof ViewGroup) {
+                ((ViewGroup) addressBar.getParent()).removeView(addressBar);
+            }
+            if (menuButton != null && menuButton.getParent() instanceof ViewGroup) {
+                ((ViewGroup) menuButton.getParent()).removeView(menuButton);
+            }
+
             // Hide the redundant desktop buttons entirely
             forwardButton.setVisibility(View.GONE);
             prevTabButton.setVisibility(View.GONE);
@@ -655,17 +663,17 @@ public class MainActivity extends AppCompatActivity {
                 menuButton.setIncludeFontPadding(false);
             }
 
-            // Add only the vital elements to the mobile view
-            toolbar.addView(addressBar);
-
-
-
-            // Add only the vital elements to the mobile view
-            toolbar.addView(addressBar);
-            toolbar.addView(tabBadgeButton);
-            toolbar.addView(menuButton);
+            // Cleanly attach views only if they don't already have an assigned parent layout
+            if (addressBar != null && addressBar.getParent() == null) {
+                toolbar.addView(addressBar);
+            }
+            if (tabBadgeButton != null && tabBadgeButton.getParent() == null) {
+                toolbar.addView(tabBadgeButton);
+            }
+            if (menuButton != null && menuButton.getParent() == null) {
+                toolbar.addView(menuButton);
+            }
         }
-
     }
 
     private Button makeButton(String text) {
