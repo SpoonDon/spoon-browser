@@ -2036,6 +2036,4 @@ private void setupMenuButton() {
             }
         }
     }
-
-    }
 }
