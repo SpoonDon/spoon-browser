@@ -1,77 +1,74 @@
 package com.spoondon.browser;
 
-import android.os.Build;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
-import android.view.Gravity;
-import android.graphics.drawable.ColorDrawable;
-import android.webkit.*;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.graphics.Insets;
-import android.text.TextWatcher;
-import android.text.Editable;
-import android.net.Uri;
+// Core Android System, OS, and Lifecycle
 import android.annotation.SuppressLint;
-import android.app.AlertDialog;
+import android.os.Bundle;
+import android.os.Build;
+import android.os.Message;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
+import android.util.TypedValue;
+
+// Android Graphics, Themes, and Windowing
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
-import android.os.Bundle;
-import android.util.TypedValue;
-import android.view.View;
+import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
-import android.os.Message;
-import android.webkit.WebView.WebViewTransport;
-import android.webkit.WebResourceResponse;
+import android.view.Window;
+
+// Android View Framework and Native UI Widgets
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Filter;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.PopupMenu;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.app.AlertDialog;
+
+// Android WebKit (Core Browser Engine Dependencies)
 import android.webkit.DownloadListener;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.SafeBrowsingResponse;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.SafeBrowsingResponse;
-import android.webkit.WebResourceRequest;
-import android.widget.Filter;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.AutoCompleteTextView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.Toast;
-import android.widget.PopupMenu;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
+import android.webkit.WebView.WebViewTransport;
+
+// AndroidX Jetpack Components (Activity, Window Insets, Contracts)
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.activity.OnBackPressedCallback;
-import androidx.appcompat.app.AppCompatActivity;
+
+// Java Standard Core Utilities & I/O Packages
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.URL;
-import android.webkit.ValueCallback;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
-import android.webkit.RenderProcessGoneDetail;
-import android.graphics.Typeface;
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
-import android.view.Window;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
-import android.view.ViewGroup;
-import android.widget.LinearLayout;
 
 public class MainActivity extends AppCompatActivity {
     private SecureCredentialManager secureCredentialManager;
@@ -98,6 +95,7 @@ public class MainActivity extends AppCompatActivity {
     private Button nextTabButton;
     private Button newTabButton;
     private Button menuButton;
+    private Button tabBadgeButton;
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -122,6 +120,10 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
+        }
+
         setContentView(R.layout.activity_main);
         secureCredentialManager = new SecureCredentialManager(this);
         // ... rest of your initialization
@@ -309,19 +311,21 @@ public class MainActivity extends AppCompatActivity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
 
+        // Apply window insets cleanly without shrinking side dimensions
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, windowInsets) -> {
             Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            v.setPadding(0, systemBars.top, 0, 0); // Only pad the status bar area
             return windowInsets;
         });
 
         browserContainer = new LinearLayout(this);
         browserContainer.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams browserParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f
         );
         browserContainer.setLayoutParams(browserParams);
     }
+
 
     private void loadSavedData() {
         String savedHistory = prefs.getString(KEY_HISTORY, "");
@@ -391,9 +395,10 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void setupMenuButton() {
-        menuButton.setOnClickListener(v -> {
-            PopupMenu popup = new PopupMenu(this, menuButton);
+private void setupMenuButton() {
+    menuButton.setOnClickListener(v -> {
+        Context wrapper = new ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
+        PopupMenu popup = new PopupMenu(wrapper, menuButton, Gravity.END);
             popup.getMenu().add("New Tab");
             popup.getMenu().add("Reload");
             popup.getMenu().add("Bookmarks");
@@ -528,27 +533,40 @@ public class MainActivity extends AppCompatActivity {
         toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(8), dp(8), dp(8));
-        toolbar.setBackgroundColor(Color.parseColor("#111111"));
+        toolbar.setPadding(dp(12), dp(10), dp(12), dp(10)); // Increased padding for touch targets
+        toolbar.setBackgroundColor(Color.parseColor("#141414")); // Sleek modern dark mode accent
 
         forwardButton = makeButton("→");
         prevTabButton = makeButton("◀");
         nextTabButton = makeButton("▶");
         newTabButton = makeButton("+");
-        menuButton = makeButton("⋮");
+        menuButton = makeButton("☰");
 
+        // Responsive UI Logic for Phones vs Tablets
         int screenWidth = getScreenWidthDp();
-        if (screenWidth < 400) {
+        if (screenWidth < 600) {
+            // True Mobile Mode: Hide back/forward/tabs to maximize space for the URL bar
             forwardButton.setVisibility(View.GONE);
+            prevTabButton.setVisibility(View.GONE);
+            nextTabButton.setVisibility(View.GONE);
             newTabButton.setVisibility(View.GONE);
-        } else if (screenWidth < 600) {
-            forwardButton.setVisibility(View.GONE);
+        } else {
+            // Tablet Mode: Ensure everything is explicitly visible when rotated
+            forwardButton.setVisibility(View.VISIBLE);
+            prevTabButton.setVisibility(View.VISIBLE);
+            nextTabButton.setVisibility(View.VISIBLE);
+            newTabButton.setVisibility(View.VISIBLE);
         }
 
         tabIndicator = new TextView(this);
         tabIndicator.setTextColor(Color.WHITE);
-        tabIndicator.setTextSize(15);
-        tabIndicator.setPadding(dp(10), 0, dp(10), 0);
+        tabIndicator.setTextSize(14);
+        tabIndicator.setPadding(dp(8), 0, dp(8), 0);
+        
+        // Hide tab counter on small phones if it crowds the bar
+        if (screenWidth < 360) {
+            tabIndicator.setVisibility(View.GONE);
+        }
 
         addressBar = new AutoCompleteTextView(this);
         addressBar.setHint("Search or enter address");
@@ -557,8 +575,25 @@ public class MainActivity extends AppCompatActivity {
         addressBar.setSingleLine(true);
         addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         addressBar.setThreshold(0);
+        
+        // Modernized Address Bar Background styling - Isolated unique variable name
+        android.graphics.drawable.GradientDrawable customAddressBg = new android.graphics.drawable.GradientDrawable();
+        customAddressBg.setColor(Color.parseColor("#222222"));
+        customAddressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
+        addressBar.setBackground(customAddressBg);
 
-        addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
+
+        addressBar.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+        // CRITICAL FIX: Give address bar dynamic layout weight so it stretches elegantly
+        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        addressParams.setMargins(dp(6), 0, dp(6), 0);
+        addressBar.setLayoutParams(addressParams);
+
+        // Keep your existing adapter and text watcher setups underneath...
+
+
+        addressBarAdapter = new ArrayAdapter<String>(this, R.layout.modern_list_item, new ArrayList<>()) {
             @Override
             public android.widget.Filter getFilter() {
                 return new android.widget.Filter() {
@@ -578,11 +613,18 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
+        // STYLING ADDITION: Apply matching dark, rounded design to the dropdown panel itself
         addressBar.setAdapter(addressBarAdapter);
+        addressBar.setDropDownBackgroundDrawable(new android.graphics.drawable.GradientDrawable() {{
+            setColor(android.graphics.Color.parseColor("#1F1F1F")); // Subtle contrast dark accent
+            setCornerRadius(dp(16));                               // Premium rounded corner profiles
+        }});
+        addressBar.setDropDownVerticalOffset(dp(4));               // Floating gap separation
+
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
             String rawItem = addressBarAdapter.getItem(position);
             if (rawItem == null) return;
-            
+
             // Clean the input string: extract the actual URL if it contains a label or CSS scrap
             String cleanUrl = rawItem;
             if (rawItem.contains("http://") || rawItem.contains("https://")) {
@@ -609,7 +651,8 @@ public class MainActivity extends AppCompatActivity {
                 if (suppressSuggestions) return;
                 updateAddressBarSuggestions(s.toString());
             }
-            @Override public void afterTextChanged(Editable s) {}
+            @Override public void afterTextChanged(android.text.Editable s) {}
+            // Explicitly declared android.text.Editable signature package target to avoid any lookup failures
         });
 
         GradientDrawable addressBg = new GradientDrawable();
@@ -622,13 +665,84 @@ public class MainActivity extends AppCompatActivity {
         inputParams.setMargins(dp(8), 0, dp(8), 0);
         addressBar.setLayoutParams(inputParams);
 
-        toolbar.addView(forwardButton);
-        toolbar.addView(prevTabButton);
-        toolbar.addView(tabIndicator);
-        toolbar.addView(nextTabButton);
-        toolbar.addView(newTabButton);
-        toolbar.addView(addressBar);
-        toolbar.addView(menuButton);
+        // Calculate device width profile dynamically
+        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        float widthDp = metrics.widthPixels / metrics.density;
+
+        if (widthDp >= 600) {
+            // TABLET LAYOUT: Show all individual controls side-by-side
+            toolbar.addView(forwardButton);
+            toolbar.addView(prevTabButton);
+            toolbar.addView(tabIndicator);
+            toolbar.addView(nextTabButton);
+            toolbar.addView(newTabButton);
+            toolbar.addView(addressBar);
+            toolbar.addView(menuButton);
+        } else {
+            // MOBILE LAYOUT: Pure minimalism
+            // SAFEST PRE-EMPTIVE FIX: Force detach mobile elements from any previous parent trees to prevent layout crashes
+            if (addressBar != null && addressBar.getParent() instanceof ViewGroup) {
+                ((ViewGroup) addressBar.getParent()).removeView(addressBar);
+            }
+            if (menuButton != null && menuButton.getParent() instanceof ViewGroup) {
+                ((ViewGroup) menuButton.getParent()).removeView(menuButton);
+            }
+
+            // Hide the redundant desktop buttons entirely
+            forwardButton.setVisibility(View.GONE);
+            prevTabButton.setVisibility(View.GONE);
+            tabIndicator.setVisibility(View.GONE);
+            nextTabButton.setVisibility(View.GONE);
+            newTabButton.setVisibility(View.GONE);
+
+            // Create a gorgeous modern Tab Switcher Badge [ 1 ]
+            tabBadgeButton = new Button(this);
+            int tabCount = (tabs != null) ? tabs.size() : 1;
+            tabBadgeButton.setText(String.valueOf(tabCount));
+            tabBadgeButton.setTextColor(Color.WHITE);
+            tabBadgeButton.setTextSize(12); // Slightly lowered font size to sit comfortably inside the box
+            tabBadgeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            tabBadgeButton.setGravity(Gravity.CENTER);
+            
+            // CRITICAL FIX: Strip default Android button paddings to keep text perfectly centered
+            tabBadgeButton.setPadding(0, 0, 0, 0);
+            tabBadgeButton.setIncludeFontPadding(false);
+
+            // Give it a sleek rounded border look
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setColor(Color.TRANSPARENT);
+            badgeBg.setStroke(dp(2), Color.parseColor("#CCCCCC"));
+            badgeBg.setCornerRadius(dp(6));
+            tabBadgeButton.setBackground(badgeBg);
+
+            // Expand touch target to 36dp x 36dp for smaller screens so it registers clicks easily
+            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+            badgeParams.setMargins(dp(6), 0, dp(6), 0);
+            tabBadgeButton.setLayoutParams(badgeParams);
+
+            // DIRECT FIX: Fire your browser's native tab layout window directly!
+            tabBadgeButton.setOnClickListener(v -> {
+                showTabSwitcher();
+            });
+
+            // MENU OVERLAY ALIGNMENT FIX: Strip implicit button boundaries so the icon is perfectly squared
+            if (menuButton != null) {
+                menuButton.setPadding(0, 0, 0, 0);
+                menuButton.setIncludeFontPadding(false);
+            }
+
+            // Cleanly attach views only if they don't already have an assigned parent layout
+            if (addressBar != null && addressBar.getParent() == null) {
+                toolbar.addView(addressBar);
+            }
+            if (tabBadgeButton != null && tabBadgeButton.getParent() == null) {
+                toolbar.addView(tabBadgeButton);
+            }
+            if (menuButton != null && menuButton.getParent() == null) {
+                toolbar.addView(menuButton);
+            }
+        }
     }
 
     private Button makeButton(String text) {
@@ -704,7 +818,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
             @Override
@@ -718,6 +831,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 customView = view;
                 customViewCallback = callback;
+                customView.setKeepScreenOn(true);
                 toolbar.setVisibility(View.GONE);
                 browserContainer.setVisibility(View.GONE);
                 root.addView(customView);
@@ -1137,6 +1251,8 @@ public class MainActivity extends AppCompatActivity {
         currentTab = index;
         saveCurrentTab();
         updateTabIndicator();
+        updateTabBadgeCount();
+        updateTabBadgeCount();
 
         if (browserContainer != null) {
             // High-Performance Visibility Toggle Pattern
@@ -1232,9 +1348,11 @@ public class MainActivity extends AppCompatActivity {
     private void showTabSwitcher() {
         if (tabs == null || tabs.isEmpty()) return;
 
-        // 1. Initialize the root container
+        // 1. Create a vertical container layout (Using UI Overhaul's improved styling)
         LinearLayout dialogContainer = new LinearLayout(this);
         dialogContainer.setOrientation(LinearLayout.VERTICAL);
+        dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
+        dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
 
         // 2. Build a responsive instruction hint banner
         TextView hintTextView = new TextView(this);
@@ -1249,7 +1367,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 3. Configure the main ListView
         ListView listView = new ListView(this);
-        listView.setBackgroundColor(Color.parseColor("#141414"));
         listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
         listView.setDividerHeight(dp(1));
         dialogContainer.addView(listView);
@@ -1273,19 +1390,16 @@ public class MainActivity extends AppCompatActivity {
         // 6. Navigation click actions
         listView.setOnItemClickListener((parent, view, position, id) -> {
             currentTab = position;
-            if (tabs != null && position < tabs.size()) {
-                switchToTab(position);
-            }
+            if (tabs != null && position < tabs.size()) switchToTab(position);
             dialog.dismiss();
         });
 
-        // 7. Unified long-press action
+        // 7. Unified long-press action (Your Ad-Blocker logic)
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             if (tabs != null && position < tabs.size()) {
                 closeTab(position);
                 tabTitles.remove(position);
                 if (currentTab >= tabs.size()) currentTab = Math.max(0, tabs.size() - 1);
-                
                 tabAdapter.notifyDataSetChanged();
                 if (!tabs.isEmpty()) switchToTab(currentTab);
             }
@@ -1294,26 +1408,8 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
 
-        // 8. Style dialog window
-        dialog.setOnShowListener(d -> {
-            Window window = dialog.getWindow();
-            if (window != null) {
-                window.setBackgroundDrawable(new GradientDrawable() {{
-                    setColor(Color.parseColor("#141414"));
-                    setCornerRadius(dp(24));
-                }});
-                int titleId = getResources().getIdentifier("alertTitle", "id", "android");
-                TextView titleView = dialog.findViewById(titleId);
-                if (titleView != null) {
-                    titleView.setTextColor(Color.WHITE);
-                    titleView.setTextSize(18);
-                    titleView.setTypeface(Typeface.DEFAULT_BOLD);
-                }
-            }
-        });
         dialog.show();
     }
-
 
     private ArrayList<BrowserItem> buildHistoryItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
@@ -1705,24 +1801,40 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showHome() {
-        // High-Performance Lazy Initialization String Caching (Point #3)
+        // High-Performance Lazy Initialization String Caching (Preserved!)
         if (cachedHomeHtml == null) {
-            cachedHomeHtml = "<html>" +
-                    "<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>" +
-                    "<div style='padding-top:20%;'>" +
-                    "<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>" +
-                    "<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>" +
-                    "</div>" +
-                    "<script>" +
-                    "function goSearch(){" +
-                    "var q=document.getElementById(\"q\").value;" +
-                    "window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);" +
-                    "}" +
-                    "document.getElementById('q').addEventListener('keydown',function(e){" +
-                    "if(e.key==='Enter'){goSearch();}" +
-                    "});" +
-                    "</script>" +
-                    "</body></html>";
+            // Check screen width once during initialization
+            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+            getWindowManager().getDefaultDisplay().getMetrics(metrics);
+            float widthDp = metrics.widthPixels / metrics.density;
+
+            StringBuilder sb = new StringBuilder();
+            sb.append("<html>")
+              .append("<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>")
+              .append("<div style='padding-top:20%;'>")
+              .append("<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>");
+
+            // Only add the input block to the cached memory string if it's a tablet
+            if (widthDp >= 600) {
+                sb.append("<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>");
+            }
+
+            sb.append("</div>")
+              .append("<script>")
+              .append("function goSearch(){")
+              .append("  var q=document.getElementById(\"q\").value;")
+              .append("  window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);")
+              .append("}")
+              .append("var inputEl = document.getElementById('q');")
+              .append("if(inputEl) {")
+              .append("  inputEl.addEventListener('keydown',function(e){")
+              .append("    if(e.key==='Enter'){goSearch();}")
+              .append("  });")
+              .append("}")
+              .append("</script>")
+              .append("</body></html>");
+
+            cachedHomeHtml = sb.toString();
         }
 
         WebView wv = getCurrentWebView();
@@ -1731,6 +1843,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public void updateTabBadgeCount() {
+        if (tabBadgeButton != null && tabs != null) {
+            // Run on UI thread to guarantee instant rendering updates
+            runOnUiThread(() -> {
+                tabBadgeButton.setText(String.valueOf(tabs.size()));
+            });
+        }
+    }
 
     private void updateAddressBarSuggestions(String query) {
         addressBarAdapter.clear();
