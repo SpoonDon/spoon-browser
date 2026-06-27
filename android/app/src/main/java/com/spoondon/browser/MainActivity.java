@@ -501,23 +501,10 @@ private void setupMenuButton() {
                             }
                         }
                         return true;
-                    case "Import Passwords":
+                                        case "Import Passwords":
                         passwordImportLauncher.launch("text/*");
-                        break;
-                        //
-                        if (secureCredentialManager != null) {
-                            java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-                            java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
-                            if (!csvFile.exists()) {
-                                Toast.makeText(this, "Place passwords.csv in Downloads folder first", Toast.LENGTH_LONG).show();
-                            } else if (secureCredentialManager.importFromCSV(csvFile)) {
-                                Toast.makeText(this, "Passwords imported successfully!", Toast.LENGTH_SHORT).show();
-                            } else {
-                                Toast.makeText(this, "Failed to parse passwords.csv", Toast.LENGTH_SHORT).show();
-                            }
-                        }
                         return true;
-                    case "Exit":
+case "Exit":
                         finishAndRemoveTask();
                         return true;
                 }
