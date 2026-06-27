@@ -69,6 +69,7 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
+    implementation "androidx.security:security-crypto:1.1.0-alpha06"
 }
 
 apply from: 'capacitor.build.gradle'
