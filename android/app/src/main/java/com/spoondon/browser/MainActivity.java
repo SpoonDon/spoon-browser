@@ -138,6 +138,7 @@ public class MainActivity extends AppCompatActivity {
                 if (uri != null) {
                     try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
                         if (secureCredentialManager.importFromCSVStream(is)) {
+                            Toast.makeText(this, "Passwords imported successfully", Toast.LENGTH_SHORT).show();
                         } else {
                             Toast.makeText(this, "Failed to parse passwords.csv", Toast.LENGTH_SHORT).show();
                         }
@@ -1152,15 +1153,15 @@ case "Exit":
                             "var passFields = document.querySelectorAll(\"input[type='password']\");" +
                             "if (passFields.length > 0) {" +
                             "   var passField = passFields[0];" +
-                            "   var form = passField.form;" +
-                            "   var userField = null;" +
-                            "   if (form) {" +
-                            "       var inputs = form.querySelectorAll(\"input\");" +
+                            "   var userField = document.querySelector(\"input[type='text'], input[type='email']\");" +
+                            "   if (!userField && passField.form) {" +
+                            "       var inputs = passField.form.getElementsByTagName('input');" +
                             "       for (var i = 0; i < inputs.length; i++) {" +
                             "           if (inputs[i] !== passField && (inputs[i].type === 'text' || inputs[i].type === 'email')) {" +
                             "               userField = inputs[i]; break;" +
                             "           }" +
                             "       }" +
+
                             "       form.addEventListener('submit', function() {" +
                             "           SpoonVault.saveLogin(host, userField ? userField.value : '', passField.value);" +
                             "       });" +
@@ -1308,10 +1309,12 @@ case "Exit":
             public String getSavedUser(String host) {
                 return secureCredentialManager != null ? secureCredentialManager.getUsername(host) : "";
             }
+
             @android.webkit.JavascriptInterface
             public String getSavedPass(String host) {
                 return secureCredentialManager != null ? secureCredentialManager.getPassword(host) : "";
             }
+
             @android.webkit.JavascriptInterface
             public void saveLogin(String host, String user, String pass) {
                 if (secureCredentialManager != null && user != null && !user.isEmpty() && pass != null && !pass.isEmpty()) {
@@ -1334,6 +1337,7 @@ case "Exit":
         // Configure system intent delegation for downloads (e.g., GitHub raw files)
         // Configure combined Native + External Downloader Selector
         webView.setDownloadListener(new DownloadListener() {
+
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 CharSequence[] options = new CharSequence[]{"Native Browser Downloader", "External App (ADM/1DM/System chooser)"};
