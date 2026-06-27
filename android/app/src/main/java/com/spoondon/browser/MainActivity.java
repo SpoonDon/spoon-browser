@@ -256,6 +256,7 @@ public class MainActivity extends AppCompatActivity {
             }
             String[] urls = savedTabs.split("\n");
             int count = 0;
+            String firstValid = null;
 
             for (String raw : urls) {
                 if (raw == null) continue;
@@ -263,17 +264,18 @@ public class MainActivity extends AppCompatActivity {
                 if (url.isEmpty() || url.equals("about:blank")) {
                     continue;
                 }
-                if (!url.contains(".") && !url.startsWith("http")) {
                     continue;
                 }
-                
-                // Cap at 3 simultaneous tabs to completely prevent startup crashes
+                if (firstValid == null) {
+                    firstValid = url;
+                }
+
                 if (count >= 3) break;
 
                 try {
                     WebView webView = createConfiguredWebView();
                     tabs.add(webView);
-                    
+
                     if (browserContainer != null) {
                         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -290,53 +292,37 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            }
-
             if (firstValid == null) {
                 return false;
             }
 
             final String toLoad = firstValid;
-            // Create and add the WebView on the UI thread after layout is available.
             runOnUiThread(() -> {
                 try {
-                    WebView webView = createConfiguredWebView();
-                    tabs.add(webView);
-                    // Make this tab the current one and attach its view.
-                    currentTab = tabs.size() - 1;
+                    if (tabs.isEmpty()) {
+                        WebView webView = createConfiguredWebView();
+                        tabs.add(webView);
+                    }
+                    currentTab = 0;
+                    WebView current = tabs.get(0);
                     if (browserContainer != null) {
                         browserContainer.removeAllViews();
                         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.MATCH_PARENT
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.MATCH_PARENT
                         );
-                        browserContainer.addView(webView, params);
+                        browserContainer.addView(current, params);
+                        current.setVisibility(View.getMode ?? View.VISIBLE);
                     }
                     updateTabIndicator();
-                    try {
-                        webView.loadUrl(toLoad);
-                        android.util.Log.i("SpoonBrowser", "Restored single tab: " + toLoad);
-                    } catch (Exception e) {
-                        android.util.Log.w("SpoonBrowser", "Failed to load restored url: " + toLoad, e);
-                    }
                 } catch (Exception e) {
-                    android.util.Log.e("SpoonBrowser", "createConfiguredWebView failed during restore", e);
+                    android.util.Log.e("SpoonBrowser", "Failed UI thread layout adjustment", e);
                 }
             });
 
-            int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
-            if (savedCurrentTab < 0) savedCurrentTab = 0;
-            // We'll keep currentTab as set above (only one tab restored).
             return true;
         } catch (Exception e) {
             android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
-            // Clean up any created WebViews
-            runOnUiThread(() -> {
-                for (WebView w : tabs) {
-                    try { w.destroy(); } catch (Exception ignored) {}
-                }
-                tabs.clear();
-            });
             return false;
         }
     }
