@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -11,6 +12,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 
 public class SecureCredentialManager {
     private static final String SECRET_FILE_NAME = "secure_user_credentials";
@@ -59,31 +62,25 @@ public class SecureCredentialManager {
         }
     }
 
-    /**
-     * Exports all stored credentials into a standard CSV format: url,username,password
-     */
     public boolean exportToCSV(File outputFile) {
         if (encryptedPrefs == null) return false;
-        
+
         Map<String, ?> allEntries = encryptedPrefs.getAll();
         FileWriter writer = null;
         try {
             writer = new FileWriter(outputFile);
-            // Write CSV Header
             writer.append("url,username,password\n");
 
-            // Match up the keys since they are stored as host_user and host_pass
             for (Map.Entry<String, ?> entry : allEntries.entrySet()) {
                 String key = entry.getKey();
                 if (key.endsWith("_user")) {
                     String host = key.substring(0, key.lastIndexOf("_user"));
                     String username = entry.getValue().toString();
                     String password = encryptedPrefs.getString(host + "_pass", "");
-                    
-                    // Escape basic commas or quotes in user data to keep CSV valid
+
                     username = username.replace("\"", "\"\"");
                     password = password.replace("\"", "\"\"");
-                    
+
                     writer.append(String.format("\"%s\",\"%s\",\"%s\"\n", host, username, password));
                 }
             }
@@ -99,14 +96,12 @@ public class SecureCredentialManager {
         }
     }
 
-    /**
-     * Imports credentials from a standard CSV file and commits them to the secure vault
-     */
     public boolean importFromCSV(File inputFile) {
+        if (encryptedPrefs == null || !inputFile.exists()) return false;
 
         BufferedReader reader = null;
         try {
-            reader = new BufferedReader(new java.io.FileReader(inputFile));
+            reader = new BufferedReader(new FileReader(inputFile));
             String line;
             boolean isHeader = true;
             SharedPreferences.Editor editor = encryptedPrefs.edit();
@@ -118,12 +113,15 @@ public class SecureCredentialManager {
                 }
                 if (line.trim().isEmpty()) continue;
 
-                java.util.List<String> tokens = new java.util.ArrayList<>();
-                StringBuilder sb = new java.util.StringBuilder();
+                List<String> tokens = new ArrayList<>();
+                StringBuilder sb = new StringBuilder();
                 boolean inQuotes = false;
+                
                 for (int i = 0; i < line.length(); i++) {
                     char c = line.charAt(i);
                     if (c == '"') {
+                        inQuotes = !inQuotes;
+                    } else if (c == ',' && !inQuotes) {
                         tokens.add(sb.toString().trim());
                         sb.setLength(0);
                     } else {
@@ -137,6 +135,7 @@ public class SecureCredentialManager {
                     String username = tokens.get(1);
                     String password = tokens.get(2);
 
+                    if (!host.isEmpty()) {
                         editor.putString(host + "_user", username);
                         editor.putString(host + "_pass", password);
                     }
@@ -144,12 +143,12 @@ public class SecureCredentialManager {
             }
             editor.apply();
             return true;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
             return false;
         } finally {
             if (reader != null) {
-                try { reader.close(); } catch (java.io.IOException ignored) {}
+                try { reader.close(); } catch (IOException ignored) {}
             }
         }
     }
