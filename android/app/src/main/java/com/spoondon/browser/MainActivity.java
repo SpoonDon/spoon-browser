@@ -897,7 +897,6 @@ public class MainActivity extends AppCompatActivity {
                             "   if (savedUser && savedPass) {" +
                             "       if (userField) userField.value = savedUser;" +
                             "       passField.value = savedPass;" +
-                            "   }";
                             "   }" +
                             "}" +
                             "})()";
