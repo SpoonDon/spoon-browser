@@ -1261,7 +1261,7 @@ public class MainActivity extends AppCompatActivity {
             tabTitles.add((title == null || title.isEmpty()) ? (webView != null && webView.getUrl() != null ? webView.getUrl() : "New Tab") : title);
         }
 
-        ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles);
+        ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, tabTitles);
         listView.setAdapter(tabAdapter);
 
         // 5. Build the dialog
