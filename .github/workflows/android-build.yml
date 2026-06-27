@@ -1,81 +1,55 @@
-name: Build Android APK
+name: Android Build
 
 on:
   push:
-    branches:
-      - main
-      - "feature/**"
+    branches: [ main, feature/media-and-passwords, feature/ui-overhaul ]
+
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      # ---------------- NODE ----------------
-      - name: Setup Node
+      - name: Set up NodeJS Environment
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: 'npm'
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      # ---------------- INSTALL ----------------
-      - name: Install dependencies
-        run: npm ci || npm install
-
-      - name: Install Capacitor CLI
-        run: npm install @capacitor/cli
-
-      - name: Verify Capacitor
-        run: npx cap --version
-
-      # ---------------- BUILD WEB ----------------
-      - name: Build web assets
-        run: npm run build || echo "No build step found"
-
-      # ---------------- ANDROID SYNC ----------------
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      # ---------------- JAVA ----------------
-      - name: Setup Java 17
+      - name: Set up Java JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
-          cache: gradle
 
-      - name: Force Gradle Java Home
-        run: echo "org.gradle.java.home=$JAVA_HOME" >> android/gradle.properties
-
-      - name: Restore signing keystore
+      - name: Install Dependencies & Sync Capacitor
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > spoon-browser.jks
+          npm ci
+          npx cap sync android
 
-      - name: Create keystore.properties
+      - name: Make Gradlew Executable
         run: |
-          cat > android/keystore.properties <<EOF
-          storeFile=${GITHUB_WORKSPACE}/spoon-browser.jks
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
+          if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
 
-      # ---------------- BUILD APK ----------------
       - name: Build Release APK
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          SIGNING_STORE_FILE: "../release.keystore"
         run: |
+          set -e
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release.keystore || echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" > android/release.keystore
           cd android
-          chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-      # ---------------- UPLOAD APK ----------------
-      - name: Upload APK artifact
+      - name: Upload Compiled Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoon-browser-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/release/*.apk
+

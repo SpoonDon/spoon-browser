@@ -1,21 +1,36 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ==============================================================================
+# Spoon Browser - Production R8/ProGuard Optimization Profile
+# ==============================================================================
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 1. Core Code Optimization & Shrinking Directives
+-allowaccessmodification
+-flattenpackagehierarchy
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 2. Advanced Metadata Retention (Preserves reflection architectures)
+-keepattributes JavaScriptInterface,Annotation,Signature,InnerClasses,EnclosingMethod
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# 3. Production Diagnostics & Stack Trace De-obfuscation
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# 4. Strict Android WebKit & WebView Engine Protection
+-keep class android.webkit.** { *; }
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# 5. Maintain View constructors for XML layout inflaters
+-keepclasseswithmembers class * {
+    public <init>(android.content.Context, android.util.AttributeSet);
+}
+-keepclasseswithmembers class * {
+    public <init>(android.content.Context, android.util.AttributeSet, int);
+}
+
+# 6. Suppress safe compiler warning noise from core dependencies
+-dontwarn android.webkit.**
+
+
+# SpoonVault Security Framework - Ignore compile-time lint annotations used by Tink Crypto
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
