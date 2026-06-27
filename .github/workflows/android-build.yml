@@ -2,7 +2,8 @@ name: Android Build
 
 on:
   push:
-    branches: [ main, feature/ui-overhaul ]
+    branches: [ main, feature/media-and-passwords, feature/ui-overhaul ]
+
   workflow_dispatch:
 
 jobs:

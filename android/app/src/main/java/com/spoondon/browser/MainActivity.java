@@ -71,6 +71,7 @@ import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MainActivity extends AppCompatActivity {
+    private SecureCredentialManager secureCredentialManager;
 
     private static final String PREFS_NAME = "spoon_browser";
     private static final String KEY_BOOKMARKS = "bookmarks";
@@ -124,6 +125,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         setContentView(R.layout.activity_main);
+        secureCredentialManager = new SecureCredentialManager(this);
         // ... rest of your initialization
 
 
@@ -172,6 +174,11 @@ public class MainActivity extends AppCompatActivity {
     public void onResume() {
         super.onResume();
         handleIncomingIntent(getIntent());
+        try {
+            stopService(new Intent(this, BackgroundMediaService.class));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void handleIncomingIntent(Intent intent) {
@@ -194,6 +201,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onStop() {
         super.onStop();
+        try {
+            Intent serviceIntent = new Intent(this, BackgroundMediaService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -391,6 +408,8 @@ private void setupMenuButton() {
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
             popup.getMenu().add("About");
+            popup.getMenu().add("Export Passwords");
+            popup.getMenu().add("Import Passwords");
             popup.getMenu().add("Exit");
 
             popup.setOnMenuItemClickListener(item -> {
@@ -431,6 +450,30 @@ private void setupMenuButton() {
                         return true;
                     case "About":
                         showAbout();
+                        return true;
+                    case "Export Passwords":
+                        if (secureCredentialManager != null) {
+                            java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                            java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
+                            if (secureCredentialManager.exportToCSV(csvFile)) {
+                                Toast.makeText(this, "Passwords exported to Downloads/passwords.csv", Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(this, "Failed to export passwords", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                        return true;
+                    case "Import Passwords":
+                        if (secureCredentialManager != null) {
+                            java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                            java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
+                            if (!csvFile.exists()) {
+                                Toast.makeText(this, "Place passwords.csv in Downloads folder first", Toast.LENGTH_LONG).show();
+                            } else if (secureCredentialManager.importFromCSV(csvFile)) {
+                                Toast.makeText(this, "Passwords imported successfully!", Toast.LENGTH_SHORT).show();
+                            } else {
+                                Toast.makeText(this, "Failed to parse passwords.csv", Toast.LENGTH_SHORT).show();
+                            }
+                        }
                         return true;
                     case "Exit":
                         finishAndRemoveTask();
@@ -759,6 +802,11 @@ private void setupMenuButton() {
         // High-Performance Engine Tuning Optimization
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
+        // Background Autoplay Optimization
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            settings.setMediaPlaybackRequiresUserGesture(false);
+        }
+
         // Append speculative pre-rendering if utilizing a modern layout bridge
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true); // Lets Chromium parallelize security sweeps
@@ -886,9 +934,11 @@ private void setupMenuButton() {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if (url != null) {
-                    String host = url.getHost();
-                    if (host != null && isBlockedDomain(host.toLowerCase())) {
-                        return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                    String urlString = url.toString();
+                    synchronized (filterEngine) {
+                        if (filterEngine.shouldBlock(urlString)) {
+                            return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
+                        }
                     }
                 }
                 return super.shouldInterceptRequest(view, request);
@@ -956,6 +1006,51 @@ private void setupMenuButton() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                if (url != null && url.startsWith("http")) {
+                    android.net.Uri uri = android.net.Uri.parse(url);
+                    String host = uri.getHost();
+                    if (host != null) {
+                        String js = "javascript:(function() {" +
+                            "var host = \"" + host + "\";" +
+                            "var savedUser = SpoonVault.getSavedUser(host);" +
+                            "var savedPass = SpoonVault.getSavedPass(host);" +
+                            "var passFields = document.querySelectorAll(\"input[type='password']\");" +
+                            "if (passFields.length > 0) {" +
+                            "   var passField = passFields[0];" +
+                            "   var form = passField.form;" +
+                            "   var userField = null;" +
+                            "   if (form) {" +
+                            "       var inputs = form.querySelectorAll(\"input\");" +
+                            "       for (var i = 0; i < inputs.length; i++) {" +
+                            "           if (inputs[i] !== passField && (inputs[i].type === 'text' || inputs[i].type === 'email')) {" +
+                            "               userField = inputs[i]; break;" +
+                            "           }" +
+                            "       }" +
+                            "       form.addEventListener('submit', function() {" +
+                            "           SpoonVault.saveLogin(host, userField ? userField.value : '', passField.value);" +
+                            "       });" +
+                            "   }" +
+                            "   if (savedUser && savedPass) {" +
+                            "       if (userField) userField.value = savedUser;" +
+                            "       passField.value = savedPass;" +
+                            "   }" +
+                            "}" +
+                            "})()";
+                        view.evaluateJavascript(js, null);
+                    }
+
+                    // Cosmetic Filter Engine: Inject CSS rules to collapse blocked element structures natively
+                    String cosmeticJs = "javascript:(function() {" +
+                        "var selectors = [" +
+                        "   '.ad-box', '.ad-banner', '.adsbygoogle', '[id^=\"google_ads_\"]', " +
+                        "   '.ad-container', '.ad_wrapper', '#carbonads'" +
+                        "];" +
+                        "var style = document.createElement('style');" +
+                        "style.innerHTML = selectors.join(', ') + ' { display: none !important; collapse: homework !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }';" +
+                        "document.head.appendChild(style);" +
+                        "})()";
+                    view.evaluateJavascript(cosmeticJs, null);
+                }
                 android.webkit.CookieManager.getInstance().flush();
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
@@ -1069,6 +1164,30 @@ private void setupMenuButton() {
             cookieManager.setAcceptThirdPartyCookies(webView, false);
         }
 
+        webView.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public String getSavedUser(String host) {
+                return secureCredentialManager != null ? secureCredentialManager.getUsername(host) : "";
+            }
+            @android.webkit.JavascriptInterface
+            public String getSavedPass(String host) {
+                return secureCredentialManager != null ? secureCredentialManager.getPassword(host) : "";
+            }
+            @android.webkit.JavascriptInterface
+            public void saveLogin(String host, String user, String pass) {
+                if (secureCredentialManager != null && user != null && !user.isEmpty() && pass != null && !pass.isEmpty()) {
+                    runOnUiThread(() -> {
+                        new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this)
+                            .setTitle("Save Password?")
+                            .setMessage("Would you like Spoon Browser to save your credentials for " + host + "?")
+                            .setPositiveButton("Save", (dialog, which) -> secureCredentialManager.saveCredentials(host, user, pass))
+                            .setNegativeButton("Never", null)
+                            .show();
+                    });
+                }
+            }
+        }, "SpoonVault");
+
         webView.setWebChromeClient(createWebChromeClient());
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(createWebViewClient());
@@ -1078,22 +1197,30 @@ private void setupMenuButton() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    // Use standard fallback if mimeType is broad, empty, or plain text
-                    String resolvedMimeType = (mimeType == null || mimeType.isEmpty() || mimeType.contains("text/plain")) ? "*/*" : mimeType;
-                    intent.setDataAndType(Uri.parse(url), resolvedMimeType);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    startActivity(intent);
+                    // Ask the OS to present all capable handlers (including external download managers like ADM/1DM)
+                    android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                    
+                    // Pass along the MIME type if available to help external apps identify the file stream type
+                    if (mimeType != null && !mimeType.isEmpty() && !mimeType.contains("text/plain")) {
+                        intent.setDataAndType(android.net.Uri.parse(url), mimeType);
+                    }
+                    
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    android.content.Intent chooser = android.content.Intent.createChooser(intent, "Download File via...");
+                    chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    
+                    startActivity(chooser);
                 } catch (Exception e) {
                     try {
-                        // Fallback: Drop strict MIME enforcement completely and let OS handle via URL routing schema
-                        Intent fallbackIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-                        fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(fallbackIntent);
+                        // Ultimate raw fallback if strict intent construction fails
+                        android.content.Intent fallback = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                        fallback.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(fallback);
                     } catch (Exception fatal) {
-                        Toast.makeText(MainActivity.this, "No external download application found", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "No download handler found on device", Toast.LENGTH_SHORT).show();
                     }
                 }
+                return;
             }
         });
 
@@ -1218,122 +1345,71 @@ private void setupMenuButton() {
         return items;
     }
 
-private void showTabSwitcher() {
-    // 1. Create a vertical container layout to hold both our hint and the list
-    LinearLayout dialogContainer = new LinearLayout(this);
-    dialogContainer.setOrientation(LinearLayout.VERTICAL);
-    dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
-    dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
+    private void showTabSwitcher() {
+        if (tabs == null || tabs.isEmpty()) return;
 
-    // 2. Build a responsive instruction hint banner based on screen width profile
-    TextView hintTextView = new TextView(this);
-    boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
-    if (isTablet) {
-        hintTextView.setText("💡 Tip: Long-press an item to close it / Tap to switch views");
-    } else {
-        hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
-    }
-    hintTextView.setTextColor(Color.parseColor("#8A8A8A"));
-    hintTextView.setTextSize(13);
-    hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-    hintTextView.setPadding(0, 0, 0, dp(14));
-    hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-    dialogContainer.addView(hintTextView);
+        // 1. Create a vertical container layout (Using UI Overhaul's improved styling)
+        LinearLayout dialogContainer = new LinearLayout(this);
+        dialogContainer.setOrientation(LinearLayout.VERTICAL);
+        dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
+        dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
 
-    // 3. Configure the main ListView container
-    ListView listView = new ListView(this);
-    listView.setBackgroundColor(Color.parseColor("#141414"));
-    listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
-    listView.setDividerHeight(dp(1));
-    dialogContainer.addView(listView);
+        // 2. Build a responsive instruction hint banner
+        TextView hintTextView = new TextView(this);
+        boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+        hintTextView.setText(isTablet ? "💡 Tip: Long-press an item to close it / Tap to switch views" : "💡 Tip: Long-press a tab item to instantly close it");
+        hintTextView.setTextColor(Color.parseColor("#8A8A8A"));
+        hintTextView.setTextSize(13);
+        hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
+        hintTextView.setPadding(0, 0, 0, dp(14));
+        hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        dialogContainer.addView(hintTextView);
 
-    // 4. Extract string titles or URLs from the active WebView tab list
-    ArrayList<String> tabTitles = new ArrayList<>();
-    if (tabs != null) {
-        for (int i = 0; i < tabs.size(); i++) {
-            WebView webView = tabs.get(i);
+        // 3. Configure the main ListView
+        ListView listView = new ListView(this);
+        listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
+        listView.setDividerHeight(dp(1));
+        dialogContainer.addView(listView);
+
+        // 4. Extract string titles
+        ArrayList<String> tabTitles = new ArrayList<>();
+        for (WebView webView : tabs) {
             String title = (webView != null) ? webView.getTitle() : null;
-            if (title == null || title.isEmpty()) {
-                title = (webView != null && webView.getUrl() != null) ? webView.getUrl() : "New Tab";
-            }
-            tabTitles.add(title);
+            tabTitles.add((title == null || title.isEmpty()) ? (webView != null && webView.getUrl() != null ? webView.getUrl() : "New Tab") : title);
         }
+
+        ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, tabTitles);
+        listView.setAdapter(tabAdapter);
+
+        // 5. Build the dialog
+        final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Active Tabs")
+                .setView(dialogContainer)
+                .create();
+
+        // 6. Navigation click actions
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            currentTab = position;
+            if (tabs != null && position < tabs.size()) switchToTab(position);
+            dialog.dismiss();
+        });
+
+        // 7. Unified long-press action (Your Ad-Blocker logic)
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (tabs != null && position < tabs.size()) {
+                closeTab(position);
+                tabTitles.remove(position);
+                if (currentTab >= tabs.size()) currentTab = Math.max(0, tabs.size() - 1);
+                tabAdapter.notifyDataSetChanged();
+                if (!tabs.isEmpty()) switchToTab(currentTab);
+            }
+            dialog.dismiss();
+            if (tabs != null && !tabs.isEmpty()) showTabSwitcher();
+            return true;
+        });
+
+        dialog.show();
     }
-
-    // Map your text list to the polished custom item layout adapter
-    ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles);
-    listView.setAdapter(tabAdapter);
-
-    // 5. Build the dialog frame so click listeners can reference it
-    final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Active Tabs")
-            .setView(dialogContainer)
-            .create();
-
-    // 6. Hook up navigation click actions using our mapped index parameters
-    listView.setOnItemClickListener((parent, view, position, id) -> {
-        currentTab = position;
-        if (tabs != null && position < tabs.size()) {
-            switchToTab(position); // Mapped backend view switcher
-        }
-        dialog.dismiss();
-    });
-
-    // Unified long-press action to close a tab cleanly (Works perfectly on mobile & tablet)
-    listView.setOnItemLongClickListener((parent, view, position, id) -> {
-        if (tabs != null && position < tabs.size()) {
-            // 1. Let backend handle array removal, view removal, and memory cleanup safely
-            closeTab(position); 
-
-            // 2. Sync the local dialog layout tracking array strings
-            tabTitles.remove(position);
-
-            // 3. Bounds protection check
-            if (currentTab >= tabs.size()) {
-                currentTab = Math.max(0, tabs.size() - 1);
-            }
-
-            // 4. Update badge UI using the native method verified at line 1697
-            updateTabBadgeCount();
-
-            tabAdapter.notifyDataSetChanged();
-
-            // 5. Safely switch to remaining tab if any are left open
-            if (!tabs.isEmpty()) {
-                switchToTab(currentTab);
-            }
-        }
-
-        dialog.dismiss();
-        if (tabs != null && !tabs.isEmpty()) {
-            showTabSwitcher(); // Clean redraw loop
-        }
-        return true;
-    });
-
-    // 7. Style the dialog window frame on launch
-    dialog.setOnShowListener(d -> {
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new GradientDrawable() {{
-                setColor(Color.parseColor("#141414"));
-                setCornerRadius(dp(24));
-            }});
-
-            int titleId = getResources().getIdentifier("alertTitle", "id", "android");
-            TextView titleView = dialog.findViewById(titleId);
-            if (titleView != null) {
-                titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(18);
-                titleView.setTypeface(Typeface.DEFAULT_BOLD);
-                titleView.setPadding(dp(8), dp(8), 0, dp(6));
-            }
-        }
-    });
-
-    dialog.show();
-}
-
 
     private ArrayList<BrowserItem> buildHistoryItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
@@ -1417,63 +1493,115 @@ private void showTabSwitcher() {
         }
     }
 
-    private void rebuildBlockedDomains() {
-        synchronized (blockedDomains) {
-            blockedDomains.clear();
-            for (String rule : rawFilterRules) {
-                blockedDomains.add(rule.toLowerCase());
+    // --- Advanced High-Speed Content Filter Engine ---
+    private static class ContentFilterEngine {
+        public final java.util.Set<String> blockPatterns = new java.util.HashSet<>();
+        public final java.util.Set<String> whitelistPatterns = new java.util.HashSet<>();
+
+        public void clear() {
+            blockPatterns.clear();
+            whitelistPatterns.clear();
+        }
+
+        public void addRule(String rule) {
+            if (rule == null || rule.isEmpty()) return;
+            if (rule.contains("##")) return; 
+            
+            boolean isWhitelist = rule.startsWith("@@");
+            String pattern = isWhitelist ? rule.substring(2) : rule;
+
+            int optionIdx = pattern.indexOf('$');
+            if (optionIdx != -1) {
+                pattern = pattern.substring(0, optionIdx);
             }
+
+            pattern = pattern.replace("||", "").replace("^", "");
+
+            if (isWhitelist) {
+                whitelistPatterns.add(pattern.toLowerCase());
+            } else {
+                blockPatterns.add(pattern.toLowerCase());
+            }
+        }
+
+        public boolean shouldBlock(String urlString) {
+            if (urlString == null) return false;
+            String lowerUrl = urlString.toLowerCase();
+
+            for (String pattern : whitelistPatterns) {
+                if (matchPattern(lowerUrl, pattern)) return false;
+            }
+
+            for (String pattern : blockPatterns) {
+                if (matchPattern(lowerUrl, pattern)) return true;
+            }
+
+            return false;
+        }
+
+        private boolean matchPattern(String url, String pattern) {
+            if (pattern.contains("*")) {
+                String[] parts = pattern.split("\\*");
+                int lastIdx = 0;
+                for (String part : parts) {
+                    if (part.isEmpty()) continue;
+                    int idx = url.indexOf(part, lastIdx);
+                    if (idx == -1) return false;
+                    lastIdx = idx + part.length();
+                }
+                return true;
+            }
+            return url.contains(pattern);
         }
     }
 
+    private final ContentFilterEngine filterEngine = new ContentFilterEngine();
+
     private void refreshFilterLists() {
         new Thread(() -> {
-            HashSet<String> newRules = new HashSet<>();
+            if (filterLists.isEmpty()) {
+                filterLists.add("https://easylist.to/easylist/easylist.txt");
+                filterLists.add("https://easylist.to/easylist/easyprivacy.txt");
+            }
+
+            ContentFilterEngine newEngine = new ContentFilterEngine();
             for (String filterUrl : filterLists) {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(new URL(filterUrl).openStream()))) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(new java.net.URL(filterUrl).openStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         line = line.trim();
                         if (line.isEmpty() || line.startsWith("!")) continue;
-                        if (line.startsWith("||")) {
-                            int end = line.indexOf('^');
-                            if (end > 2) {
-                                newRules.add(line.substring(2, end));
-                            }
-                        }
+                        newEngine.addRule(line);
                     }
                 } catch (Exception e) {
                     android.util.Log.e("SpoonBlocker", "Filter download failed: " + filterUrl);
                 }
             }
-            synchronized (blockedDomains) {
-                rawFilterRules.clear();
-                rawFilterRules.addAll(newRules);
-                rebuildBlockedDomains();
+
+            synchronized (filterEngine) {
+                filterEngine.clear();
+                filterEngine.blockPatterns.addAll(newEngine.blockPatterns);
+                filterEngine.whitelistPatterns.addAll(newEngine.whitelistPatterns);
             }
             prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
         }).start();
     }
 
+    private void rebuildBlockedDomains() {
+        refreshFilterLists();
+    }
+
     private boolean isBlockedDomain(String host) {
         if (host == null) return false;
-        synchronized (blockedDomains) {
-            if (blockedDomains.contains(host)) return true;
-            int idx = host.indexOf('.');
-            while (idx != -1) {
-                String sub = host.substring(idx + 1);
-                if (blockedDomains.contains(sub)) return true;
-                idx = host.indexOf('.', idx + 1);
-            }
+        synchronized (filterEngine) {
+            return filterEngine.shouldBlock("http://" + host);
         }
-        return false;
     }
 
     private void saveFilterLists() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             prefs.edit().putString(KEY_FILTER_LISTS, String.join("\n", filterLists)).apply();
         }
-        rebuildBlockedDomains();
     }
 
     private void saveOpenTabs() {
@@ -1523,7 +1651,7 @@ private void showTabSwitcher() {
     }
 
     private void showFilterListOptions() {
-        String[] options = {"View Subscriptions", "Add EasyList", "Add EasyPrivacy"};
+        String[] options = {"View Subscriptions", "Add EasyList", "Add EasyPrivacy", "Update All Subscriptions"};
         new AlertDialog.Builder(this)
                 .setTitle("Filter Lists")
                 .setItems(options, (dialog, which) -> {
@@ -1542,6 +1670,51 @@ private void showTabSwitcher() {
                             filterLists.add(url);
                             refreshFilterLists();
                             saveFilterLists();
+                        }
+                    } else if (which == 3) {
+                        if (filterLists.isEmpty()) {
+                            Toast.makeText(this, "No lists to update", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(this, "Updating filter lists in background...", Toast.LENGTH_SHORT).show();
+                            new Thread(() -> {
+                                boolean totalSuccess = true;
+                                for (String listUrl : filterLists) {
+                                    try {
+                                        java.net.URL urlObj = new java.net.URL(listUrl);
+                                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                                        conn.setConnectTimeout(10000);
+                                        conn.setReadTimeout(10000);
+                                        if (conn.getResponseCode() == 200) {
+                                            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
+                                            StringBuilder sb = new StringBuilder();
+                                            String line;
+                                            while ((line = reader.readLine()) != null) {
+                                                sb.append(line).append("\n");
+                                            }
+                                            reader.close();
+                                            // Save the downloaded rules safely locally to match your naming pattern
+                                            String filename = "filter_" + Math.abs(listUrl.hashCode()) + ".txt";
+                                            java.io.File file = new java.io.File(getFilesDir(), filename);
+                                            java.io.FileWriter writer = new java.io.FileWriter(file);
+                                            writer.write(sb.toString());
+                                            writer.close();
+                                        } else {
+                                            totalSuccess = false;
+                                        }
+                                    } catch (Exception e) {
+                                        totalSuccess = false;
+                                    }
+                                }
+                                boolean finalSuccess = totalSuccess;
+                                runOnUiThread(() -> {
+                                    saveFilterLists(); // re-triggers rebuildBlockedDomains natively
+                                    if (finalSuccess) {
+                                        Toast.makeText(this, "All filter lists updated successfully!", Toast.LENGTH_LONG).show();
+                                    } else {
+                                        Toast.makeText(this, "Updates finished, but some lists failed to download", Toast.LENGTH_LONG).show();
+                                    }
+                                });
+                            }).start();
                         }
                     }
                 })
@@ -1589,7 +1762,7 @@ private void showTabSwitcher() {
                     .setMessage("Version: " + getAppVersion() + "\n"
                             + "Engine: WebView " + webViewVer + "\n\n"
                             + "Tabs: " + tabs.size() + "\nBookmarks: " + bookmarks.size()
-                            + "\nHistory: " + history.size() + "\nBlocked Domains: " + blockedDomains.size()
+                            + "\nHistory: " + history.size() + "\nBlocked Rules: " + filterEngine.blockPatterns.size()
                             + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
                     .setPositiveButton("OK", null)
                     .show();
