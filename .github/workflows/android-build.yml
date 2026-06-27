@@ -2,7 +2,7 @@ name: Android Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/media-and-passwords ]
   workflow_dispatch:
 
 jobs:
