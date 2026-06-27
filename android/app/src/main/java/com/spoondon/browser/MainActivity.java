@@ -1643,7 +1643,7 @@ private void showTabSwitcher() {
                     .setMessage("Version: " + getAppVersion() + "\n"
                             + "Engine: WebView " + webViewVer + "\n\n"
                             + "Tabs: " + tabs.size() + "\nBookmarks: " + bookmarks.size()
-                            + "\nHistory: " + history.size() + "\nBlocked Domains: " + blockedDomains.size()
+                            + "\nHistory: " + history.size() + "\nBlocked Rules: " + filterEngine.blockPatterns.size()
                             + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
                     .setPositiveButton("OK", null)
                     .show();
