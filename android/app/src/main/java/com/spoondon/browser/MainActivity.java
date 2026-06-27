@@ -1999,20 +1999,7 @@ private void setupMenuButton() {
         openUrl(url);
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        for (WebView w : tabs) {
-            try {
-                w.stopLoading();
-                w.clearHistory();
-                w.loadUrl("about:blank");
-                w.removeAllViews();
-                w.destroy();
-            } catch (Exception ignored) {}
-        }
-        tabs.clear();
-    }
+
 
     private void triggerExternalDownload(String url, String mimeType) {
         try {
