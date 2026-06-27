@@ -434,7 +434,72 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-private void setupMenuButton() {
+
+    private void showSavedPasswordsDialog() {
+        if (secureCredentialManager == null) return;
+        
+        // Find all unique hosts by checking keys in our custom vault file layer
+        java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
+        java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
+        if (vaultFile.exists()) {
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(vaultFile), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.contains("_user=")) {
+                        String host = line.split("_user=")[0];
+                    }
+                }
+            } catch (Exception e) { e.printStackTrace(); }
+        }
+
+        if (hosts.isEmpty()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Saved Passwords")
+                .setMessage("No passwords saved yet.")
+                .setPositiveButton("OK", null)
+                .show();
+            return;
+        }
+
+        java.util.ArrayList<String> displayList = new java.util.ArrayList<>();
+        for (String h : hosts) {
+            String user = secureCredentialManager.getUsername(h);
+            displayList.add(h + " (" + user + ")");
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayList);
+        ListView listView = new ListView(this);
+        listView.setAdapter(adapter);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("Saved Passwords")
+            .setView(listView)
+            .setPositiveButton("Close", null)
+            .create();
+
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            String selectedHost = hosts.get(position);
+            String user = secureCredentialManager.getUsername(selectedHost);
+            String pass = secureCredentialManager.getPassword(selectedHost);
+            
+            new AlertDialog.Builder(this)
+                .setTitle(selectedHost)
+                .setMessage("Username: " + user + "
+Password: " + pass)
+                .setNegativeButton("Delete", (d, w) -> {
+                    secureCredentialManager.clearCredentials(selectedHost);
+                    Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
+                    dialog.dismiss();
+                    showSavedPasswordsDialog(); // Refresh
+                })
+                .setPositiveButton("OK", null)
+                .show();
+        });
+
+        dialog.show();
+    }
+
+    private void setupMenuButton() {
     menuButton.setOnClickListener(v -> {
         Context wrapper = new ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
         PopupMenu popup = new PopupMenu(wrapper, menuButton, Gravity.END);
@@ -447,8 +512,7 @@ private void setupMenuButton() {
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
             popup.getMenu().add("About");
-            popup.getMenu().add("Export Passwords");
-            popup.getMenu().add("Import Passwords");
+            popup.getMenu().add("Passwords");
             popup.getMenu().add("Exit");
 
             popup.setOnMenuItemClickListener(item -> {
@@ -490,19 +554,28 @@ private void setupMenuButton() {
                     case "About":
                         showAbout();
                         return true;
-                    case "Export Passwords":
-                        if (secureCredentialManager != null) {
-                            java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-                            java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
-                            if (secureCredentialManager.exportToCSV(csvFile)) {
-                                Toast.makeText(this, "Passwords exported to Downloads/passwords.csv", Toast.LENGTH_LONG).show();
-                            } else {
-                                Toast.makeText(this, "Failed to export passwords", Toast.LENGTH_SHORT).show();
-                            }
-                        }
-                        return true;
-                                        case "Import Passwords":
-                        passwordImportLauncher.launch("text/*");
+                    case "Passwords":
+                        String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
+                        new AlertDialog.Builder(this)
+                            .setTitle("Password Management")
+                            .setItems(options, (dialog, which) -> {
+                                if (which == 0) {
+                                    showSavedPasswordsDialog();
+                                } else if (which == 1) {
+                                    passwordImportLauncher.launch("text/*");
+                                } else if (which == 2) {
+                                    if (secureCredentialManager != null) {
+                                        java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                                        java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
+                                        if (secureCredentialManager.exportToCSV(csvFile)) {
+                                            Toast.makeText(this, "Passwords exported to Downloads/passwords.csv", Toast.LENGTH_LONG).show();
+                                        } else {
+                                            Toast.makeText(this, "Failed to export passwords", Toast.LENGTH_SHORT).show();
+                                        }
+                                    }
+                                }
+                            })
+                            .show();
                         return true;
 case "Exit":
                         finishAndRemoveTask();
