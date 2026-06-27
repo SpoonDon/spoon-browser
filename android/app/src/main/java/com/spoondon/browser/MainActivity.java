@@ -875,28 +875,29 @@ public class MainActivity extends AppCompatActivity {
                     String host = uri.getHost();
                     if (host != null) {
                         String js = "javascript:(function() {" +
-                            "var host = "" + host + "";" +
+                            "var host = \"" + host + "\";" +
                             "var savedUser = SpoonVault.getSavedUser(host);" +
                             "var savedPass = SpoonVault.getSavedPass(host);" +
-                            "var passFields = document.querySelectorAll("input[type='password']");" +
+                            "var passFields = document.querySelectorAll(\"input[type='password']\");" +
                             "if (passFields.length > 0) {" +
                             "   var passField = passFields[0];" +
                             "   var form = passField.form;" +
                             "   var userField = null;" +
                             "   if (form) {" +
-                            "       var inputs = form.querySelectorAll("input");" +
+                            "       var inputs = form.querySelectorAll(\"input\");" +
                             "       for (var i = 0; i < inputs.length; i++) {" +
                             "           if (inputs[i] !== passField && (inputs[i].type === 'text' || inputs[i].type === 'email')) {" +
                             "               userField = inputs[i]; break;" +
                             "           }" +
                             "       }" +
                             "       form.addEventListener('submit', function() {" +
-                            "           SpoonVault.saveLogin(host, userField ? userField.value : "", passField.value);" +
+                            "           SpoonVault.saveLogin(host, userField ? userField.value : '', passField.value);" +
                             "       });" +
                             "   }" +
                             "   if (savedUser && savedPass) {" +
                             "       if (userField) userField.value = savedUser;" +
                             "       passField.value = savedPass;" +
+                            "   }";
                             "   }" +
                             "}" +
                             "})()";
