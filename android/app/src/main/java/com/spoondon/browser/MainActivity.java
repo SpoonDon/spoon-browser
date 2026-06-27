@@ -1,6 +1,12 @@
 package com.spoondon.browser;
 
 import android.os.Build;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.view.Gravity;
+import android.graphics.drawable.ColorDrawable;
 import android.webkit.*;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.ViewCompat;
@@ -58,6 +64,14 @@ import android.webkit.ValueCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.webkit.RenderProcessGoneDetail;
+import android.graphics.Typeface;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.view.Window;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
 
 public class MainActivity extends AppCompatActivity {
     private SecureCredentialManager secureCredentialManager;
@@ -1216,120 +1230,89 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTabSwitcher() {
-        if (tabs.isEmpty()) return;
-        ArrayList<BrowserItem> items = buildTabItems();
-        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
+        if (tabs == null || tabs.isEmpty()) return;
+
+        // 1. Initialize the root container
+        LinearLayout dialogContainer = new LinearLayout(this);
+        dialogContainer.setOrientation(LinearLayout.VERTICAL);
+
+        // 2. Build a responsive instruction hint banner
+        TextView hintTextView = new TextView(this);
+        boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+        hintTextView.setText(isTablet ? "💡 Tip: Long-press an item to close it / Tap to switch views" : "💡 Tip: Long-press a tab item to instantly close it");
+        hintTextView.setTextColor(Color.parseColor("#8A8A8A"));
+        hintTextView.setTextSize(13);
+        hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
+        hintTextView.setPadding(0, 0, 0, dp(14));
+        hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
+        dialogContainer.addView(hintTextView);
+
+        // 3. Configure the main ListView
         ListView listView = new ListView(this);
-        listView.setAdapter(adapter);
+        listView.setBackgroundColor(Color.parseColor("#141414"));
+        listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
+        listView.setDividerHeight(dp(1));
+        dialogContainer.addView(listView);
 
-    // 2. Build a responsive instruction hint banner based on screen width profile
-    TextView hintTextView = new TextView(this);
-    boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
-    if (isTablet) {
-        hintTextView.setText("💡 Tip: Long-press an item to close it / Tap to switch views");
-    } else {
-        hintTextView.setText("💡 Tip: Long-press a tab item to instantly close it");
-    }
-    hintTextView.setTextColor(Color.parseColor("#8A8A8A"));
-    hintTextView.setTextSize(13);
-    hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-    hintTextView.setPadding(0, 0, 0, dp(14));
-    hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-    dialogContainer.addView(hintTextView);
-
-    // 3. Configure the main ListView container
-    ListView listView = new ListView(this);
-    listView.setBackgroundColor(Color.parseColor("#141414"));
-    listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
-    listView.setDividerHeight(dp(1));
-    dialogContainer.addView(listView);
-
-    // 4. Extract string titles or URLs from the active WebView tab list
-    ArrayList<String> tabTitles = new ArrayList<>();
-    if (tabs != null) {
-        for (int i = 0; i < tabs.size(); i++) {
-            WebView webView = tabs.get(i);
+        // 4. Extract string titles
+        ArrayList<String> tabTitles = new ArrayList<>();
+        for (WebView webView : tabs) {
             String title = (webView != null) ? webView.getTitle() : null;
-            if (title == null || title.isEmpty()) {
-                title = (webView != null && webView.getUrl() != null) ? webView.getUrl() : "New Tab";
-            }
-            tabTitles.add(title);
+            tabTitles.add((title == null || title.isEmpty()) ? (webView != null && webView.getUrl() != null ? webView.getUrl() : "New Tab") : title);
         }
+
+        ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles);
+        listView.setAdapter(tabAdapter);
+
+        // 5. Build the dialog
+        final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Active Tabs")
+                .setView(dialogContainer)
+                .create();
+
+        // 6. Navigation click actions
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            currentTab = position;
+            if (tabs != null && position < tabs.size()) {
+                switchToTab(position);
+            }
+            dialog.dismiss();
+        });
+
+        // 7. Unified long-press action
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (tabs != null && position < tabs.size()) {
+                closeTab(position);
+                tabTitles.remove(position);
+                if (currentTab >= tabs.size()) currentTab = Math.max(0, tabs.size() - 1);
+                
+                tabAdapter.notifyDataSetChanged();
+                if (!tabs.isEmpty()) switchToTab(currentTab);
+            }
+            dialog.dismiss();
+            if (tabs != null && !tabs.isEmpty()) showTabSwitcher();
+            return true;
+        });
+
+        // 8. Style dialog window
+        dialog.setOnShowListener(d -> {
+            Window window = dialog.getWindow();
+            if (window != null) {
+                window.setBackgroundDrawable(new GradientDrawable() {{
+                    setColor(Color.parseColor("#141414"));
+                    setCornerRadius(dp(24));
+                }});
+                int titleId = getResources().getIdentifier("alertTitle", "id", "android");
+                TextView titleView = dialog.findViewById(titleId);
+                if (titleView != null) {
+                    titleView.setTextColor(Color.WHITE);
+                    titleView.setTextSize(18);
+                    titleView.setTypeface(Typeface.DEFAULT_BOLD);
+                }
+            }
+        });
+        dialog.show();
     }
-
-    // Map your text list to the polished custom item layout adapter
-    ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, R.layout.modern_list_item, tabTitles);
-    listView.setAdapter(tabAdapter);
-
-    // 5. Build the dialog frame so click listeners can reference it
-    final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Active Tabs")
-            .setView(dialogContainer)
-            .create();
-
-    // 6. Hook up navigation click actions using our mapped index parameters
-    listView.setOnItemClickListener((parent, view, position, id) -> {
-        currentTab = position;
-        if (tabs != null && position < tabs.size()) {
-            switchToTab(position); // Mapped backend view switcher
-        }
-        dialog.dismiss();
-    });
-
-    // Unified long-press action to close a tab cleanly (Works perfectly on mobile & tablet)
-    listView.setOnItemLongClickListener((parent, view, position, id) -> {
-        if (tabs != null && position < tabs.size()) {
-            // 1. Let backend handle array removal, view removal, and memory cleanup safely
-            closeTab(position); 
-
-            // 2. Sync the local dialog layout tracking array strings
-            tabTitles.remove(position);
-
-            // 3. Bounds protection check
-            if (currentTab >= tabs.size()) {
-                currentTab = Math.max(0, tabs.size() - 1);
-            }
-
-            // 4. Update badge UI using the native method verified at line 1697
-            updateTabBadgeCount();
-
-            tabAdapter.notifyDataSetChanged();
-
-            // 5. Safely switch to remaining tab if any are left open
-            if (!tabs.isEmpty()) {
-                switchToTab(currentTab);
-            }
-        }
-
-        dialog.dismiss();
-        if (tabs != null && !tabs.isEmpty()) {
-            showTabSwitcher(); // Clean redraw loop
-        }
-        return true;
-    });
-
-    // 7. Style the dialog window frame on launch
-    dialog.setOnShowListener(d -> {
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new GradientDrawable() {{
-                setColor(Color.parseColor("#141414"));
-                setCornerRadius(dp(24));
-            }});
-
-            int titleId = getResources().getIdentifier("alertTitle", "id", "android");
-            TextView titleView = dialog.findViewById(titleId);
-            if (titleView != null) {
-                titleView.setTextColor(Color.WHITE);
-                titleView.setTextSize(18);
-                titleView.setTypeface(Typeface.DEFAULT_BOLD);
-                titleView.setPadding(dp(8), dp(8), 0, dp(6));
-            }
-        }
-    });
-
-    dialog.show();
-}
 
 
     private ArrayList<BrowserItem> buildHistoryItems() {
