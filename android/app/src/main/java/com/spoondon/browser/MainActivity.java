@@ -104,6 +104,7 @@ public class MainActivity extends AppCompatActivity {
     private WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<String> filePickerLauncher;
+    private ActivityResultLauncher<String> passwordImportLauncher;
 
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
@@ -131,6 +132,23 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         secureCredentialManager = new SecureCredentialManager(this);
  
+        passwordImportLauncher = registerForActivityResult(
+            new ActivityResultContracts.GetContent(),
+            uri -> {
+                if (uri != null) {
+                    try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
+                        if (secureCredentialManager.importFromCSVStream(is)) {
+                        } else {
+                            Toast.makeText(this, "Failed to parse passwords.csv", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        Toast.makeText(this, "Error opening file stream", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        );
+
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -484,6 +502,9 @@ private void setupMenuButton() {
                         }
                         return true;
                     case "Import Passwords":
+                        passwordImportLauncher.launch("text/*");
+                        break;
+                        //
                         if (secureCredentialManager != null) {
                             java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
                             java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
