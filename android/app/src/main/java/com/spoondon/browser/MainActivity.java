@@ -484,8 +484,7 @@ public class MainActivity extends AppCompatActivity {
             
             new AlertDialog.Builder(this)
                 .setTitle(selectedHost)
-                .setMessage("Username: " + user + "
-Password: " + pass)
+                .setMessage("Username: " + user + "\nPassword: " + pass)
                 .setNegativeButton("Delete", (d, w) -> {
                     secureCredentialManager.clearCredentials(selectedHost);
                     Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
