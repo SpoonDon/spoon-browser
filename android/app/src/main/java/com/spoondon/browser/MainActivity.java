@@ -296,7 +296,6 @@ public class MainActivity extends AppCompatActivity {
                 return false;
             }
 
-            final String toLoad = firstValid;
             runOnUiThread(() -> {
                 try {
                     if (tabs.isEmpty()) {
@@ -312,7 +311,7 @@ public class MainActivity extends AppCompatActivity {
                             LinearLayout.LayoutParams.MATCH_PARENT
                         );
                         browserContainer.addView(current, params);
-                        current.setVisibility(View.getMode ?? View.VISIBLE);
+                        current.setVisibility(View.VISIBLE);
                     }
                     updateTabIndicator();
                 } catch (Exception e) {
@@ -325,6 +324,7 @@ public class MainActivity extends AppCompatActivity {
             android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
             return false;
         }
+    }
     }
 
     private void setupRootLayout() {
