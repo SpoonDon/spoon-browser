@@ -1193,36 +1193,51 @@ private void setupMenuButton() {
         webView.setWebViewClient(createWebViewClient());
 
         // Configure system intent delegation for downloads (e.g., GitHub raw files)
+        // Configure combined Native + External Downloader Selector
         webView.setDownloadListener(new DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                try {
-                    // Ask the OS to present all capable handlers (including external download managers like ADM/1DM)
-                    android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
-                    
-                    // Pass along the MIME type if available to help external apps identify the file stream type
-                    if (mimeType != null && !mimeType.isEmpty() && !mimeType.contains("text/plain")) {
-                        intent.setDataAndType(android.net.Uri.parse(url), mimeType);
-                    }
-                    
-                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                    android.content.Intent chooser = android.content.Intent.createChooser(intent, "Download File via...");
-                    chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                    
-                    startActivity(chooser);
-                } catch (Exception e) {
-                    try {
-                        // Ultimate raw fallback if strict intent construction fails
-                        android.content.Intent fallback = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
-                        fallback.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(fallback);
-                    } catch (Exception fatal) {
-                        Toast.makeText(MainActivity.this, "No download handler found on device", Toast.LENGTH_SHORT).show();
-                    }
-                }
+                CharSequence[] options = new CharSequence[]{"Native Browser Downloader", "External App (ADM/1DM/System chooser)"};
+                
+                new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Download File")
+                    .setItems(options, (dialog, item) -> {
+                        if (item == 0) {
+                            // --- OPTION 1: NATIVE DOWNLOADER ---
+                            try {
+                                android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                request.setMimeType(mimeType);
+                                
+                                // Extract file name safely
+                                String fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
+                                request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
+                                
+                                // Configure notification behavior
+                                request.allowScanningByMediaScanner();
+                                request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                request.setTitle(fileName);
+                                request.setDescription("Downloading file...");
+
+                                android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                                if (manager != null) {
+                                    manager.enqueue(request);
+                                    Toast.makeText(MainActivity.this, "Download started natively...", Toast.LENGTH_SHORT).show();
+                                }
+                            } catch (Exception e) {
+                                Toast.makeText(MainActivity.this, "Native download failed. Switching to external fallback.", Toast.LENGTH_SHORT).show();
+                                triggerExternalDownload(url, mimeType);
+                            }
+                        } else {
+                            // --- OPTION 2: EXTERNAL DOWNLOADER ---
+                            triggerExternalDownload(url, mimeType);
+                        }
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
                 return;
             }
         });
+
 
         return webView;
     }
@@ -1912,5 +1927,26 @@ private void setupMenuButton() {
         }
 
         openUrl(url);
+    }
+
+    private void triggerExternalDownload(String url, String mimeType) {
+        try {
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
+            if (mimeType != null && !mimeType.isEmpty() && !mimeType.contains("text/plain")) {
+                intent.setDataAndType(android.net.Uri.parse(url), mimeType);
+            }
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            android.content.Intent chooser = android.content.Intent.createChooser(intent, "Download File via...");
+            chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(chooser);
+        } catch (Exception e) {
+            try {
+                android.content.Intent fallback = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                fallback.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(fallback);
+            } catch (Exception fatal) {
+                Toast.makeText(MainActivity.this, "No download handler found on device", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
