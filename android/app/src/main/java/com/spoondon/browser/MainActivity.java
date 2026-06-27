@@ -649,7 +649,7 @@ private void setupMenuButton() {
         });
 
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
-            String rawItem = addressBarAdapter.getItem(position);
+            String rawItem = (String) parent.getItemAtPosition(position);
             if (rawItem == null) return;
 
             // Clean the input string: extract the actual URL if it contains a label or CSS scrap
