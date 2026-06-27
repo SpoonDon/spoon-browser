@@ -1206,6 +1206,10 @@ private void setupMenuButton() {
                             // --- OPTION 1: NATIVE DOWNLOADER ---
                             try {
                                 android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                // Pass authentication cookies so secure files like GitHub private/raw download correctly
+                                String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                                request.addRequestHeader("Cookie", cookies);
+                                request.addRequestHeader("User-Agent", userAgent);
                                 request.setMimeType(mimeType);
                                 
                                 // Extract file name safely
@@ -1931,9 +1935,11 @@ private void setupMenuButton() {
 
     private void triggerExternalDownload(String url, String mimeType) {
         try {
-            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
-            if (mimeType != null && !mimeType.isEmpty() && !mimeType.contains("text/plain")) {
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
+            if (mimeType != null && !mimeType.isEmpty()) {
                 intent.setDataAndType(android.net.Uri.parse(url), mimeType);
+            } else {
+                intent.setData(android.net.Uri.parse(url));
             }
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
             android.content.Intent chooser = android.content.Intent.createChooser(intent, "Download File via...");
