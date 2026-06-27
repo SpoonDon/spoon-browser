@@ -649,8 +649,26 @@ private void setupMenuButton() {
         });
 
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
-            String rawItem = (String) parent.getItemAtPosition(position);
-            if (rawItem == null) return;
+            String rawItem = null;
+            if (view instanceof TextView) {
+                rawItem = ((TextView) view).getText().toString();
+            } else if (view instanceof ViewGroup) {
+                for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
+                    View child = ((ViewGroup) view).getChildAt(i);
+                    if (child instanceof TextView) {
+                        rawItem = ((TextView) child).getText().toString();
+                        break;
+                    }
+                }
+            }
+            if (rawItem == null) {
+                try {
+                    rawItem = (String) parent.getItemAtPosition(position);
+                } catch (Exception e) {
+                    rawItem = addressBar.getText().toString();
+                }
+            }
+            if (rawItem == null || rawItem.isEmpty()) return;
 
             // Clean the input string: extract the actual URL if it contains a label or CSS scrap
             String cleanUrl = rawItem;
