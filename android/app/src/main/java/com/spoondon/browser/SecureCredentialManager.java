@@ -7,9 +7,10 @@ import androidx.security.crypto.MasterKeys;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.security.GeneralSecurityException;
 import java.util.Map;
 import java.util.List;
@@ -96,75 +97,98 @@ public class SecureCredentialManager {
         }
     }
 
-    public boolean importFromCSV(File inputFile) {
-        if (encryptedPrefs == null || !inputFile.exists()) return false;
+    public boolean importFromCSVStream(InputStream inputStream) {
+        if (encryptedPrefs == null || inputStream == null) return false;
 
         BufferedReader reader = null;
         try {
-            reader = new BufferedReader(new FileReader(inputFile));
-            String line;
-            
+            reader = new BufferedReader(new InputStreamReader(inputStream));
+            SharedPreferences.Editor editor = encryptedPrefs.edit();
+
             int urlIndex = -1;
             int usernameIndex = -1;
             int passwordIndex = -1;
             boolean isHeader = true;
-            
-            SharedPreferences.Editor editor = encryptedPrefs.edit();
 
-            while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty()) continue;
+            List<String> tokens = new ArrayList<>();
+            StringBuilder sb = new StringBuilder();
+            boolean inQuotes = false;
+            int ch;
 
-                List<String> tokens = new ArrayList<>();
-                StringBuilder sb = new StringBuilder();
-                boolean inQuotes = false;
-                
-                for (int i = 0; i < line.length(); i++) {
-                    char c = line.charAt(i);
-                    if (c == '"') {
-                        if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+            // Character-level processing completely bypasses line break tracking issues
+            while ((ch = reader.read()) != -1) {
+                char c = (char) ch;
+
+                if (c == '"') {
+                    if (inQuotes) {
+                        // Lookahead for double escape quote pairs ("")
+                        reader.mark(1);
+                        int nextCh = reader.read();
+                        if (nextCh == '"') {
                             sb.append('"');
-                            i++;
                         } else {
-                            inQuotes = !inQuotes;
+                            inQuotes = false;
+                            if (nextCh != -1) reader.reset();
                         }
-                    } else if (c == ',' && !inQuotes) {
-                        tokens.add(sb.toString().trim());
-                        sb.setLength(0);
-                    } else if (c != '\r') {
-                        sb.append(c);
+                    } else {
+                        inQuotes = true;
                     }
+                } else if (c == ',' && !inQuotes) {
+                    tokens.add(sb.toString().trim());
+                    sb.setLength(0);
+                } else if ((c == '\n' || c == '\r') && !inQuotes) {
+                    if (c == '\r') {
+                        reader.mark(1);
+                        int nextCh = reader.read();
+                        if (nextCh != '\n' && nextCh != -1) reader.reset();
+                    }
+                    tokens.add(sb.toString().trim());
+                    sb.setLength(0);
+
+                    if (!tokens.isEmpty() && !(tokens.size() == 1 && tokens.get(0).isEmpty())) {
+                        if (isHeader) {
+                            for (int i = 0; i < tokens.size(); i++) {
+                                String h = tokens.get(i).toLowerCase();
+                                if (h.contains("url")) urlIndex = i;
+                                else if (h.contains("username") || h.contains("user")) usernameIndex = i;
+                                else if (h.contains("password") || h.contains("pass")) passwordIndex = i;
+                            }
+                            isHeader = false;
+                            if (urlIndex == -1 || usernameIndex == -1 || passwordIndex == -1) {
+                                return false;
+                            }
+                        } else {
+                            if (tokens.size() > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
+                                String host = tokens.get(urlIndex);
+                                String username = tokens.get(usernameIndex);
+                                String password = tokens.get(passwordIndex);
+                                if (!host.isEmpty()) {
+                                    editor.putString(host + "_user", username);
+                                    editor.putString(host + "_pass", password);
+                                }
+                            }
+                        }
+                    }
+                    tokens.clear();
+                } else {
+                    sb.append(c);
                 }
+            }
+
+            // Flush out lingering rows if file is missing trailing endline markup
+            if (sb.length() > 0 || !tokens.isEmpty()) {
                 tokens.add(sb.toString().trim());
-
-                // Read the header dynamically to map index locations
-                if (isHeader) {
-                    for (int i = 0; i < tokens.size(); i++) {
-                        String header = tokens.get(i).toLowerCase();
-                        if (header.contains("url")) urlIndex = i;
-                        else if (header.contains("username") || header.contains("user")) usernameIndex = i;
-                        else if (header.contains("password") || header.contains("pass")) passwordIndex = i;
-                    }
-                    isHeader = false;
-                    
-                    // Fallback to defaults if headers don't match standard names
-                    if (urlIndex == -1 || usernameIndex == -1 || passwordIndex == -1) {
-                        return false; 
-                    }
-                    continue;
-                }
-
-                // Process data rows based on dynamically mapped header indexes
-                if (tokens.size() > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
+                if (!isHeader && tokens.size() > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
                     String host = tokens.get(urlIndex);
                     String username = tokens.get(usernameIndex);
                     String password = tokens.get(passwordIndex);
-
                     if (!host.isEmpty()) {
                         editor.putString(host + "_user", username);
                         editor.putString(host + "_pass", password);
                     }
                 }
             }
+
             editor.apply();
             return true;
         } catch (IOException e) {
