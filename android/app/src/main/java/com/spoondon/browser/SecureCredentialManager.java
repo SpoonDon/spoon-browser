@@ -119,12 +119,19 @@ public class SecureCredentialManager {
                 
                 for (int i = 0; i < line.length(); i++) {
                     char c = line.charAt(i);
+                    
                     if (c == '"') {
-                        inQuotes = !inQuotes;
+                        // Lookahead for double escape pairs ("")
+                        if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                            sb.append('"');
+                            i++; // Skip the second quote
+                        } else {
+                            inQuotes = !inQuotes; // Toggle quote boundaries
+                        }
                     } else if (c == ',' && !inQuotes) {
                         tokens.add(sb.toString().trim());
                         sb.setLength(0);
-                    } else {
+                    } else if (c != '\r') { // Ignore carriage returns from Windows exports
                         sb.append(c);
                     }
                 }
