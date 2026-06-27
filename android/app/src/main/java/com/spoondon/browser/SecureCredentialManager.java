@@ -114,24 +114,35 @@ public class SecureCredentialManager {
 
             while ((line = reader.readLine()) != null) {
                 if (isHeader) {
-                    isHeader = false; // Skip the CSV header row (url,username,password)
+                    isHeader = false;
                     continue;
                 }
-                
-                // Simple CSV splitter parsing quoted strings safely
-                String[] tokens = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
-                if (tokens.length >= 3) {
-                    String host = tokens[0].replace("\"", "").trim();
-                    String username = tokens[1].replace("\"", "").trim();
-                    String password = tokens[2].replace("\"", "").trim();
+                if (line.trim().isEmpty()) continue;
 
-                    if (!host.isEmpty()) {
+                java.util.List<String> tokens = new java.util.ArrayList<>();
+                StringBuilder sb = new java.util.StringBuilder();
+                boolean inQuotes = false;
+                for (int i = 0; i < line.length(); i++) {
+                    char c = line.charAt(i);
+                    if (c == '"') {
+                        tokens.add(sb.toString().trim());
+                        sb.setLength(0);
+                    } else {
+                        sb.append(c);
+                    }
+                }
+                tokens.add(sb.toString().trim());
+
+                if (tokens.size() >= 3) {
+                    String host = tokens.get(0);
+                    String username = tokens.get(1);
+                    String password = tokens.get(2);
+
                         editor.putString(host + "_user", username);
                         editor.putString(host + "_pass", password);
                     }
                 }
-            }
-            editor.apply();
+            }            editor.apply();
             return true;
         } catch (IOException e) {
             e.printStackTrace();

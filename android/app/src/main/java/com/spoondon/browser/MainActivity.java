@@ -280,6 +280,7 @@ public class MainActivity extends AppCompatActivity {
                             LinearLayout.LayoutParams.MATCH_PARENT
                         );
                         webView.setVisibility(View.GONE);
+                        if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
                         browserContainer.addView(webView, params);
                     }
 
@@ -1298,6 +1299,7 @@ private void setupMenuButton() {
             );
             // Natively attach to layout tree immediately, default to hidden
             webView.setVisibility(View.GONE);
+                        if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
             browserContainer.addView(webView, params);
         }
         
