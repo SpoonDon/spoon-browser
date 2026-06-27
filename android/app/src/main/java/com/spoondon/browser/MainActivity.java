@@ -37,6 +37,10 @@ import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.PopupMenu;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.text.TextUtils;
 import android.app.AlertDialog;
 
 // Android WebKit (Core Browser Engine Dependencies)
@@ -116,7 +120,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Force the engine to warm up connection sockets early globally
+        setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
@@ -126,9 +130,7 @@ public class MainActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_main);
         secureCredentialManager = new SecureCredentialManager(this);
-        // ... rest of your initialization
-
-
+ 
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -252,19 +254,20 @@ public class MainActivity extends AppCompatActivity {
             if (savedTabs == null || savedTabs.isEmpty()) {
                 return false;
             }
-
             String[] urls = savedTabs.split("\n");
             int count = 0;
 
-            for (String url : urls) {
-                if (url == null || url.trim().isEmpty() || url.equals("about:blank")) {
+            for (String raw : urls) {
+                if (raw == null) continue;
+                String url = raw.trim();
+                if (url.isEmpty() || url.equals("about:blank")) {
                     continue;
                 }
                 if (!url.contains(".") && !url.startsWith("http")) {
                     continue;
                 }
                 
-                // Cap at 3 simultaneous tabs to completely prevent startup OOM crashes
+                // Cap at 3 simultaneous tabs to completely prevent startup crashes
                 if (count >= 3) break;
 
                 try {
@@ -280,28 +283,60 @@ public class MainActivity extends AppCompatActivity {
                         browserContainer.addView(webView, params);
                     }
 
-                    webView.loadUrl(url.trim());
+                    webView.loadUrl(url);
                     count++;
                 } catch (Exception e) {
-                    android.util.Log.e("SpoonBrowser", "Failed to restore single tab: " + url, e);
+                    android.util.Log.e("SpoonBrowser", "Failed to restore tab stream: " + url, e);
                 }
+            }
 
             }
 
-            if (tabs.isEmpty()) {
+            if (firstValid == null) {
                 return false;
             }
 
-            int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
-            if (savedCurrentTab < 0 || savedCurrentTab >= tabs.size()) {
-                savedCurrentTab = 0;
-            }
+            final String toLoad = firstValid;
+            // Create and add the WebView on the UI thread after layout is available.
+            runOnUiThread(() -> {
+                try {
+                    WebView webView = createConfiguredWebView();
+                    tabs.add(webView);
+                    // Make this tab the current one and attach its view.
+                    currentTab = tabs.size() - 1;
+                    if (browserContainer != null) {
+                        browserContainer.removeAllViews();
+                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.MATCH_PARENT
+                        );
+                        browserContainer.addView(webView, params);
+                    }
+                    updateTabIndicator();
+                    try {
+                        webView.loadUrl(toLoad);
+                        android.util.Log.i("SpoonBrowser", "Restored single tab: " + toLoad);
+                    } catch (Exception e) {
+                        android.util.Log.w("SpoonBrowser", "Failed to load restored url: " + toLoad, e);
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("SpoonBrowser", "createConfiguredWebView failed during restore", e);
+                }
+            });
 
-            switchToTab(savedCurrentTab);
+            int savedCurrentTab = prefs.getInt(KEY_CURRENT_TAB, 0);
+            if (savedCurrentTab < 0) savedCurrentTab = 0;
+            // We'll keep currentTab as set above (only one tab restored).
             return true;
         } catch (Exception e) {
             android.util.Log.e("SpoonBrowser", "Failed to restore session safely", e);
-            tabs.clear();
+            // Clean up any created WebViews
+            runOnUiThread(() -> {
+                for (WebView w : tabs) {
+                    try { w.destroy(); } catch (Exception ignored) {}
+                }
+                tabs.clear();
+            });
             return false;
         }
     }
@@ -330,7 +365,7 @@ public class MainActivity extends AppCompatActivity {
     private void loadSavedData() {
         String savedHistory = prefs.getString(KEY_HISTORY, "");
         if (!savedHistory.isEmpty()) {
-            for (String item : savedHistory.split("\n")) {
+            for (String item : savedHistory.split("\\n")) {
                 history.add(item);
                 while (history.size() > MAX_HISTORY) {
                     history.remove(0);
@@ -340,7 +375,7 @@ public class MainActivity extends AppCompatActivity {
 
         String savedBookmarks = prefs.getString(KEY_BOOKMARKS, "");
         if (!savedBookmarks.isEmpty()) {
-            for (String bookmark : savedBookmarks.split("\n")) {
+            for (String bookmark : savedBookmarks.split("\\n")) {
                 if (!bookmarks.contains(bookmark)) {
                     bookmarks.add(bookmark);
                 }
@@ -349,7 +384,7 @@ public class MainActivity extends AppCompatActivity {
 
         String savedFilterLists = prefs.getString(KEY_FILTER_LISTS, "");
         if (!savedFilterLists.isEmpty()) {
-            for (String filter : savedFilterLists.split("\n")) {
+            for (String filter : savedFilterLists.split("\\n")) {
                 if (!filterLists.contains(filter)) {
                     filterLists.add(filter);
                 }
@@ -365,7 +400,7 @@ public class MainActivity extends AppCompatActivity {
 
         String savedPageTitles = prefs.getString(KEY_PAGE_TITLES, "");
         if (!savedPageTitles.isEmpty()) {
-            for (String item : savedPageTitles.split("\n")) {
+            for (String item : savedPageTitles.split("\\n")) {
                 String[] parts = item.split("\\|", 2);
                 if (parts.length == 2) {
                     pageTitles.put(parts[0], parts[1]);
@@ -574,7 +609,8 @@ private void setupMenuButton() {
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
         addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        addressBar.setThreshold(0);
+        // Avoid immediate popup on focus/startup — threshold 1 reduces race conditions.
+        addressBar.setThreshold(1);
         
         // Modernized Address Bar Background styling - Isolated unique variable name
         android.graphics.drawable.GradientDrawable customAddressBg = new android.graphics.drawable.GradientDrawable();
@@ -582,13 +618,13 @@ private void setupMenuButton() {
         customAddressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
         addressBar.setBackground(customAddressBg);
 
-
         addressBar.setPadding(dp(16), dp(8), dp(16), dp(8));
 
         // CRITICAL FIX: Give address bar dynamic layout weight so it stretches elegantly
         LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         addressParams.setMargins(dp(6), 0, dp(6), 0);
         addressBar.setLayoutParams(addressParams);
+
 
         // Keep your existing adapter and text watcher setups underneath...
 
@@ -613,13 +649,18 @@ private void setupMenuButton() {
             }
         };
 
-        // STYLING ADDITION: Apply matching dark, rounded design to the dropdown panel itself
-        addressBar.setAdapter(addressBarAdapter);
-        addressBar.setDropDownBackgroundDrawable(new android.graphics.drawable.GradientDrawable() {{
-            setColor(android.graphics.Color.parseColor("#1F1F1F")); // Subtle contrast dark accent
-            setCornerRadius(dp(16));                               // Premium rounded corner profiles
-        }});
-        addressBar.setDropDownVerticalOffset(dp(4));               // Floating gap separation
+        // Defer adapter attachment until after layout to reduce early-popup races.
+        addressBar.post(() -> {
+            try {
+                addressBar.setAdapter(addressBarAdapter);
+                // STYLING ADDITION: Apply matching dark, rounded design to the dropdown panel itself
+                addressBar.setDropDownBackgroundDrawable(new android.graphics.drawable.GradientDrawable() {{
+                    setColor(android.graphics.Color.parseColor("#1F1F1F")); // Subtle contrast dark accent
+                    setCornerRadius(dp(16));                               // Premium rounded corner profiles
+                }});
+                addressBar.setDropDownVerticalOffset(dp(4));               // Floating gap separation
+            } catch (Exception ignored) {}
+        });
 
         addressBar.setOnItemClickListener((parent, view, position, id) -> {
             String rawItem = addressBarAdapter.getItem(position);
@@ -637,7 +678,12 @@ private void setupMenuButton() {
             suppressSuggestions = true;
             addressBar.setText(cleanUrl);
             addressBar.setSelection(cleanUrl.length());
-            addressBar.dismissDropDown();
+            try {
+                if (addressBar.isAttachedToWindow()) {
+                    addressBar.dismissDropDown();
+                }
+            } catch (Exception ignored) {}
+
             addressBar.post(() -> {
                 navigate();
                 suppressSuggestions = false;
@@ -901,12 +947,17 @@ private void setupMenuButton() {
 
             @Override
             public void onReceivedTitle(WebView view, String title) {
-                String url = view.getUrl();
-                if (url != null && title != null && !title.isEmpty()) {
-                    synchronized (pageTitles) {
-                        pageTitles.put(url, title);
+                try {
+                    String url = null;
+                    try { url = view.getUrl(); } catch (Exception ignored) {}
+                    if (url != null && title != null && !title.isEmpty()) {
+                        synchronized (pageTitles) {
+                            pageTitles.put(url, title);
+                        }
+                        savePageTitles();
                     }
-                    savePageTitles();
+                } catch (Exception e) {
+                    android.util.Log.w("SpoonBrowser", "onReceivedTitle failed", e);
                 }
             }
         };
@@ -1054,7 +1105,11 @@ private void setupMenuButton() {
                 android.webkit.CookieManager.getInstance().flush();
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
-                    addressBar.dismissDropDown();
+                    try {
+                        if (addressBar.isAttachedToWindow()) {
+                            addressBar.dismissDropDown();
+                        }
+                    } catch (Exception ignored) {}
                 }
                 updateTabIndicator();
                 saveOpenTabs();
@@ -1296,6 +1351,15 @@ private void setupMenuButton() {
                 }
             }
         }
+        if (addressBar != null) {
+            try {
+                if (addressBar.isAttachedToWindow()) {
+                    addressBar.dismissDropDown();
+                }
+            } catch (Exception ignored) {}
+            addressBar.clearFocus();
+        }
+
     }
 
 
@@ -1501,15 +1565,11 @@ private void setupMenuButton() {
     }
 
     private void saveBookmarks() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_BOOKMARKS, String.join("\n", bookmarks)).apply();
-        }
+        prefs.edit().putString(KEY_BOOKMARKS, TextUtils.join("\n", bookmarks)).apply();
     }
 
     private void saveHistory() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_HISTORY, String.join("\n", history)).apply();
-        }
+        prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
     }
 
     // --- Advanced High-Speed Content Filter Engine ---
@@ -1618,9 +1678,9 @@ private void setupMenuButton() {
     }
 
     private void saveFilterLists() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_FILTER_LISTS, String.join("\n", filterLists)).apply();
-        }
+        prefs.edit().putString(KEY_FILTER_LISTS, TextUtils.join("\n", filterLists)).apply();
+        rebuildBlockedDomains();
+
     }
 
     private void saveOpenTabs() {
@@ -1631,9 +1691,7 @@ private void setupMenuButton() {
                 urls.add(url);
             }
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            prefs.edit().putString(KEY_OPEN_TABS, String.join("\n", urls)).apply();
-        }
+        prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", urls)).apply();
     }
 
     private void saveCurrentTab() {
@@ -1856,6 +1914,7 @@ private void setupMenuButton() {
             cachedHomeHtml = sb.toString();
         }
 
+
         WebView wv = getCurrentWebView();
         if (wv != null) {
             wv.loadDataWithBaseURL("about:blank", cachedHomeHtml, "text/html", "UTF-8", null);
@@ -1873,7 +1932,14 @@ private void setupMenuButton() {
 
     private void updateAddressBarSuggestions(String query) {
         addressBarAdapter.clear();
-        if (query == null || query.trim().isEmpty()) return;
+        if (query == null || query.trim().isEmpty()) {
+            try {
+                if (addressBar != null && addressBar.isAttachedToWindow()) {
+                    addressBar.dismissDropDown();
+                }
+            } catch (Exception ignored) {}
+            return;
+        }
 
         String lower = query.toLowerCase();
         HashSet<String> seen = new HashSet<>();
@@ -1902,11 +1968,26 @@ private void setupMenuButton() {
         }
 
         addressBarAdapter.notifyDataSetChanged();
-        if (addressBarAdapter.getCount() > 0) {
-            addressBar.showDropDown();
-        } else {
-            addressBar.dismissDropDown();
-        }
+
+        try {
+            if (addressBar != null && addressBar.isAttachedToWindow()) {
+                if (addressBarAdapter.getCount() > 0) {
+                    addressBar.showDropDown();
+                } else {
+                    addressBar.dismissDropDown();
+                }
+            } else if (addressBar != null) {
+                // Post a safe attempt after layout if not attached yet.
+                addressBar.post(() -> {
+                    try {
+                        if (addressBar.isAttachedToWindow()) {
+                            if (addressBarAdapter.getCount() > 0) addressBar.showDropDown();
+                            else addressBar.dismissDropDown();
+                        }
+                    } catch (Exception ignored) {}
+                });
+            }
+        } catch (Exception ignored) {}
     }
 
     private void navigate() {
@@ -1933,6 +2014,21 @@ private void setupMenuButton() {
         openUrl(url);
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        for (WebView w : tabs) {
+            try {
+                w.stopLoading();
+                w.clearHistory();
+                w.loadUrl("about:blank");
+                w.removeAllViews();
+                w.destroy();
+            } catch (Exception ignored) {}
+        }
+        tabs.clear();
+    }
+
     private void triggerExternalDownload(String url, String mimeType) {
         try {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
@@ -1954,5 +2050,7 @@ private void setupMenuButton() {
                 Toast.makeText(MainActivity.this, "No download handler found on device", Toast.LENGTH_SHORT).show();
             }
         }
+    }
+
     }
 }
