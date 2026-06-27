@@ -103,11 +103,10 @@ public class SecureCredentialManager {
      * Imports credentials from a standard CSV file and commits them to the secure vault
      */
     public boolean importFromCSV(File inputFile) {
-        if (encryptedPrefs == null || !inputFile.exists()) return false;
 
         BufferedReader reader = null;
         try {
-            reader = new BufferedReader(new FileReader(inputFile));
+            reader = new BufferedReader(new java.io.FileReader(inputFile));
             String line;
             boolean isHeader = true;
             SharedPreferences.Editor editor = encryptedPrefs.edit();
@@ -142,14 +141,15 @@ public class SecureCredentialManager {
                         editor.putString(host + "_pass", password);
                     }
                 }
-            }            editor.apply();
+            }
+            editor.apply();
             return true;
-        } catch (IOException e) {
+        } catch (java.io.IOException e) {
             e.printStackTrace();
             return false;
         } finally {
             if (reader != null) {
-                try { reader.close(); } catch (IOException ignored) {}
+                try { reader.close(); } catch (java.io.IOException ignored) {}
             }
         }
     }
