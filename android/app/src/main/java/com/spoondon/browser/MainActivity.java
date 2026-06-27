@@ -614,7 +614,7 @@ private void setupMenuButton() {
         
         // Modernized Address Bar Background styling - Isolated unique variable name
         android.graphics.drawable.GradientDrawable customAddressBg = new android.graphics.drawable.GradientDrawable();
-        customAddressBg.setColor(Color.parseColor("#222222"));
+        customAddressBg.setColor(android.graphics.Color.parseColor("#222222"));
         customAddressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
         addressBar.setBackground(customAddressBg);
 
