@@ -30,3 +30,7 @@
 # 6. Suppress safe compiler warning noise from core dependencies
 -dontwarn android.webkit.**
 
+
+# SpoonVault Security Framework - Ignore compile-time lint annotations used by Tink Crypto
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
