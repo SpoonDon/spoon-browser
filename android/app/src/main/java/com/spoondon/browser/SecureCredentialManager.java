@@ -103,14 +103,15 @@ public class SecureCredentialManager {
         try {
             reader = new BufferedReader(new FileReader(inputFile));
             String line;
+            
+            int urlIndex = -1;
+            int usernameIndex = -1;
+            int passwordIndex = -1;
             boolean isHeader = true;
+            
             SharedPreferences.Editor editor = encryptedPrefs.edit();
 
             while ((line = reader.readLine()) != null) {
-                if (isHeader) {
-                    isHeader = false;
-                    continue;
-                }
                 if (line.trim().isEmpty()) continue;
 
                 List<String> tokens = new ArrayList<>();
@@ -119,28 +120,44 @@ public class SecureCredentialManager {
                 
                 for (int i = 0; i < line.length(); i++) {
                     char c = line.charAt(i);
-                    
                     if (c == '"') {
-                        // Lookahead for double escape pairs ("")
                         if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
                             sb.append('"');
-                            i++; // Skip the second quote
+                            i++;
                         } else {
-                            inQuotes = !inQuotes; // Toggle quote boundaries
+                            inQuotes = !inQuotes;
                         }
                     } else if (c == ',' && !inQuotes) {
                         tokens.add(sb.toString().trim());
                         sb.setLength(0);
-                    } else if (c != '\r') { // Ignore carriage returns from Windows exports
+                    } else if (c != '\r') {
                         sb.append(c);
                     }
                 }
                 tokens.add(sb.toString().trim());
 
-                if (tokens.size() >= 3) {
-                    String host = tokens.get(0);
-                    String username = tokens.get(1);
-                    String password = tokens.get(2);
+                // Read the header dynamically to map index locations
+                if (isHeader) {
+                    for (int i = 0; i < tokens.size(); i++) {
+                        String header = tokens.get(i).toLowerCase();
+                        if (header.contains("url")) urlIndex = i;
+                        else if (header.contains("username") || header.contains("user")) usernameIndex = i;
+                        else if (header.contains("password") || header.contains("pass")) passwordIndex = i;
+                    }
+                    isHeader = false;
+                    
+                    // Fallback to defaults if headers don't match standard names
+                    if (urlIndex == -1 || usernameIndex == -1 || passwordIndex == -1) {
+                        return false; 
+                    }
+                    continue;
+                }
+
+                // Process data rows based on dynamically mapped header indexes
+                if (tokens.size() > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
+                    String host = tokens.get(urlIndex);
+                    String username = tokens.get(usernameIndex);
+                    String password = tokens.get(passwordIndex);
 
                     if (!host.isEmpty()) {
                         editor.putString(host + "_user", username);
