@@ -264,8 +264,6 @@ public class MainActivity extends AppCompatActivity {
                 if (url.isEmpty() || url.equals("about:blank")) {
                     continue;
                 }
-                    continue;
-                }
                 if (firstValid == null) {
                     firstValid = url;
                 }
@@ -325,7 +323,8 @@ public class MainActivity extends AppCompatActivity {
             return false;
         }
     }
-    }
+
+
 
     private void setupRootLayout() {
         root = new LinearLayout(this);
