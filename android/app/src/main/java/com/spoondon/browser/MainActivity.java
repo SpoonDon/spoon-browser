@@ -1163,21 +1163,11 @@ case "Exit":
                         "    var userFields = document.querySelectorAll(\"input[type='text'], input[type='email'], input[type='tel']\");" +
                         "    if (passFields.length === 0 && userFields.length === 0) return;" +
 
-                        "    passFields.forEach(function(pf) {" +
-                        "        if (pf.getAttribute('data-spoon-hooked-input')) return;" +
-                        "        pf.setAttribute('data-spoon-hooked-input', 'true');" +
-                        "        pf.addEventListener('change', function() {" +
-                        "            var typedPass = this.value;" +
-                        "            var typedUser = '';" +
-                        "            userFields.forEach(function(uf) { if(uf.value) typedUser = uf.value; });" +
-                        "            if (typedUser && typedPass) {" +
-                        "                SpoonVault.saveLogin(host, typedUser, typedPass);" +
-                        "            }" +
-                        "        });" +
-                        "    });" +
-
                         "    if (usernamesData.length > 0) {" +
                         "        var listId = 'spoon-autofill-list';" +
+                        "        var passListId = 'spoon-pass-autofill-list';" +
+                        "        " +
+                        "        /* 1. Build Master Username Datalist */" +
                         "        var dl = document.getElementById(listId);" +
                         "        if (!dl) {" +
                         "            dl = document.createElement('datalist');" +
@@ -1189,7 +1179,22 @@ case "Exit":
                         "            });" +
                         "            document.body.appendChild(dl);" +
                         "        }" +
+                        "        " +
+                        "        /* 2. Build Dedicated Password Fallback Datalist */" +
+                        "        var pdl = document.getElementById(passListId);" +
+                        "        if (!pdl) {" +
+                        "            pdl = document.createElement('datalist');" +
+                        "            pdl.id = passListId;" +
+                        "            usernamesData.forEach(function(acc) {" +
+                        "                var opt = document.createElement('option');" +
+                        "                opt.value = 'Password for: ' + acc.username;" +
+                        "                opt.setAttribute('data-username', acc.username);" +
+                        "                pdl.appendChild(opt);" +
+                        "            });" +
+                        "            document.body.appendChild(pdl);" +
+                        "        }" +
 
+                        "        /* 3. Connect Username Inputs */" +
                         "        userFields.forEach(function(uf) {" +
                         "            if (uf.getAttribute('list') !== listId) {" +
                         "                uf.setAttribute('list', listId);" +
@@ -1203,7 +1208,41 @@ case "Exit":
                         "                });" +
                         "            }" +
                         "        });" +
+
+                        "        /* 4. Connect Password Inputs with dedicated drop-downs */" +
+                        "        passFields.forEach(function(pf) {" +
+                        "            if (pf.getAttribute('list') !== passListId) {" +
+                        "                pf.setAttribute('list', passListId);" +
+                        "                pf.setAttribute('autocomplete', 'off');" +
+                        "                " +
+                        "                /* Handle explicit selection from the password datalist */" +
+                        "                pf.addEventListener('input', function() {" +
+                        "                    var val = this.value;" +
+                        "                    if (val.indexOf('Password for: ') === 0) {" +
+                        "                        var targetUser = val.substring('Password for: '.length);" +
+                        "                        /* Clear the visual placeholder text instantly so it doesn't leak into the password field */" +
+                        "                        this.value = '';" +
+                        "                        /* Securely request only this password from the bridge */" +
+                        "                        SpoonVault.requestPasswordFill(host, targetUser);" +
+                        "                    }" +
+                        "                });" +
+                        "            }" +
+                        "        });" +
                         "    }" +
+
+                        "    /* 5. Secure Capturing/Saving Event Handlers */" +
+                        "    passFields.forEach(function(pf) {" +
+                        "        if (pf.getAttribute('data-spoon-hooked-input')) return;" +
+                        "        pf.setAttribute('data-spoon-hooked-input', 'true');" +
+                        "        pf.addEventListener('change', function() {" +
+                        "            var typedPass = this.value;" +
+                        "            var typedUser = '';" +
+                        "            userFields.forEach(function(uf) { if(uf.value) typedUser = uf.value; });" +
+                        "            if (typedUser && typedPass && typedPass.indexOf('Password for: ') !== 0) {" +
+                        "                SpoonVault.saveLogin(host, typedUser, typedPass);" +
+                        "            }" +
+                        "        });" +
+                        "    });" +
                         "}" +
 
                         "applyAutofillEngine();" +
@@ -1212,7 +1251,6 @@ case "Exit":
                         "})();";
 
                     view.evaluateJavascript(js, null);
-
 
                     }
 
