@@ -1155,80 +1155,64 @@ case "Exit":
 
                     String js = "javascript:(function() {" +
                         "var host = '" + cleanHost + "';" +
-                        "var accountsData = [];" +
-                        "try { accountsData = JSON.parse(SpoonVault.getSavedAccountsJSON(host)); } catch(e) {}" +
-                        
+                        "var usernamesData = [];" +
+                        "try { usernamesData = JSON.parse(SpoonVault.getAvailableUsernames(host)); } catch(e) {}" +
+
                         "function applyAutofillEngine() {" +
                         "    var passFields = document.querySelectorAll(\"input[type='password']\");" +
                         "    var userFields = document.querySelectorAll(\"input[type='text'], input[type='email'], input[type='tel']\");" +
                         "    if (passFields.length === 0 && userFields.length === 0) return;" +
-                        
-                        // Direct global input listener to capture typed credentials across multi-step flows
-                        "    userFields.forEach(function(uf) {" +
-                        "        if (uf.getAttribute('data-spoon-hooked-input')) return;" +
-                        "        uf.setAttribute('data-spoon-hooked-input', 'true');" +
-                        "        uf.addEventListener('input', function() { window._spoonUser = this.value; });" +
-                        "        uf.addEventListener('change', function() { window._spoonUser = this.value; });" +
-                        "    });" +
+
                         "    passFields.forEach(function(pf) {" +
                         "        if (pf.getAttribute('data-spoon-hooked-input')) return;" +
                         "        pf.setAttribute('data-spoon-hooked-input', 'true');" +
                         "        pf.addEventListener('change', function() {" +
                         "            var typedPass = this.value;" +
-                        "            var currentUser = window._spoonUser || '';" +
-                        "            if (!currentUser) {" +
-                        "                var fallbackUf = document.querySelector(\"input[type='text'], input[type='email']\");" +
-                        "                if (fallbackUf) currentUser = fallbackUf.value;" +
-                        "            }" +
-                        "            if (currentUser && typedPass) {" +
-                        "                SpoonVault.saveLogin(host, currentUser, typedPass);" +
+                        "            var typedUser = '';" +
+                        "            userFields.forEach(function(uf) { if(uf.value) typedUser = uf.value; });" +
+                        "            if (typedUser && typedPass) {" +
+                        "                SpoonVault.saveLogin(host, typedUser, typedPass);" +
                         "            }" +
                         "        });" +
                         "    });" +
 
-
-                        "    if (accountsData.length > 0) {" +
+                        "    if (usernamesData.length > 0) {" +
                         "        var listId = 'spoon-autofill-list';" +
                         "        var dl = document.getElementById(listId);" +
                         "        if (!dl) {" +
                         "            dl = document.createElement('datalist');" +
                         "            dl.id = listId;" +
-                        "            accountsData.forEach(function(acc) {" +
+                        "            usernamesData.forEach(function(acc) {" +
                         "                var opt = document.createElement('option');" +
                         "                opt.value = acc.username;" +
-                        "                opt.innerText = 'Fill password for ' + acc.username;" +
                         "                dl.appendChild(opt);" +
                         "            });" +
                         "            document.body.appendChild(dl);" +
                         "        }" +
-                        
+
                         "        userFields.forEach(function(uf) {" +
                         "            if (uf.getAttribute('list') !== listId) {" +
                         "                uf.setAttribute('list', listId);" +
                         "                uf.setAttribute('autocomplete', 'off');" +
                         "                uf.addEventListener('input', function() {" +
                         "                    var val = this.value;" +
-                        "                    var match = accountsData.find(function(a){ return a.username === val; });" +
-                        "                    if (match) {" +
-                        "                        passFields.forEach(function(pf) { pf.value = match.password; });" +
+                        "                    var exactUserMatch = usernamesData.find(function(a){ return a.username === val; });" +
+                        "                    if (exactUserMatch) {" +
+                        "                        SpoonVault.requestPasswordFill(host, val);" +
                         "                    }" +
                         "                });" +
                         "            }" +
                         "        });" +
-                        
-                        "        if (accountsData.length === 1) {" +
-                        "            if (userFields[0] && !userFields[0].value) userFields[0].value = accountsData[0].username;" +
-                        "            if (passFields[0] && !passFields[0].value) passFields[0].value = accountsData[0].password;" +
-                        "        }" +
                         "    }" +
                         "}" +
-                        
+
                         "applyAutofillEngine();" +
                         "var observer = new MutationObserver(applyAutofillEngine);" +
                         "observer.observe(document.body, { childList: true, subtree: true });" +
                         "})();";
 
                     view.evaluateJavascript(js, null);
+
 
                     }
 
@@ -1361,40 +1345,7 @@ case "Exit":
             cookieManager.setAcceptThirdPartyCookies(webView, false);
         }
 
-        webView.addJavascriptInterface(new Object() {
-            @android.webkit.JavascriptInterface
-            public String getSavedAccountsJSON(String host) {
-                if (secureCredentialManager == null || host == null) return "[]";
-                // Standardize host naming layout just like import mapping does
-                String cleanHost = host.toLowerCase().trim();
-                if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
-                return secureCredentialManager.getAllAccountsForHost(cleanHost);
-            }
-
-            @android.webkit.JavascriptInterface
-            public String getSavedUser(String host) {
-                return secureCredentialManager != null ? secureCredentialManager.getUsername(host) : "";
-            }
-
-            @android.webkit.JavascriptInterface
-            public String getSavedPass(String host) {
-                return secureCredentialManager != null ? secureCredentialManager.getPassword(host) : "";
-            }
-
-            @android.webkit.JavascriptInterface
-            public void saveLogin(String host, String user, String pass) {
-                if (secureCredentialManager != null && user != null && !user.isEmpty() && pass != null && !pass.isEmpty()) {
-                    runOnUiThread(() -> {
-                        new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this)
-                            .setTitle("Save Password?")
-                            .setMessage("Would you like Spoon Browser to save your credentials for " + host + "?")
-                            .setPositiveButton("Save", (dialog, which) -> secureCredentialManager.saveCredentials(host, user, pass))
-                            .setNegativeButton("Never", null)
-                            .show();
-                    });
-                }
-            }
-        }, "SpoonVault");
+        webView.addJavascriptInterface(new SecureSpoonBridge(webView, secureCredentialManager), "SpoonVault");
 
         webView.setWebChromeClient(createWebChromeClient());
         webView.setOnLongClickListener(createImageLongClickListener(webView));
