@@ -198,10 +198,19 @@ public class SecureCredentialManager {
                                     String host = tokens.get(urlIndex);
                                     String username = tokens.get(usernameIndex);
                                     String password = tokens.get(passwordIndex);
+
                                     if (!host.isEmpty()) {
+                                        if (host.contains("://")) {
+                                            host = host.substring(host.indexOf("://") + 3);
+                                        }
+                                        if (host.contains("/")) {
+                                            host = host.split("/")[0];
+                                        }
+                                        host = host.toLowerCase().trim();
                                         memoryPrefs.put(host + "_user", username);
                                         memoryPrefs.put(host + "_pass", password);
                                     }
+
                                 }
                             }
                         }
@@ -217,10 +226,19 @@ public class SecureCredentialManager {
                         String host = tokens.get(urlIndex);
                         String username = tokens.get(usernameIndex);
                         String password = tokens.get(passwordIndex);
+
                         if (!host.isEmpty()) {
+                            if (host.contains("://")) {
+                                host = host.substring(host.indexOf("://") + 3);
+                            }
+                            if (host.contains("/")) {
+                                host = host.split("/")[0];
+                            }
+                            host = host.toLowerCase().trim();
                             memoryPrefs.put(host + "_user", username);
                             memoryPrefs.put(host + "_pass", password);
                         }
+
                     }
                 }
                 saveVault();
