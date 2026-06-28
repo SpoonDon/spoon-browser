@@ -448,8 +448,12 @@ public class MainActivity extends AppCompatActivity {
                 while ((line = r.readLine()) != null) {
                     if (line.contains("_user=")) {
                         String host = line.split("_user=")[0];
+                        if (!hosts.contains(host)) {
+                            hosts.add(host);
+                        }
                     }
                 }
+
             } catch (Exception e) { e.printStackTrace(); }
         }
 
