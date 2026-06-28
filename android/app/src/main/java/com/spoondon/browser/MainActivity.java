@@ -1163,18 +1163,29 @@ case "Exit":
                         "    var userFields = document.querySelectorAll(\"input[type='text'], input[type='email'], input[type='tel']\");" +
                         "    if (passFields.length === 0 && userFields.length === 0) return;" +
                         
-                        "    var forms = document.querySelectorAll('form');" +
-                        "    forms.forEach(function(f) {" +
-                        "        if (f.getAttribute('data-spoon-hooked')) return;" +
-                        "        f.setAttribute('data-spoon-hooked', 'true');" +
-                        "        f.addEventListener('submit', function() {" +
-                        "            var uF = f.querySelector(\"input[type='text'], input[type='email']\");" +
-                        "            var pF = f.querySelector(\"input[type='password']\");" +
-                        "            if (pF && pF.value) {" +
-                        "                SpoonVault.saveLogin(host, uF ? uF.value : '', pF.value);" +
+                        // Direct global input listener to capture typed credentials across multi-step flows
+                        "    userFields.forEach(function(uf) {" +
+                        "        if (uf.getAttribute('data-spoon-hooked-input')) return;" +
+                        "        uf.setAttribute('data-spoon-hooked-input', 'true');" +
+                        "        uf.addEventListener('input', function() { window._spoonUser = this.value; });" +
+                        "        uf.addEventListener('change', function() { window._spoonUser = this.value; });" +
+                        "    });" +
+                        "    passFields.forEach(function(pf) {" +
+                        "        if (pf.getAttribute('data-spoon-hooked-input')) return;" +
+                        "        pf.setAttribute('data-spoon-hooked-input', 'true');" +
+                        "        pf.addEventListener('change', function() {" +
+                        "            var typedPass = this.value;" +
+                        "            var currentUser = window._spoonUser || '';" +
+                        "            if (!currentUser) {" +
+                        "                var fallbackUf = document.querySelector(\"input[type='text'], input[type='email']\");" +
+                        "                if (fallbackUf) currentUser = fallbackUf.value;" +
+                        "            }" +
+                        "            if (currentUser && typedPass) {" +
+                        "                SpoonVault.saveLogin(host, currentUser, typedPass);" +
                         "            }" +
                         "        });" +
                         "    });" +
+
 
                         "    if (accountsData.length > 0) {" +
                         "        var listId = 'spoon-autofill-list';" +

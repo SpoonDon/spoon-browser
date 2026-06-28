@@ -88,28 +88,48 @@ public class SecureCredentialManager {
     }
 
     public synchronized void saveCredentials(String host, String username, String password) {
-        if (host == null || host.isEmpty()) return;
-        memoryPrefs.put(host + "_user", username != null ? username : "");
-        memoryPrefs.put(host + "_pass", password != null ? password : "");
+        if (host == null || host.isEmpty() || username == null || username.isEmpty()) return;
+        String cleanUser = username.trim();
+        memoryPrefs.put(host + "_" + cleanUser + "_user", cleanUser);
+        memoryPrefs.put(host + "_" + cleanUser + "_pass", password != null ? password : "");
         saveVault();
+    }
+
+    public synchronized String getUsername(String host) {
+        // Fallback method used by legacy calls: returns the first user found
+        if (host == null) return "";
+        for (String key : memoryPrefs.keySet()) {
+            if (key.startsWith(host + "_") && key.endsWith("_user")) {
+                return memoryPrefs.get(key);
+            }
+        }
+        return "";
+    }
+
+    public synchronized String getPassword(String host) {
+        // Fallback method used by legacy calls: returns the first pass found
+        if (host == null) return "";
+        for (String key : memoryPrefs.keySet()) {
+            if (key.startsWith(host + "_") && key.endsWith("_pass")) {
+                return memoryPrefs.get(key);
+            }
+        }
+        return "";
     }
 
     public synchronized String getAllAccountsForHost(String host) {
         if (host == null || host.isEmpty()) return "[]";
         try {
             org.json.JSONArray array = new org.json.JSONArray();
-            // Look for any keys matching this domain
             String userKeySuffix = "_user";
             for (String key : memoryPrefs.keySet()) {
-                if (key.startsWith(host) && key.endsWith(userKeySuffix)) {
-                    // Make sure it's an exact domain match before cutting the suffix
-                    String extractedHost = key.substring(0, key.length() - userKeySuffix.length());
-                    if (extractedHost.equals(host)) {
-                        String username = memoryPrefs.get(key);
-                        String password = memoryPrefs.get(host + "_pass");
+                if (key.startsWith(host + "_") && key.endsWith(userKeySuffix)) {
+                    String username = memoryPrefs.get(key);
+                    if (username != null && !username.isEmpty()) {
+                        String password = memoryPrefs.get(host + "_" + username + "_pass");
                         
                         org.json.JSONObject obj = new org.json.JSONObject();
-                        obj.put("username", username != null ? username : "");
+                        obj.put("username", username);
                         obj.put("password", password != null ? password : "");
                         array.put(obj);
                     }
@@ -121,21 +141,18 @@ public class SecureCredentialManager {
         }
     }
 
-
-    public synchronized String getUsername(String host) {
-        String res = memoryPrefs.get(host + "_user");
-        return res != null ? res : "";
-    }
-
-    public synchronized String getPassword(String host) {
-        String res = memoryPrefs.get(host + "_pass");
-        return res != null ? res : "";
-    }
-
     public synchronized void clearCredentials(String host) {
-        if (host == null) return;
-        memoryPrefs.remove(host + "_user");
-        memoryPrefs.remove(host + "_pass");
+        if (host == null || host.isEmpty()) return;
+        // Collect all keys matching this host prefix to clear them out safely
+        java.util.List<String> keysToRemove = new java.util.ArrayList<>();
+        for (String key : memoryPrefs.keySet()) {
+            if (key.startsWith(host + "_")) {
+                keysToRemove.add(key);
+            }
+        }
+        for (String key : keysToRemove) {
+            memoryPrefs.remove(key);
+        }
         saveVault();
     }
 
@@ -147,9 +164,14 @@ public class SecureCredentialManager {
 
             for (String key : memoryPrefs.keySet()) {
                 if (key.endsWith("_user")) {
-                    String host = key.substring(0, key.lastIndexOf("_user"));
                     String username = memoryPrefs.get(key);
-                    String password = memoryPrefs.get(host + "_pass");
+                    if (username == null || username.isEmpty()) continue;
+                    
+                    String suffix = "_" + username + "_user";
+                    if (!key.endsWith(suffix)) continue; // Safety check
+                    
+                    String host = key.substring(0, key.length() - suffix.length());
+                    String password = memoryPrefs.get(host + "_" + username + "_pass");
                     if (password == null) password = "";
 
                     username = username.replace("\"", "\"\"");
@@ -158,6 +180,7 @@ public class SecureCredentialManager {
                     writer.append(String.format("\"%s\",\"%s\",\"%s\"\n", host, username, password));
                 }
             }
+
             writer.flush();
             return true;
         } catch (IOException e) {
@@ -234,9 +257,13 @@ public class SecureCredentialManager {
                                         if (host.contains("/")) {
                                             host = host.split("/")[0];
                                         }
-                                        host = host.toLowerCase().trim();
-                                        memoryPrefs.put(host + "_user", username);
-                                        memoryPrefs.put(host + "_pass", password);
+host = host.toLowerCase().trim();
+if (username != null && !username.trim().isEmpty()) {
+    String cleanUser = username.trim();
+    memoryPrefs.put(host + "_" + cleanUser + "_user", cleanUser);
+    memoryPrefs.put(host + "_" + cleanUser + "_pass", password != null ? password : "");
+}
+
                                     }
 
                                 }
@@ -263,8 +290,12 @@ public class SecureCredentialManager {
                                 host = host.split("/")[0];
                             }
                             host = host.toLowerCase().trim();
-                            memoryPrefs.put(host + "_user", username);
-                            memoryPrefs.put(host + "_pass", password);
+if (username != null && !username.trim().isEmpty()) {
+    String cleanUser = username.trim();
+    memoryPrefs.put(host + "_" + cleanUser + "_user", cleanUser);
+    memoryPrefs.put(host + "_" + cleanUser + "_pass", password != null ? password : "");
+}
+
                         }
 
                     }
