@@ -1150,33 +1150,75 @@ case "Exit":
                     android.net.Uri uri = android.net.Uri.parse(url);
                     String host = uri.getHost();
                     if (host != null) {
-                        String js = "javascript:(function() {" +
-                            "var host = \"" + host + "\";" +
-                            "var savedUser = SpoonVault.getSavedUser(host);" +
-                            "var savedPass = SpoonVault.getSavedPass(host);" +
-                            "var passFields = document.querySelectorAll(\"input[type='password']\");" +
-                            "if (passFields.length > 0) {" +
-                            "   var passField = passFields[0];" +
-                            "   var userField = document.querySelector(\"input[type='text'], input[type='email']\");" +
-                            "   if (!userField && passField.form) {" +
-                            "       var inputs = passField.form.getElementsByTagName('input');" +
-                            "       for (var i = 0; i < inputs.length; i++) {" +
-                            "           if (inputs[i] !== passField && (inputs[i].type === 'text' || inputs[i].type === 'email')) {" +
-                            "               userField = inputs[i]; break;" +
-                            "           }" +
-                            "       }" +
+                    String cleanHost = host.toLowerCase().trim();
+                    if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
 
-                            "       form.addEventListener('submit', function() {" +
-                            "           SpoonVault.saveLogin(host, userField ? userField.value : '', passField.value);" +
-                            "       });" +
-                            "   }" +
-                            "   if (savedUser && savedPass) {" +
-                            "       if (userField) userField.value = savedUser;" +
-                            "       passField.value = savedPass;" +
-                            "   }" +
-                            "}" +
-                            "})()";
-                        view.evaluateJavascript(js, null);
+                    String js = "javascript:(function() {" +
+                        "var host = '" + cleanHost + "';" +
+                        "var accountsData = [];" +
+                        "try { accountsData = JSON.parse(SpoonVault.getSavedAccountsJSON(host)); } catch(e) {}" +
+                        
+                        "function applyAutofillEngine() {" +
+                        "    var passFields = document.querySelectorAll(\"input[type='password']\");" +
+                        "    var userFields = document.querySelectorAll(\"input[type='text'], input[type='email'], input[type='tel']\");" +
+                        "    if (passFields.length === 0 && userFields.length === 0) return;" +
+                        
+                        "    var forms = document.querySelectorAll('form');" +
+                        "    forms.forEach(function(f) {" +
+                        "        if (f.getAttribute('data-spoon-hooked')) return;" +
+                        "        f.setAttribute('data-spoon-hooked', 'true');" +
+                        "        f.addEventListener('submit', function() {" +
+                        "            var uF = f.querySelector(\"input[type='text'], input[type='email']\");" +
+                        "            var pF = f.querySelector(\"input[type='password']\");" +
+                        "            if (pF && pF.value) {" +
+                        "                SpoonVault.saveLogin(host, uF ? uF.value : '', pF.value);" +
+                        "            }" +
+                        "        });" +
+                        "    });" +
+
+                        "    if (accountsData.length > 0) {" +
+                        "        var listId = 'spoon-autofill-list';" +
+                        "        var dl = document.getElementById(listId);" +
+                        "        if (!dl) {" +
+                        "            dl = document.createElement('datalist');" +
+                        "            dl.id = listId;" +
+                        "            accountsData.forEach(function(acc) {" +
+                        "                var opt = document.createElement('option');" +
+                        "                opt.value = acc.username;" +
+                        "                opt.innerText = 'Fill password for ' + acc.username;" +
+                        "                dl.appendChild(opt);" +
+                        "            });" +
+                        "            document.body.appendChild(dl);" +
+                        "        }" +
+                        
+                        "        userFields.forEach(function(uf) {" +
+                        "            if (uf.getAttribute('list') !== listId) {" +
+                        "                uf.setAttribute('list', listId);" +
+                        "                uf.setAttribute('autocomplete', 'off');" +
+                        "                uf.addEventListener('input', function() {" +
+                        "                    var val = this.value;" +
+                        "                    var match = accountsData.find(function(a){ return a.username === val; });" +
+                        "                    if (match) {" +
+                        "                        passFields.forEach(function(pf) { pf.value = match.password; });" +
+                        "                    }" +
+                        "                });" +
+                        "            }" +
+                        "        });" +
+                        
+                        "        if (accountsData.length === 1) {" +
+                        "            if (userFields[0] && !userFields[0].value) userFields[0].value = accountsData[0].username;" +
+                        "            if (passFields[0] && !passFields[0].value) passFields[0].value = accountsData[0].password;" +
+                        "        }" +
+                        "    }" +
+                        "}" +
+                        
+                        "applyAutofillEngine();" +
+                        "var observer = new MutationObserver(applyAutofillEngine);" +
+                        "observer.observe(document.body, { childList: true, subtree: true });" +
+                        "})();";
+
+                    view.evaluateJavascript(js, null);
+
                     }
 
                     // Cosmetic Filter Engine: Inject CSS rules to collapse blocked element structures natively
@@ -1309,6 +1351,15 @@ case "Exit":
         }
 
         webView.addJavascriptInterface(new Object() {
+            @android.webkit.JavascriptInterface
+            public String getSavedAccountsJSON(String host) {
+                if (secureCredentialManager == null || host == null) return "[]";
+                // Standardize host naming layout just like import mapping does
+                String cleanHost = host.toLowerCase().trim();
+                if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
+                return secureCredentialManager.getAllAccountsForHost(cleanHost);
+            }
+
             @android.webkit.JavascriptInterface
             public String getSavedUser(String host) {
                 return secureCredentialManager != null ? secureCredentialManager.getUsername(host) : "";

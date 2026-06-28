@@ -94,6 +94,34 @@ public class SecureCredentialManager {
         saveVault();
     }
 
+    public synchronized String getAllAccountsForHost(String host) {
+        if (host == null || host.isEmpty()) return "[]";
+        try {
+            org.json.JSONArray array = new org.json.JSONArray();
+            // Look for any keys matching this domain
+            String userKeySuffix = "_user";
+            for (String key : memoryPrefs.keySet()) {
+                if (key.startsWith(host) && key.endsWith(userKeySuffix)) {
+                    // Make sure it's an exact domain match before cutting the suffix
+                    String extractedHost = key.substring(0, key.length() - userKeySuffix.length());
+                    if (extractedHost.equals(host)) {
+                        String username = memoryPrefs.get(key);
+                        String password = memoryPrefs.get(host + "_pass");
+                        
+                        org.json.JSONObject obj = new org.json.JSONObject();
+                        obj.put("username", username != null ? username : "");
+                        obj.put("password", password != null ? password : "");
+                        array.put(obj);
+                    }
+                }
+            }
+            return array.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+
     public synchronized String getUsername(String host) {
         String res = memoryPrefs.get(host + "_user");
         return res != null ? res : "";
