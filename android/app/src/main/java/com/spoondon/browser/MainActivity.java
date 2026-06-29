@@ -571,7 +571,7 @@ public class MainActivity extends AppCompatActivity {
                                     if (secureCredentialManager != null) {
                                         java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
                                         java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
-                                        if (secureCredentialManager.exportToCSV(csvFile)) {
+                                        if (secureCredentialManager.exportToCSV(MainActivity.this)) {
                                             Toast.makeText(this, "Passwords exported to Downloads/passwords.csv", Toast.LENGTH_LONG).show();
                                         } else {
                                             Toast.makeText(this, "Failed to export passwords", Toast.LENGTH_SHORT).show();
@@ -1148,112 +1148,97 @@ case "Exit":
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                
                 if (url != null && url.startsWith("http")) {
                     android.net.Uri uri = android.net.Uri.parse(url);
                     String host = uri.getHost();
                     if (host != null) {
-                    String cleanHost = host.toLowerCase().trim();
-                    if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
+                        String cleanHost = host.toLowerCase().trim();
+                        if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
 
-                    String js = "javascript:(function() {" +
-                        "var host = '" + cleanHost + "';" +
-                        "var usernamesData = [];" +
-                        "try { usernamesData = JSON.parse(SpoonVault.getAvailableUsernames(host)); } catch(e) {}" +
-                        "if (!usernamesData || usernamesData.length === 0) return;" +
+                        String js = "javascript:(function() {" +
+                            "var host = '" + cleanHost + "';" +
+                            "var usernamesData = [];" +
+                            "try { usernamesData = JSON.parse(SpoonVault.getAvailableUsernames(host)); } catch(e) {}" +
 
-                        "function forceUpdateValue(element, value) {" +
-                        "    element.value = value;" +
-                        "    var eventTypes = ['input', 'change', 'blur'];" +
-                        "    eventTypes.forEach(function(type) {" +
-                        "        var ev = new Event(type, { bubbles: true, cancelable: true });" +
-                        "        element.dispatchEvent(ev);" +
-                        "    });" +
-                        "}" +
+                            "function forceUpdateValue(element, value) {" +
+                            "    element.value = value;" +
+                            "    ['input', 'change', 'blur'].forEach(function(type) {" +
+                            "        element.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));" +
+                            "    });" +
+                            "}" +
 
-                        "function findInputs(root) {" +
-                        "    var inputs = Array.from(root.querySelectorAll('input'));" +
-                        "    root.querySelectorAll('*').forEach(function(el) {" +
-                        "        if (el.shadowRoot) inputs = inputs.concat(findInputs(el.shadowRoot));" +
-                        "    });" +
-                        "    return inputs;" +
-                        "}" +
+                            "function findInputs(root) {" +
+                            "    var inputs = Array.from(root.querySelectorAll('input'));" +
+                            "    root.querySelectorAll('*').forEach(function(el) {" +
+                            "        if (el.shadowRoot) inputs = inputs.concat(findInputs(el.shadowRoot));" +
+                            "    });" +
+                            "    return inputs;" +
+                            "}" +
 
-                        "function createSpoonUI(targetInput, isPassword) {" +
-                        "    var activeMenu = document.getElementById('spoon-floating-vault-ui');" +
-                        "    if (activeMenu) activeMenu.remove();" +
+                            "function createSpoonUI(targetInput, isPassword) {" +
+                            "    if (!usernamesData || usernamesData.length === 0) return;" +
+                            "    var activeMenu = document.getElementById('spoon-floating-vault-ui');" +
+                            "    if (activeMenu) activeMenu.remove();" +
 
-                        "    var menu = document.createElement('div');" +
-                        "    menu.id = 'spoon-floating-vault-ui';" +
-                        "    menu.style.cssText = 'position: absolute; z-index: 2147483647; background: #fff; border: 1px solid #ccc; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); border-radius: 8px; font-family: sans-serif; max-height: 200px; overflow-y: auto; width: ' + Math.max(targetInput.offsetWidth, 220) + 'px;';" +
-                        "    " +
-                        "    var rect = targetInput.getBoundingClientRect();" +
-                        "    menu.style.top = (rect.bottom + window.scrollY) + 'px';" +
-                        "    menu.style.left = (rect.left + window.scrollX) + 'px';" +
+                            "    var menu = document.createElement('div');" +
+                            "    menu.id = 'spoon-floating-vault-ui';" +
+                            "    menu.style.cssText = 'position: absolute; z-index: 2147483647; background: #fff; border: 1px solid #ccc; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); border-radius: 8px; font-family: sans-serif; width: ' + Math.max(targetInput.offsetWidth, 220) + 'px;';" +
+                            "    var rect = targetInput.getBoundingClientRect();" +
+                            "    menu.style.top = (rect.bottom + window.scrollY) + 'px';" +
+                            "    menu.style.left = (rect.left + window.scrollX) + 'px';" +
 
-                        "    usernamesData.forEach(function(acc) {" +
-                        "        var item = document.createElement('div');" +
-                        "        item.style.cssText = 'padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer; color: #333; font-size: 14px; font-weight: normal; background: #fff;';" +
-                        "        item.innerText = isPassword ? 'Password for: ' + acc.username : acc.username;" +
-                        "        " +
-                        "        item.addEventListener('touchstart', function(e) {" +
-                        "            e.preventDefault();" +
-                        "            e.stopPropagation();" +
-                        "            if (isPassword) {" +
-                        "                forceUpdateValue(targetInput, '');" +
-                        "                SpoonVault.requestPasswordFill(host, acc.username);" +
-                        "            } else {" +
-                        "                forceUpdateValue(targetInput, acc.username);" +
-                        "                SpoonVault.requestPasswordFill(host, acc.username);" +
-                        "            }" +
-                        "            menu.remove();" +
-                        "        }, { passive: false });" +
-                        "        menu.appendChild(item);" +
-                        "    });" +
+                            "    usernamesData.forEach(function(acc) {" +
+                            "        var item = document.createElement('div');" +
+                            "        item.style.cssText = 'padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer; color: #333; font-size: 14px; background: #fff;';" +
+                            "        item.innerText = isPassword ? 'Password for: ' + acc.username : acc.username;" +
+                            "        item.addEventListener('touchstart', function(e) {" +
+                            "            e.preventDefault(); e.stopPropagation();" +
+                            "            if (isPassword) {" +
+                            "                forceUpdateValue(targetInput, '');" +
+                            "                SpoonVault.requestPasswordFill(host, acc.username);" +
+                            "            } else {" +
+                            "                forceUpdateValue(targetInput, acc.username);" +
+                            "                SpoonVault.requestPasswordFill(host, acc.username);" +
+                            "            }" +
+                            "            menu.remove();" +
+                            "        }, { passive: false });" +
+                            "        menu.appendChild(item);" +
+                            "    });" +
+                            "    document.body.appendChild(menu);" +
+                            "}" +
 
-                        "    document.body.appendChild(menu);" +
-                        "}" +
+                            "document.addEventListener('click', function(e) {" +
+                            "    var target = e.composedPath ? e.composedPath()[0] : e.target;" +
+                            "    if (target && target.tagName === 'INPUT') {" +
+                            "        var type = (target.type || '').toLowerCase();" +
+                            "        var isUser = ['text', 'email', 'tel'].indexOf(type) !== -1 || !type;" +
+                            "        var isPass = type === 'password';" +
+                            "        if (isUser || isPass) { createSpoonUI(target, isPass); return; }" +
+                            "    }" +
+                            "    var menu = document.getElementById('spoon-floating-vault-ui');" +
+                            "    if (menu && !menu.contains(target)) menu.remove();" +
+                            "}, true);" +
 
-                        "/* Global Capture Interceptor: Handles Shadow DOM and dynamic reappearance flawlessly */" +
-                        "document.addEventListener('click', function(e) {" +
-                        "    var target = e.composedPath ? e.composedPath()[0] : e.target;" +
-                        "    if (target && target.tagName === 'INPUT') {" +
-                        "        var type = (target.type || '').toLowerCase();" +
-                        "        var isUser = ['text', 'email', 'tel'].indexOf(type) !== -1 || !type;" +
-                        "        var isPass = type === 'password';" +
-                        "        if (isUser || isPass) {" +
-                        "            createSpoonUI(target, isPass);" +
-                        "            return;" +
-                        "        }" +
-                        "    }" +
-                        "    var menu = document.getElementById('spoon-floating-vault-ui');" +
-                        "    if (menu && !menu.contains(target)) menu.remove();" +
-                        "}, true);" +
+                            "document.addEventListener('change', function(e) {" +
+                            "    var target = e.composedPath ? e.composedPath()[0] : e.target;" +
+                            "    if (target && target.type === 'password') {" +
+                            "        var typedPass = target.value;" +
+                            "        var typedUser = '';" +
+                            "        findInputs(document).forEach(function(ui) {" +
+                            "            var ut = (ui.type || '').toLowerCase();" +
+                            "            if (ui.value && ['text', 'email', 'tel'].indexOf(ut) !== -1) typedUser = ui.value;" +
+                            "        });" +
+                            "        if (typedUser && typedPass && window.SpoonVault) SpoonVault.saveLogin(host, typedUser, typedPass);" +
+                            "    }" +
+                            "}, true);" +
+                            "})();";
 
-                        "/* Monitor for manual typing to handle credential saving profiles */" +
-                        "document.addEventListener('change', function(e) {" +
-                        "    var target = e.composedPath ? e.composedPath()[0] : e.target;" +
-                        "    if (target && target.type === 'password') {" +
-                        "        var typedPass = target.value;" +
-                        "        var typedUser = '';" +
-                        "        findInputs(document).forEach(function(ui) {" +
-                        "            var ut = (ui.type || '').toLowerCase();" +
-                        "            if (ui.value && ['text', 'email', 'tel'].indexOf(ut) !== -1) typedUser = ui.value;" +
-                        "        });" +
-                        "        if (typedUser && typedPass) SpoonVault.saveLogin(host, typedUser, typedPass);" +
-                        "    }" +
-                        "}, true);" +
-                        "})();";
-
-                    view.evaluateJavascript(js, null);
-
+                        view.evaluateJavascript(js, null);
                     }
 
-                    // Cosmetic Filter Engine: Inject CSS rules to collapse blocked element structures natively
                     String cosmeticJs = "javascript:(function() {" +
-                        "var selectors = [" +
-                        "   '.ad-box', '.ad-banner', '.adsbygoogle', '[id^=\"google_ads_\"]', " +
-                        "   '.ad-container', '.ad_wrapper', '#carbonads'" +
-                        "];" +
+                        "var selectors = ['.ad-box', '.ad-banner', '.adsbygoogle', '[id^=\"google_ads_\"]', '.ad-container', '.ad_wrapper', '#carbonads'];" +
                         "var style = document.createElement('style');" +
                         "style.innerHTML = selectors.join(', ') + ' { display: none !important; collapse: homework !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }';" +
                         "document.head.appendChild(style);" +
@@ -1261,11 +1246,9 @@ case "Exit":
                     view.evaluateJavascript(cosmeticJs, null);
                 }
 
-                // Add our custom vault fallback injector block right here inside the primary loop:
                 if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
                     String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                    // Double-escape backslashes first, then handle string single-quote boundaries safely
-                    String cleanJson = rawJson.replace("\\", "\\\\").replace("'", "\\'");
+                    String cleanJson = rawJson.replace("\", "\\").replace("'", "\'");
                     String injectionJs = "javascript:(function() {" +
                                          "  if (typeof receiveNativeData === 'function') {" +
                                          "    receiveNativeData('" + cleanJson + "');" +
@@ -1277,11 +1260,7 @@ case "Exit":
                 android.webkit.CookieManager.getInstance().flush();
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
-                    try {
-                        if (addressBar.isAttachedToWindow()) {
-                            addressBar.dismissDropDown();
-                        }
-                    } catch (Exception ignored) {}
+                    try { if (addressBar.isAttachedToWindow()) addressBar.dismissDropDown(); } catch (Exception ignored) {}
                 }
                 updateTabIndicator();
                 saveOpenTabs();

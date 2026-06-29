@@ -209,41 +209,46 @@ public class SecureCredentialManager {
         saveVault();
     }
 
-    public synchronized boolean exportToCSV(File outputFile) {
-        FileWriter writer = null;
-        try {
-            writer = new FileWriter(outputFile);
-            writer.append("url,username,password\n");
+    public synchronized boolean exportToCSV(Context context) {
+        StringBuilder csvContent = new StringBuilder("url,username,password\n");
 
-            for (String key : memoryPrefs.keySet()) {
-                if (key.endsWith("_user")) {
-                    String username = memoryPrefs.get(key);
-                    if (username == null || username.isEmpty()) continue;
-                    
-                    String suffix = "_" + username + "_user";
-                    if (!key.endsWith(suffix)) continue; // Safety check
-                    
-                    String host = key.substring(0, key.length() - suffix.length());
-                    String password = memoryPrefs.get(host + "_" + username + "_pass");
-                    if (password == null) password = "";
+        for (String key : memoryPrefs.keySet()) {
+            if (key.endsWith("_user")) {
+                String username = memoryPrefs.get(key);
+                if (username == null || username.isEmpty()) continue;
+                String suffix = "_" + username + "_user";
+                if (!key.endsWith(suffix)) continue;
 
-                    username = username.replace("\"", "\"\"");
-                    password = password.replace("\"", "\"\"");
+                String host = key.substring(0, key.length() - suffix.length());
+                String password = memoryPrefs.get(host + "_" + username + "_pass");
+                if (password == null) password = "";
 
-                    writer.append(String.format("\"%s\",\"%s\",\"%s\"\n", host, username, password));
-                }
-            }
-
-            writer.flush();
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        } finally {
-            if (writer != null) {
-                try { writer.close(); } catch (IOException ignored) {}
+                csvContent.append(String.format("\"%s\",\"%s\",\"%s\"\n", 
+                    host.replace("\"", "\"\""), 
+                    username.replace("\"", "\"\""), 
+                    password.replace("\"", "\"\"")));
             }
         }
+
+        try {
+            android.content.ContentValues values = new android.content.ContentValues();
+            values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "passwords_" + System.currentTimeMillis() + ".csv");
+            values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+            values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+
+            android.net.Uri uri = context.getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri != null) {
+                java.io.OutputStream out = context.getContentResolver().openOutputStream(uri);
+                if (out != null) {
+                    out.write(csvContent.toString().getBytes());
+                    out.close();
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     public boolean importFromCSVStream(InputStream inputStream) {

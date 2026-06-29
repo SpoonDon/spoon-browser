@@ -1,30 +1,61 @@
 <!DOCTYPE html>
 <html style="background-color: #000000 !important;">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        * { background-color: transparent; }
-        html, body { background: #000000 !important; background-color: #000000 !important; color: #ffffff !important; font-family: -apple-system, sans-serif; padding: 16px; margin: 0; }
-        .search-bar { width: 100%; padding: 14px; box-sizing: border-box; background: #121212 !important; border: 1px solid #2d2d2d; border-radius: 10px; font-size: 16px; color: #fff !important; margin-bottom: 20px; outline: none; }
+        * { background-color: transparent; box-sizing: border-box; font-family: -apple-system, sans-serif; }
+        html, body { background: #000000 !important; color: #ffffff !important; padding: 16px; margin: 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h2 { color: #fff !important; margin: 0; }
+        .btn { background: #222; border: 1px solid #333; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #ccc; cursor: pointer; }
+        .btn.primary { background: #007bff; color: #fff; border-color: #007bff; }
+        .btn.danger { background: #dc3545; color: #fff; border-color: #dc3545; }
+        .btn.success { background: #28a745; color: #fff; border-color: #28a745; }
+        .search-bar { width: 100%; padding: 14px; background: #121212 !important; border: 1px solid #2d2d2d; border-radius: 10px; font-size: 16px; color: #fff !important; margin-bottom: 20px; outline: none; }
         .card { background: #121212 !important; border: 1px solid #1f1f1f; padding: 16px; border-radius: 10px; margin-bottom: 14px; }
         .host { font-weight: bold; font-size: 17px; color: #ffffff !important; margin-bottom: 4px; }
         .user { color: #aaaaaa !important; font-size: 14px; margin-bottom: 14px; }
         .actions { display: flex; gap: 8px; }
-        button { background: #222222 !important; border: 1px solid #333333; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #cccccc !important; flex-grow: 1; cursor: pointer; }
-        button.primary { background: #007bff !important; color: #fff !important; border-color: #007bff; }
-        button.danger { background: #dc3545 !important; color: #fff !important; border-color: #dc3545; }
+        .actions .btn { flex: 1; }
+        
+        /* Modal Styles */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; padding: 20px; align-items: center; justify-content: center; }
+        .modal-content { background: #121212; border: 1px solid #333; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; }
+        .modal-content input { width: 100%; padding: 12px; margin-bottom: 12px; background: #000; border: 1px solid #333; color: #fff; border-radius: 8px; font-size: 15px; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 10px; }
+        .modal-actions .btn { flex: 1; }
     </style>
 </head>
 <body>
 
-    <h2 style="color: #fff !important; margin-top: 0;">Password Vault v2</h2>
+    <div class="header">
+        <h2>Vault</h2>
+        <button class="btn success" onclick="openModal()">+ Add</button>
+    </div>
+    
     <input type="text" class="search-bar" id="search" placeholder="Search saved passwords..." oninput="renderCards()">
     <div id="vault-root"></div>
 
+    <!-- Add/Edit Modal -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal-content">
+            <h3 id="modal-title" style="margin-top: 0;">Add Credential</h3>
+            <input type="text" id="m-host" placeholder="Website (e.g. google.com)">
+            <input type="text" id="m-user" placeholder="Username / Email">
+            <input type="password" id="m-pass" placeholder="Password">
+            <div class="modal-actions">
+                <button class="btn" onclick="closeModal()">Cancel</button>
+                <button class="btn primary" onclick="saveData()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         var allData = [];
+        var isEditing = false;
+        var editOriginalHost = '';
+        var editOriginalUser = '';
 
-        // Main entry point for the Android data layer injection fallback
         window.receiveNativeData = function(jsonString) {
             try {
                 if (jsonString) {
@@ -32,7 +63,7 @@
                     renderCards();
                 }
             } catch(e) {
-                document.getElementById('vault-root').innerHTML = '<div style="color:red;">Parse Error: ' + e.message + '</div>';
+                document.getElementById('vault-root').innerHTML = '<div style="color:red;">Error loading data.</div>';
             }
         };
 
@@ -42,7 +73,7 @@
             root.innerHTML = '';
 
             if (!allData || allData.length === 0) {
-                root.innerHTML = '<div style="text-align:center; color:#666; margin-top:40px;">No credentials found in database.</div>';
+                root.innerHTML = '<div style="text-align:center; color:#666; margin-top:40px;">No credentials found.</div>';
                 return;
             }
 
@@ -53,16 +84,100 @@
                 card.className = 'card';
                 card.innerHTML = 
                     '<div class="host">' + item.host + '</div>' +
-                    '<div class="user">User: ' + item.username + '</div>' +
+                    '<div class="user">' + item.username + '</div>' +
                     '<div class="actions">' +
-                        '<button class="primary">Copy Pass</button>' +
-                        '<button class="danger">Delete</button>' +
+                        '<button class="btn" onclick="copyPass(' + idx + ', this)">Copy Pass</button>' +
+                        '<button class="btn" onclick="editCard(' + idx + ')">Edit</button>' +
+                        '<button class="btn danger" onclick="deleteCard(' + idx + ')">Del</button>' +
                     '</div>';
                 root.appendChild(card);
             });
         }
-        
-        renderCards();
+
+        function copyPass(idx, btnElement) {
+            var pass = allData[idx].password;
+            if(!pass && window.SpoonVault && SpoonVault.getPassword) {
+                pass = SpoonVault.getPassword(allData[idx].host, allData[idx].username);
+            }
+            if(pass) {
+                var temp = document.createElement("input");
+                temp.value = pass;
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand("copy");
+                document.body.removeChild(temp);
+                
+                // Visual feedback
+                var originalText = btnElement.innerText;
+                btnElement.innerText = "Copied!";
+                btnElement.style.background = "#28a745";
+                setTimeout(function() {
+                    btnElement.innerText = originalText;
+                    btnElement.style.background = "#222";
+                }, 1500);
+            }
+        }
+
+        function deleteCard(idx) {
+            if(confirm("Delete this saved password?")) {
+                var item = allData[idx];
+                if(window.SpoonVault) SpoonVault.deleteLogin(item.host, item.username);
+                allData.splice(idx, 1);
+                renderCards();
+            }
+        }
+
+        function openModal() {
+            isEditing = false;
+            document.getElementById('modal-title').innerText = "Add Credential";
+            document.getElementById('m-host').value = '';
+            document.getElementById('m-user').value = '';
+            document.getElementById('m-pass').value = '';
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function editCard(idx) {
+            isEditing = true;
+            var item = allData[idx];
+            editOriginalHost = item.host;
+            editOriginalUser = item.username;
+            
+            document.getElementById('modal-title').innerText = "Edit Credential";
+            document.getElementById('m-host').value = item.host;
+            document.getElementById('m-user').value = item.username;
+            document.getElementById('m-pass').value = item.password || '';
+            
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        function saveData() {
+            var h = document.getElementById('m-host').value.trim();
+            var u = document.getElementById('m-user').value.trim();
+            var p = document.getElementById('m-pass').value;
+
+            if(!h || !u || !p) return;
+
+            if(window.SpoonVault) {
+                if (isEditing && (h !== editOriginalHost || u !== editOriginalUser)) {
+                    SpoonVault.deleteLogin(editOriginalHost, editOriginalUser);
+                }
+                SpoonVault.saveLogin(h, u, p);
+            }
+
+            if (isEditing) {
+                var found = allData.find(i => i.host === editOriginalHost && i.username === editOriginalUser);
+                if(found) { found.host = h; found.username = u; found.password = p; }
+            } else {
+                allData.push({host: h, username: u, password: p});
+            }
+
+            closeModal();
+            renderCards();
+        }
     </script>
 </body>
 </html>
