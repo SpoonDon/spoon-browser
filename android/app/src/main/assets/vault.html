@@ -1,80 +1,50 @@
 <!DOCTYPE html>
-<html>
+<html style="background-color: #000000 !important;">
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: -apple-system, sans-serif; padding: 12px; margin: 0; background: #f9f9f9; color: #333; }
-        .search-bar { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; margin-bottom: 16px; }
-        .card { background: #fff; border: 1px solid #eee; padding: 14px; border-radius: 8px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .host { font-weight: bold; font-size: 16px; color: #111; margin-bottom: 4px; }
-        .user { color: #666; font-size: 14px; margin-bottom: 10px; }
-        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        button { background: #eee; border: none; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; color: #444; }
-        button.primary { background: #007bff; color: #fff; }
-        button.danger { background: #dc3545; color: #fff; }
-        .edit-row { display: none; margin-top: 10px; gap: 8px; width: 100%; }
-        .edit-input { flex-grow: 1; padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+        * { background-color: transparent; }
+        html, body { background: #000000 !important; background-color: #000000 !important; color: #ffffff !important; font-family: -apple-system, sans-serif; padding: 16px; margin: 0; }
+        .search-bar { width: 100%; padding: 14px; box-sizing: border-box; background: #121212 !important; border: 1px solid #2d2d2d; border-radius: 10px; font-size: 16px; color: #fff !important; margin-bottom: 20px; outline: none; }
+        .card { background: #121212 !important; border: 1px solid #1f1f1f; padding: 16px; border-radius: 10px; margin-bottom: 14px; }
+        .host { font-weight: bold; font-size: 17px; color: #ffffff !important; margin-bottom: 4px; }
+        .user { color: #aaaaaa !important; font-size: 14px; margin-bottom: 14px; }
+        .actions { display: flex; gap: 8px; }
+        button { background: #222222 !important; border: 1px solid #333333; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #cccccc !important; flex-grow: 1; cursor: pointer; }
+        button.primary { background: #007bff !important; color: #fff !important; border-color: #007bff; }
+        button.danger { background: #dc3545 !important; color: #fff !important; border-color: #dc3545; }
     </style>
 </head>
 <body>
 
-    <input type="text" class="search-bar" id="search" placeholder="Search by site or username..." oninput="renderCards()">
+    <h2 style="color: #fff !important; margin-top: 0;">Password Vault v2</h2>
+    <input type="text" class="search-bar" id="search" placeholder="Search saved passwords..." oninput="renderCards()">
     <div id="vault-root"></div>
 
     <script>
-        // Intercept host dynamically or pool all records natively from the manager layers
         var allData = [];
-        try {
-            // For administrative scopes, ensure your Java layer exposes a 'getAllSavedLogins()' string method
-            allData = JSON.parse(SpoonVault.getAllSavedLogins());
-        } catch(e) {
-            // Sample fallback visual structure anchor
-            allData = [
-                { host: "github.com", username: "dev-user", password: "secretPassword123" },
-                { host: "reddit.com", username: "snoo_browser", password: "mySecureRedditPassword" }
-            ];
-        }
 
-        function copyToClipboard(text, msg) {
-            var el = document.createElement('textarea');
-            el.value = text;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            alert(msg + " copied to clipboard!");
-        }
-
-        function toggleEdit(id) {
-            var row = document.getElementById('edit-' + id);
-            row.style.display = row.style.display === 'flex' ? 'none' : 'flex';
-        }
-
-        function saveEdit(id, host, user) {
-            var newVal = document.getElementById('input-' + id).value;
-            if(!newVal) return;
+        // Main entry point for the Android data layer injection fallback
+        window.receiveNativeData = function(jsonString) {
             try {
-                SpoonVault.updatePassword(host, user, newVal);
-                var record = allData.find(function(item) { return item.host === host && item.username === user; });
-                if(record) record.password = newVal;
-                toggleEdit(id);
-                renderCards();
-            } catch(e) { alert("Failed to save changes natively"); }
-        }
-
-        function deleteItem(host, user) {
-            if(!confirm("Delete saved login for " + host + "?")) return;
-            try {
-                SpoonVault.deleteLogin(host, user);
-                allData = allData.filter(function(item) { return !(item.host === host && item.username === user); });
-                renderCards();
-            } catch(e) {}
-        }
+                if (jsonString) {
+                    allData = JSON.parse(jsonString);
+                    renderCards();
+                }
+            } catch(e) {
+                document.getElementById('vault-root').innerHTML = '<div style="color:red;">Parse Error: ' + e.message + '</div>';
+            }
+        };
 
         function renderCards() {
             var q = document.getElementById('search').value.toLowerCase();
             var root = document.getElementById('vault-root');
             root.innerHTML = '';
+
+            if (!allData || allData.length === 0) {
+                root.innerHTML = '<div style="text-align:center; color:#666; margin-top:40px;">No credentials found in database.</div>';
+                return;
+            }
 
             allData.forEach(function(item, idx) {
                 if(item.host.toLowerCase().indexOf(q) === -1 && item.username.toLowerCase().indexOf(q) === -1) return;
@@ -85,19 +55,13 @@
                     '<div class="host">' + item.host + '</div>' +
                     '<div class="user">User: ' + item.username + '</div>' +
                     '<div class="actions">' +
-                        '<button onclick="copyToClipboard(\'' + item.username + '\', \'Username\')">Copy User</button>' +
-                        '<button class="primary" onclick="copyToClipboard(\'' + item.password + '\', \'Password\')">Copy Pass</button>' +
-                        '<button onclick="toggleEdit(' + idx + ')">Edit</button>' +
-                        '<button class="danger" onclick="deleteItem(\'' + item.host + '\', \'' + item.username + '\')">Delete</button>' +
-                    '</div>' +
-                    '<div class="edit-row" id="edit-' + idx + '">' +
-                        '<input type="text" class="edit-input" id="input-' + idx + '" value="' + item.password + '">' +
-                        '<button class="primary" onclick="saveEdit(' + idx + ', \'' + item.host + '\', \'' + item.username + '\')">Save</button>' +
+                        '<button class="primary">Copy Pass</button>' +
+                        '<button class="danger">Delete</button>' +
                     '</div>';
                 root.appendChild(card);
             });
         }
-
+        
         renderCards();
     </script>
 </body>

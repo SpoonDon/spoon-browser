@@ -918,6 +918,16 @@ case "Exit":
 
     private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
+        settings.setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
+        webView.clearCache(true);
+
+        // Force Android WebView Engine to render pure dark mode layouts
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION.SDK_INT) {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                androidx.webkit.WebViewCompat.setAlgorithmicDarkeningAllowed(webView, true);
+            }
+        }
+
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(true);
