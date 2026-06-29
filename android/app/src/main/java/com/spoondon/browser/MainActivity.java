@@ -1277,6 +1277,19 @@ case "Exit":
                         "})()";
                     view.evaluateJavascript(cosmeticJs, null);
                 }
+
+                // Add our custom vault fallback injector block right here inside the primary loop:
+                if (url != null && url.startsWith("file:///android_asset/vault.html")) {
+                    String rawJson = secureCredentialManager.getAllCredentialsAsJson();
+                    String cleanJson = rawJson.replace("'", "\\'");
+                    String injectionJs = "javascript:(function() {" +
+                                         "  if (typeof receiveNativeData === 'function') {" +
+                                         "    receiveNativeData('" + cleanJson + "');" +
+                                         "  }" +
+                                         "})();";
+                    view.evaluateJavascript(injectionJs, null);
+                }
+
                 android.webkit.CookieManager.getInstance().flush();
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
@@ -1288,7 +1301,8 @@ case "Exit":
                 }
                 updateTabIndicator();
                 saveOpenTabs();
-            }
+            } // This bracket closes the single onPageFinished method neatly
+
 
             @Override
             public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
