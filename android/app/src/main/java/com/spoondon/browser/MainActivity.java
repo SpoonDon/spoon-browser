@@ -918,20 +918,13 @@ case "Exit":
 
     private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
-        settings.setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
-        webView.clearCache(true);
-
-        // Force Android WebView Engine to render pure dark mode layouts
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION.SDK_INT) {
-            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
-                androidx.webkit.WebViewCompat.setAlgorithmicDarkeningAllowed(webView, true);
-            }
-        }
-
+        
+        // Allow file access so our asset:// dashboard loads local storage models smoothly
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowUniversalAccessFromFileURLs(true);
+        
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setBuiltInZoomControls(true);
@@ -939,16 +932,10 @@ case "Exit":
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
 
-        // Hardened File System & Resource Isolation
-        settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
-        settings.setAllowFileAccessFromFileURLs(false);
-        settings.setAllowUniversalAccessFromFileURLs(false);
-
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
 
-        // High-Performance Engine Tuning Optimization
+        // Allow loading without enforcing strict network caching rules
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
         // Background Autoplay Optimization
@@ -958,7 +945,7 @@ case "Exit":
 
         // Append speculative pre-rendering if utilizing a modern layout bridge
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            settings.setSafeBrowsingEnabled(true); // Lets Chromium parallelize security sweeps
+            settings.setSafeBrowsingEnabled(true); 
         }
 
         // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
@@ -966,6 +953,7 @@ case "Exit":
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
     }
+
 
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
@@ -1274,9 +1262,10 @@ case "Exit":
                 }
 
                 // Add our custom vault fallback injector block right here inside the primary loop:
-                if (url != null && url.startsWith("file:///android_asset/vault.html")) {
+                if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
                     String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                    String cleanJson = rawJson.replace("'", "\\'");
+                    // Double-escape backslashes first, then handle string single-quote boundaries safely
+                    String cleanJson = rawJson.replace("\\", "\\\\").replace("'", "\\'");
                     String injectionJs = "javascript:(function() {" +
                                          "  if (typeof receiveNativeData === 'function') {" +
                                          "    receiveNativeData('" + cleanJson + "');" +
