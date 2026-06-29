@@ -1248,7 +1248,7 @@ case "Exit":
 
                 if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
                     String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                    String cleanJson = rawJson.replace("\", "\\").replace("'", "\'");
+                    String cleanJson = rawJson.replace("\\", "\\\\").replace("'", "\\'");
                     String injectionJs = "javascript:(function() {" +
                                          "  if (typeof receiveNativeData === 'function') {" +
                                          "    receiveNativeData('" + cleanJson + "');" +
