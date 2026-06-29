@@ -1157,93 +1157,96 @@ case "Exit":
                         "var host = '" + cleanHost + "';" +
                         "var usernamesData = [];" +
                         "try { usernamesData = JSON.parse(SpoonVault.getAvailableUsernames(host)); } catch(e) {}" +
+                        "if (!usernamesData || usernamesData.length === 0) return;" +
 
-                        "function applyAutofillEngine() {" +
-                        "    var passFields = document.querySelectorAll(\"input[type='password']\");" +
-                        "    var userFields = document.querySelectorAll(\"input[type='text'], input[type='email'], input[type='tel']\");" +
-                        "    if (passFields.length === 0 && userFields.length === 0) return;" +
-
-                        "    if (usernamesData.length > 0) {" +
-                        "        var listId = 'spoon-autofill-list';" +
-                        "        var passListId = 'spoon-pass-autofill-list';" +
-                        "        " +
-                        "        /* 1. Build Master Username Datalist */" +
-                        "        var dl = document.getElementById(listId);" +
-                        "        if (!dl) {" +
-                        "            dl = document.createElement('datalist');" +
-                        "            dl.id = listId;" +
-                        "            usernamesData.forEach(function(acc) {" +
-                        "                var opt = document.createElement('option');" +
-                        "                opt.value = acc.username;" +
-                        "                dl.appendChild(opt);" +
-                        "            });" +
-                        "            document.body.appendChild(dl);" +
+                        "function findInputs(root) {" +
+                        "    var inputs = Array.from(root.querySelectorAll('input'));" +
+                        "    root.querySelectorAll('*').forEach(function(el) {" +
+                        "        if (el.shadowRoot) {" +
+                        "            inputs = inputs.concat(findInputs(el.shadowRoot));" +
                         "        }" +
-                        "        " +
-                        "        /* 2. Build Dedicated Password Fallback Datalist */" +
-                        "        var pdl = document.getElementById(passListId);" +
-                        "        if (!pdl) {" +
-                        "            pdl = document.createElement('datalist');" +
-                        "            pdl.id = passListId;" +
-                        "            usernamesData.forEach(function(acc) {" +
-                        "                var opt = document.createElement('option');" +
-                        "                opt.value = 'Password for: ' + acc.username;" +
-                        "                opt.setAttribute('data-username', acc.username);" +
-                        "                pdl.appendChild(opt);" +
-                        "            });" +
-                        "            document.body.appendChild(pdl);" +
-                        "        }" +
+                        "    });" +
+                        "    return inputs;" +
+                        "}" +
 
-                        "        /* 3. Connect Username Inputs */" +
-                        "        userFields.forEach(function(uf) {" +
-                        "            if (uf.getAttribute('list') !== listId) {" +
-                        "                uf.setAttribute('list', listId);" +
-                        "                uf.setAttribute('autocomplete', 'off');" +
-                        "                uf.addEventListener('input', function() {" +
-                        "                    var val = this.value;" +
-                        "                    var exactUserMatch = usernamesData.find(function(a){ return a.username === val; });" +
-                        "                    if (exactUserMatch) {" +
-                        "                        SpoonVault.requestPasswordFill(host, val);" +
-                        "                    }" +
-                        "                });" +
-                        "            }" +
-                        "        });" +
-
-                        "        /* 4. Connect Password Inputs with dedicated drop-downs */" +
-                        "        passFields.forEach(function(pf) {" +
-                        "            if (pf.getAttribute('list') !== passListId) {" +
-                        "                pf.setAttribute('list', passListId);" +
-                        "                pf.setAttribute('autocomplete', 'off');" +
-                        "                " +
-                        "                /* Handle explicit selection from the password datalist */" +
-                        "                pf.addEventListener('input', function() {" +
-                        "                    var val = this.value;" +
-                        "                    if (val.indexOf('Password for: ') === 0) {" +
-                        "                        var targetUser = val.substring('Password for: '.length);" +
-                        "                        /* Clear the visual placeholder text instantly so it doesn't leak into the password field */" +
-                        "                        this.value = '';" +
-                        "                        /* Securely request only this password from the bridge */" +
-                        "                        SpoonVault.requestPasswordFill(host, targetUser);" +
-                        "                    }" +
-                        "                });" +
-                        "            }" +
-                        "        });" +
-                        "    }" +
-
-                        "    /* 5. Secure Capturing/Saving Event Handlers */" +
-                        "    passFields.forEach(function(pf) {" +
-                        "        if (pf.getAttribute('data-spoon-hooked-input')) return;" +
-                        "        pf.setAttribute('data-spoon-hooked-input', 'true');" +
-                        "        pf.addEventListener('change', function() {" +
-                        "            var typedPass = this.value;" +
-                        "            var typedUser = '';" +
-                        "            userFields.forEach(function(uf) { if(uf.value) typedUser = uf.value; });" +
-                        "            if (typedUser && typedPass && typedPass.indexOf('Password for: ') !== 0) {" +
-                        "                SpoonVault.saveLogin(host, typedUser, typedPass);" +
-                        "            }" +
-                        "        });" +
+                        "function forceUpdateValue(element, value) {" +
+                        "    element.value = value;" +
+                        "    var eventTypes = ['input', 'change', 'blur'];" +
+                        "    eventTypes.forEach(function(type) {" +
+                        "        var ev = new Event(type, { bubbles: true, cancelable: true });" +
+                        "        element.dispatchEvent(ev);" +
                         "    });" +
                         "}" +
+
+                        "function createSpoonUI(targetInput, isPassword) {" +
+                        "    var activeMenu = document.getElementById('spoon-floating-vault-ui');" +
+                        "    if (activeMenu) activeMenu.remove();" +
+
+                        "    var menu = document.createElement('div');" +
+                        "    menu.id = 'spoon-floating-vault-ui';" +
+                        "    menu.style.cssText = 'position: absolute; z-index: 2147483647; background: #fff; border: 1px solid #ccc; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); border-radius: 8px; font-family: sans-serif; max-height: 200px; overflow-y: auto; width: ' + Math.max(targetInput.offsetWidth, 200) + 'px;';" +
+                        "    " +
+                        "    var rect = targetInput.getBoundingClientRect();" +
+                        "    menu.style.top = (rect.bottom + window.scrollY) + 'px';" +
+                        "    menu.style.left = (rect.left + window.scrollX) + 'px';" +
+
+                        "    usernamesData.forEach(function(acc) {" +
+                        "        var item = document.createElement('div');" +
+                        "        item.style.cssText = 'padding: 10px 14px; border-bottom: 1px solid #eee; cursor: pointer; color: #333; font-size: 14px; font-weight: normal;';" +
+                        "        item.innerText = isPassword ? 'Password for: ' + acc.username : acc.username;" +
+                        "        " +
+                        "        item.addEventListener('touchstart', function(e) {" +
+                        "            e.preventDefault();" +
+                        "            e.stopPropagation();" +
+                        "            if (isPassword) {" +
+                        "                forceUpdateValue(targetInput, '');" +
+                        "                SpoonVault.requestPasswordFill(host, acc.username);" +
+                        "            } else {" +
+                        "                forceUpdateValue(targetInput, acc.username);" +
+                        "                SpoonVault.requestPasswordFill(host, acc.username);" +
+                        "            }" +
+                        "            menu.remove();" +
+                        "        });" +
+                        "        menu.appendChild(item);" +
+                        "    });" +
+
+                        "    document.body.appendChild(menu);" +
+                        "}" +
+
+                        "function applyAutofillEngine() {" +
+                        "    var allInputs = findInputs(document);" +
+                        "    allInputs.forEach(function(input) {" +
+                        "        var type = (input.type || '').toLowerCase();" +
+                        "        var isUser = ['text', 'email', 'tel'].indexOf(type) !== -1 || !type;" +
+                        "        var isPass = type === 'password';" +
+                        "        if (!isUser && !isPass) return;" +
+
+                        "        if (input.getAttribute('data-spoon-monitored')) return;" +
+                        "        input.setAttribute('data-spoon-monitored', 'true');" +
+
+                        "        input.addEventListener('focus', function() {" +
+                        "            createSpoonUI(this, isPass);" +
+                        "        });" +
+
+                        "        if (isPass) {" +
+                        "            input.addEventListener('change', function() {" +
+                        "                var typedPass = this.value;" +
+                        "                var typedUser = '';" +
+                        "                var searchInputs = findInputs(document);" +
+                        "                searchInputs.forEach(function(ui) {" +
+                        "                    var ut = (ui.type || '').toLowerCase();" +
+                        "                    if (ui.value && ['text', 'email', 'tel'].indexOf(ut) !== -1) typedUser = ui.value;" +
+                        "                });" +
+                        "                if (typedUser && typedPass) SpoonVault.saveLogin(host, typedUser, typedPass);" +
+                        "            });" +
+                        "        }" +
+                        "    });" +
+                        "}" +
+
+                        "document.addEventListener('touchstart', function(e) {" +
+                        "    var menu = document.getElementById('spoon-floating-vault-ui');" +
+                        "    if (menu && !menu.contains(e.target)) menu.remove();" +
+                        "});" +
 
                         "applyAutofillEngine();" +
                         "var observer = new MutationObserver(applyAutofillEngine);" +
@@ -1253,6 +1256,7 @@ case "Exit":
                     view.evaluateJavascript(js, null);
 
                     }
+
 
                     // Cosmetic Filter Engine: Inject CSS rules to collapse blocked element structures natively
                     String cosmeticJs = "javascript:(function() {" +

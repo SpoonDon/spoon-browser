@@ -58,15 +58,23 @@ public class SecureSpoonBridge {
                         String escapedUser = username.replace("'", "\\'");
                         
                         String fillJs = "javascript:(function() {" +
-                            "   var passFields = document.querySelectorAll(\"input[type='password']\");" +
-                            "   var userFields = document.querySelectorAll(\"input[type='text'], input[type='email'], input[type='tel']\");" +
-                            "   userFields.forEach(function(uf) {" +
-                            "       if(uf.value === '" + escapedUser + "' || !uf.value) {" +
-                            "           uf.value = '" + escapedUser + "';" +
-                            "       }" +
+                            "   function findInputs(root) {" +
+                            "       var inputs = Array.from(root.querySelectorAll('input'));" +
+                            "       root.querySelectorAll('*').forEach(function(el) { if (el.shadowRoot) inputs = inputs.concat(findInputs(el.shadowRoot)); });" +
+                            "       return inputs;" +
+                            "   }" +
+                            "   function forceVal(el, val) {" +
+                            "       el.value = val;" +
+                            "       ['input', 'change', 'blur'].forEach(function(t) { el.dispatchEvent(new Event(t, { bubbles: true })); });" +
+                            "   }" +
+                            "   var all = findInputs(document);" +
+                            "   all.forEach(function(i) {" +
+                            "       var t = (i.type || '').toLowerCase();" +
+                            "       if (t === 'password') forceVal(i, '" + escapedPass + "');" +
+                            "       if (['text', 'email', 'tel'].indexOf(t) !== -1 && (i.value === '" + escapedUser + "' || !i.value)) forceVal(i, '" + escapedUser + "');" +
                             "   });" +
-                            "   passFields.forEach(function(pf) { pf.value = '" + escapedPass + "'; });" +
                             "})();";
+
                         webView.evaluateJavascript(fillJs, null);
                     }
                 } catch (Exception ignored) {}
