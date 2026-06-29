@@ -564,7 +564,7 @@ public class MainActivity extends AppCompatActivity {
                             .setTitle("Password Management")
                             .setItems(options, (dialog, which) -> {
                                 if (which == 0) {
-                                    showSavedPasswordsDialog();
+                                    openUrl("file:///android_asset/vault.html");
                                 } else if (which == 1) {
                                     passwordImportLauncher.launch("text/*");
                                 } else if (which == 2) {
@@ -918,6 +918,10 @@ case "Exit":
 
     private void configureWebSettings(WebSettings settings) {
         settings.setJavaScriptEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setBuiltInZoomControls(true);
@@ -1082,6 +1086,21 @@ case "Exit":
                     }
                 }
                 return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public void onPageFinished(android.webkit.WebView view, String url) {
+                super.onPageFinished(view, url);
+                if (url != null && url.startsWith("file:///android_asset/vault.html")) {
+                    String rawJson = secureCredentialManager.getAllCredentialsAsJson();
+                    String cleanJson = rawJson.replace("'", "\\'");
+                    String injectionJs = "javascript:(function() {" +
+                                         "  if (typeof receiveNativeData === 'function') {" +
+                                         "    receiveNativeData('" + cleanJson + "');" +
+                                         "  }" +
+                                         "})();";
+                    view.evaluateJavascript(injectionJs, null);
+                }
             }
 
             @Override
