@@ -140,6 +140,59 @@ public class SecureCredentialManager {
             return "[]";
         }
     }
+    public synchronized String getAllCredentialsAsJson() {
+        org.json.JSONArray array = new org.json.JSONArray();
+        try {
+            for (String key : memoryPrefs.keySet()) {
+                if (key.endsWith("_user")) {
+                    String username = memoryPrefs.get(key);
+                    if (username != null && !username.isEmpty()) {
+                        int firstUnderscore = key.indexOf("_");
+                        if (firstUnderscore != -1) {
+                            String host = key.substring(0, key.lastIndexOf("_user"));
+                            if (host.contains("_")) {
+                                host = host.substring(0, host.indexOf("_"));
+                            }
+
+                            String password = memoryPrefs.get(host + "_" + username + "_pass");
+
+                            org.json.JSONObject obj = new org.json.JSONObject();
+                            obj.put("host", host);
+                            obj.put("username", username);
+                            obj.put("password", password != null ? password : "");
+                            array.put(obj);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return array.toString();
+    }
+
+    public synchronized void deleteCredentials(String host, String username) {
+        if (host == null || username == null) return;
+        try {
+            memoryPrefs.remove(host + "_" + username + "_pass");
+            String targetKey = null;
+            for (String key : memoryPrefs.keySet()) {
+                if (key.startsWith(host + "_") && key.endsWith("_user")) {
+                    if (username.equals(memoryPrefs.get(key))) {
+                        targetKey = key;
+                        break;
+                    }
+                }
+            }
+            if (targetKey != null) {
+                memoryPrefs.remove(targetKey);
+            }
+            // Note: We use saveVault() since line 94 closed with it earlier
+            saveVault(); 
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     public synchronized void clearCredentials(String host) {
         if (host == null || host.isEmpty()) return;
