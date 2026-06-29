@@ -1089,21 +1089,6 @@ case "Exit":
             }
 
             @Override
-            public void onPageFinished(android.webkit.WebView view, String url) {
-                super.onPageFinished(view, url);
-                if (url != null && url.startsWith("file:///android_asset/vault.html")) {
-                    String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                    String cleanJson = rawJson.replace("'", "\\'");
-                    String injectionJs = "javascript:(function() {" +
-                                         "  if (typeof receiveNativeData === 'function') {" +
-                                         "    receiveNativeData('" + cleanJson + "');" +
-                                         "  }" +
-                                         "})();";
-                    view.evaluateJavascript(injectionJs, null);
-                }
-            }
-
-            @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
                 if (url != null) {
