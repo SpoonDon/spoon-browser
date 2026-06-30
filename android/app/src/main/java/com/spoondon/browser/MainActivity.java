@@ -687,11 +687,37 @@ case "Exit":
         LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         addressParams.setMargins(dp(6), 0, dp(6), 0);
         addressBar.setLayoutParams(addressParams);
+        
+        // Smart URL Selection Logic: Clear on first tap, edit on second tap
+        final boolean[] justGainedFocus = {false};
+        addressBar.setOnFocusChangeListener((view, hasFocus) -> {
+            if (hasFocus) {
+                // Let the UI layout complete, then select all text so one backspace drops it entirely
+                addressBar.post(() -> {
+                    if (addressBar.getText() != null) {
+                        addressBar.selectAll();
+                    }
+                });
+                justGainedFocus[0] = true;
+            } else {
+                justGainedFocus[0] = false;
+            }
+        });
 
+        addressBar.setOnClickListener(view -> {
+            // If the user already tapped once to select it, a second tap should drop the cursor right at their finger
+            if (!justGainedFocus[0]) {
+                int cursorPosition = addressBar.getSelectionStart();
+                if (cursorPosition >= 0) {
+                    addressBar.setSelection(cursorPosition);
+                }
+            }
+            // Reset flag on subsequent click sequences
+            justGainedFocus[0] = false;
+        });
 
         // Keep your existing adapter and text watcher setups underneath...
-
-
+        
         addressBarAdapter = new ArrayAdapter<String>(this, R.layout.modern_list_item, new ArrayList<>()) {
             @Override
             public android.widget.Filter getFilter() {
