@@ -114,7 +114,9 @@ public class MainActivity extends AppCompatActivity {
     private int currentTab = 0;
     private boolean suppressSuggestions = false;
     private boolean clearSessionOnExit = false;
-
+    private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+    private static final String DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    private boolean isDesktopMode = false;
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
     private final HashSet<String> blockedDomains = new HashSet<>();
     private final HashSet<String> rawFilterRules = new HashSet<>();
@@ -500,6 +502,7 @@ public class MainActivity extends AppCompatActivity {
             popup.getMenu().add("Clear History");
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
+            popup.getMenu().add(isDesktopMode ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("About");
             popup.getMenu().add("Passwords");
             popup.getMenu().add("Exit");
@@ -543,6 +546,10 @@ public class MainActivity extends AppCompatActivity {
                     case "About":
                         showAbout();
                         return true;
+                    case "Desktop Site [OFF]":
+                    case "Desktop Site [ON]":
+                        toggleDesktopMode();
+                        return true;    
                     case "Passwords":
                         String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
                         new AlertDialog.Builder(this)
@@ -939,8 +946,24 @@ case "Exit":
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
-    }
 
+        // Dynamically scale layouts according to mode selection
+        if (isDesktopMode) {
+            settings.setUserAgentString(DESKTOP_UA);
+            settings.setUseWideViewPort(true);
+            settings.setLoadWithOverviewMode(true);
+            settings.setSupportZoom(true);
+            settings.setBuiltInZoomControls(true);
+            settings.setDisplayZoomControls(false);
+        } else {
+            settings.setUserAgentString(MOBILE_UA);
+            settings.setUseWideViewPort(false);
+            settings.setLoadWithOverviewMode(false);
+            settings.setSupportZoom(true);
+            settings.setBuiltInZoomControls(true);
+            settings.setDisplayZoomControls(false);
+        }
+    }
 
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
@@ -2333,6 +2356,18 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                 startActivity(fallback);
             } catch (Exception fatal) {
                 Toast.makeText(MainActivity.this, "No download handler found on device", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void toggleDesktopMode() {
+        isDesktopMode = !isDesktopMode;
+        
+        if (currentTab >= 0 && currentTab < tabs.size()) {
+            WebView activeWebView = tabs.get(currentTab);
+            if (activeWebView != null) {
+                configureWebSettings(activeWebView.getSettings());
+                activeWebView.reload();
             }
         }
     }
