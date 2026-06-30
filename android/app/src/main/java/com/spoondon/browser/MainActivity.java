@@ -935,31 +935,33 @@ case "Exit":
     }
 
     private void configureWebSettings(WebSettings settings) {
+        // Core Web Capabilities
         settings.setJavaScriptEnabled(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
         
+        // Support cross-frame script modifications to prevent Cloudflare Turnstile form resets
+        settings.setSupportMultipleWindows(false);
+
         // Allow file access so our asset:// dashboard loads local storage models smoothly
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowUniversalAccessFromFileURLs(true);
-        settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(true);
-        settings.setBuiltInZoomControls(true);
-        settings.setDisplayZoomControls(false);
-        settings.setSupportMultipleWindows(true);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+        // Standard local data containers instead of legacy WebSQL engines
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         
-        // Force a clean, non-WebView desktop/mobile signature to bypass Cloudflare security filtering
-        String customUA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
-        settings.setUserAgentString(customUA);
-
-        // Allow loading without enforcing strict network caching rules
+        // Keep the native disk-cache pipeline active to minimize hot network radio use
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        // Background Autoplay Optimization
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+        // Fix micro-stutters during zoom/scroll by skipping frequent layout reflow passes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+        }
+
+        // Background Autoplay Optimization (Correct API Method Target)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
 
@@ -970,10 +972,12 @@ case "Exit":
 
         // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            // Set to MIXED_CONTENT_COMPATIBILITY_MODE to allow flawless rendering of 
+            // mixed content elements (like third-party images/avatars on forums) just like mainstream browsers
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
 
-        // Dynamically scale layouts according to mode selection
+        // Dynamically scale viewports and signatures according to mode selection
         if (isDesktopMode) {
             settings.setUserAgentString(DESKTOP_UA);
             settings.setUseWideViewPort(true);
@@ -989,29 +993,7 @@ case "Exit":
             settings.setBuiltInZoomControls(true);
             settings.setDisplayZoomControls(false);
         }
-        
-        // Fix micro-stutters during zoom/scroll by skipping frequent layout reflow passes
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
-            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
-        }
-
-        // Support cross-frame script modifications to prevent Cloudflare Turnstile form resets
-        settings.setSupportMultipleWindows(false); // Change to false to force challenge popups to resolve inside the same frame context
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
-
-        // Ensure modern media and asynchronous workers run smoothly within the DOM tree
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserAction(false);
-        }
-
-        // Use standard hardware-accelerated local data containers instead of legacy WebSQL engines
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        
-        // Keep the native disk-cache pipeline active to minimize hot network radio use
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
     }
-
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
             @Override
