@@ -1073,17 +1073,6 @@ case "Exit":
     private WebViewClient createWebViewClient() {
         return new WebViewClient() {
             @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                
-                // Keep cookie sessions permanently flushed to secure disk database
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    if (view != null) {
-                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
-                    }
-                    android.webkit.CookieManager.getInstance().flush();
-                }
-
                 if (url != null && url.startsWith("http")) {
                     android.net.Uri uri = android.net.Uri.parse(url);
                     String host = uri.getHost();
@@ -1184,6 +1173,13 @@ case "Exit":
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    if (view != null) {
+                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
+                    }
+                    android.webkit.CookieManager.getInstance().flush();
+                }
                 
                 if (url != null && url.startsWith("http")) {
                     android.net.Uri uri = android.net.Uri.parse(url);
