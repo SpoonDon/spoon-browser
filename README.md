@@ -40,5 +40,3 @@ cd spoon-browser/android
 
 # Build the production APK
 ./gradlew assembleRelease
-
-—with love, Plaban.
