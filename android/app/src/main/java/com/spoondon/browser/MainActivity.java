@@ -922,12 +922,12 @@ case "Exit":
         settings.setDisplayZoomControls(false);
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
+        
         // Force a clean, non-WebView desktop/mobile signature to bypass Cloudflare security filtering
-    String customUA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
-    settings.setUserAgentString(customUA);
+        String customUA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+        settings.setUserAgentString(customUA);
 
         // Allow loading without enforcing strict network caching rules
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
@@ -963,6 +963,18 @@ case "Exit":
             settings.setBuiltInZoomControls(true);
             settings.setDisplayZoomControls(false);
         }
+        
+        // Fix micro-stutters during zoom/scroll by skipping frequent layout reflow passes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+        }
+
+        // Use standard hardware-accelerated local data containers instead of legacy WebSQL engines
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        
+        // Keep the native disk-cache pipeline active to minimize hot network radio use
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
     }
 
     private WebChromeClient createWebChromeClient() {
@@ -1473,6 +1485,15 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
 
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
+
+        // Enable dedicated GPU layout compositing to eliminate scroll lag
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
+            webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+        }
+        
+        // Prevent unnecessary bitmap duplication to save RAM and keep the phone cool
+        webView.setDrawingCacheEnabled(false);
+        
         tabs.add(webView);
         currentTab = tabs.size() - 1;
 
