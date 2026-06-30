@@ -1156,6 +1156,21 @@ case "Exit":
                         String cleanHost = host.toLowerCase().trim();
                         if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
 
+                    // Phishing Scanner Alert Core
+                    if (isPhishingRisk(cleanHost)) {
+                        String warningJs = "javascript:(function() {" +
+                            "var overlay = document.createElement('div');" +
+                            "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +
+                            "overlay.innerHTML = '<h1 style="font-size:32px;margin-bottom:10px;">⚠️ Deceptive Site Ahead</h1>" +
+                            "<p style="font-size:18px;max-width:500px;line-height:1.6;">Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>" +
+                            "<button id="spoon-back-btn" style="margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;">Get Me Out of Here</button>';" +
+                            "document.body.appendChild(overlay);" +
+                            "document.getElementById('spoon-back-btn').addEventListener('click', function() { window.history.back(); });" +
+                            "})();";
+                        view.evaluateJavascript(warningJs, null);
+                    }
+
+
                         String js = "javascript:(function() {" +
                             "var host = '" + cleanHost + "';" +
                             "var usernamesData = [];" +
@@ -2174,4 +2189,42 @@ case "Exit":
             }
         }
     }
+
+    // Phishing & Typosquatting Detection Engine
+    private boolean isPhishingRisk(String host) {
+        if (host == null) return false;
+        String clean = host.toLowerCase().trim();
+        if (clean.startsWith("www.")) clean = clean.substring(4);
+        
+        // Protect high-value targets from lookalikes
+        String[] protectedDomains = {"google.com", "paypal.com", "facebook.com", "amazon.com", "netflix.com", "github.com"};
+        
+        for (String target : protectedDomains) {
+            if (clean.equals(target)) return false; // Exact match is perfectly safe
+            
+            // Check if the domain is a subtle lookalike variance
+            int distance = getLevenshteinDistance(clean, target);
+            if (distance > 0 && distance <= 2) {
+                return true; // Dangerously close variation detected!
+            }
+        }
+        return false;
+    }
+
+    private int getLevenshteinDistance(String s, String t) {
+        if (s == null || t == null) return 0;
+        int[] p = new int[s.length() + 1];
+        int[] d = new int[s.length() + 1];
+        for (int i = 0; i <= s.length(); i++) p[i] = i;
+        for (int j = 1; j <= t.length(); j++) {
+            d[0] = j;
+            for (int i = 1; i <= s.length(); i++) {
+                int match = (s.charAt(i - 1) == t.charAt(j - 1)) ? 0 : 1;
+                d[i] = Math.min(Math.min(d[i - 1] + 1, p[i] + 1), p[i - 1] + match);
+            }
+            int[] placeholder = p; p = d; d = placeholder;
+        }
+        return p[s.length()];
+    }
+
 }
