@@ -995,6 +995,15 @@ case "Exit":
             settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
         }
 
+        // Support cross-frame script modifications to prevent Cloudflare Turnstile form resets
+        settings.setSupportMultipleWindows(false); // Change to false to force challenge popups to resolve inside the same frame context
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+        // Ensure modern media and asynchronous workers run smoothly within the DOM tree
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            settings.setMediaPlaybackRequiresUserAction(false);
+        }
+
         // Use standard hardware-accelerated local data containers instead of legacy WebSQL engines
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
