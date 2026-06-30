@@ -201,7 +201,7 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
-
+    
     private void handleIncomingIntent(Intent intent) {
         if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
@@ -213,59 +213,44 @@ public class MainActivity extends AppCompatActivity {
             openUrl(urlToLoad);
             setIntent(new Intent()); 
         } else if (intent != null && intent.getAction() != null) {
-            createNewTab();
-            showHome();
+            // Only spawn a fresh home tab if the browser engine has no open tabs running
+            if (tabs == null || tabs.isEmpty()) {
+                createNewTab();
+                showHome();
+            }
             setIntent(new Intent());
         }
     }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Keep this clean and lightweight to prevent thread-locking with onStop
+    }
 
     @Override
-    public void onStop() {
+    protected void onStop() {
         super.onStop();
+        
+        // Let onStop handle the ultimate decision: Clear completely OR Save completely
         try {
-            Intent serviceIntent = new Intent(this, BackgroundMediaService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
+            if (clearSessionOnExit) {
+                android.webkit.WebStorage.getInstance().deleteAllData();
+                android.webkit.CookieManager.getInstance().removeAllCookies(null);
+                android.webkit.CookieManager.getInstance().flush();
             } else {
-                startService(serviceIntent);
+                // Instantly commit active forum/site login session states to permanent flash storage 
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    android.webkit.CookieManager.getInstance().flush();
+                }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception ignored) {}
     }
 
     @Override
     protected void onDestroy() {
-        if (tabs != null) {
-            for (WebView w : tabs) {
-                if (w != null) {
-                    try {
-                        w.stopLoading();
-                        w.clearHistory();
-                        w.clearCache(true);
-                        w.loadUrl("about:blank");
-                        w.destroy();
-                    } catch (Exception e) {
-                        android.util.Log.e("SpoonBrowser", "Error cleaning up WebView instance", e);
-                    }
-                }
-            }
-        }
-
-        // Global Storage & Cookie Trimming (Merged Point #7)
-        try {
-            android.webkit.WebStorage.getInstance().deleteAllData();
-            if (clearSessionOnExit) {
-                android.webkit.CookieManager.getInstance().removeAllCookies(null);
-                android.webkit.CookieManager.getInstance().flush();
-            }
-        } catch (Exception e) {
-            android.util.Log.e("SpoonBrowser", "Error cleaning up storage systems", e);
-        }
-
         super.onDestroy();
     }
-
 
         private boolean restoreSession() {
         try {
