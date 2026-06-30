@@ -1259,13 +1259,10 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                         view.evaluateJavascript(js, null);
                     }
 
-                    String cosmeticJs = "javascript:(function() {" +
-                        "var selectors = ['.ad-box', '.ad-banner', '.adsbygoogle', '[id^=\"google_ads_\"]', '.ad-container', '.ad_wrapper', '#carbonads'];" +
-                        "var style = document.createElement('style');" +
-                        "style.innerHTML = selectors.join(', ') + ' { display: none !important; collapse: homework !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }';" +
-                        "document.head.appendChild(style);" +
-                        "})()";
-                    view.evaluateJavascript(cosmeticJs, null);
+                // High-performance Dynamic Cosmetic Adblocking Engine Injection
+                String cosmeticJs = filterEngine.compileCosmeticJavascript();
+                view.evaluateJavascript(cosmeticJs, null);
+
                 }
 
                 if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
@@ -1726,7 +1723,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
     }
 
-    private static class ContentFilterEngine {
+        private static class ContentFilterEngine {
         // Fast direct domain lookup buckets
         public final java.util.Set<String> blockDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
         public final java.util.Set<String> whitelistDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
@@ -1735,16 +1732,30 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         public final java.util.List<String> blockPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
         public final java.util.List<String> whitelistPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
 
+        // Global Cosmetic Selectors Cache
+        public final java.util.Set<String> cosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
+
         public void clear() {
             blockDomains.clear();
             whitelistDomains.clear();
             blockPatterns.clear();
             whitelistPatterns.clear();
+            cosmeticSelectors.clear();
         }
 
         public void addRule(String rule) {
             if (rule == null || rule.isEmpty()) return;
-            if (rule.contains("##")) return; // Skip cosmetic element-hiding lines here
+            
+            // Handle true cosmetic rules (e.g., example.com##.ad-box or ##.ad-banner)
+            if (rule.contains("##")) {
+                int index = rule.indexOf("##");
+                String selector = rule.substring(index + 2).trim();
+                // We target global cosmetic rules and clean general element rules
+                if (!selector.isEmpty() && !selector.contains("{") && !selector.contains("(")) {
+                    cosmeticSelectors.add(selector);
+                }
+                return;
+            }
 
             boolean isWhitelist = rule.startsWith("@@");
             String pattern = isWhitelist ? rule.substring(2) : rule;
@@ -1773,26 +1784,65 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
             }
         }
 
+        public String compileCosmeticJavascript() {
+            if (cosmeticSelectors.isEmpty()) {
+                // High-performance fallback array matching our core baseline rules
+                return "javascript:(function() { " +
+                        "var selectors = ['.ad-box', '.ad-banner', '.adsbygoogle', '[id^=\"google_ads_\"]', '.ad-container', '.ad_wrapper', '#carbonads']; " +
+                        "var style = document.createElement('style'); " +
+                        "style.innerHTML = selectors.join(', ') + ' { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }'; " +
+                        "document.head.appendChild(style); " +
+                        "})()";
+            }
+            
+            // Build the injected layout stylesheet directly from parsed list rules
+            StringBuilder builder = new StringBuilder();
+            builder.append("javascript:(function() { ");
+            builder.append("var style = document.createElement('style'); ");
+            builder.append("style.innerHTML = '");
+            
+            int count = 0;
+            for (String selector : cosmeticSelectors) {
+                // Escape simple string breaks safely
+                String cleanSelector = selector.replace("'", "\\'").replace("\n", "").trim();
+                if (cleanSelector.isEmpty()) continue;
+                
+                builder.append(cleanSelector);
+                count++;
+                if (count < 800) { // Keep single injection blocks optimized for mobile memory
+                    builder.append(", ");
+                } else {
+                    builder.append(" { display: none !important; height: 0px !important; }'; ");
+                    builder.append("document.head.appendChild(style); ");
+                    builder.append("style = document.createElement('style'); ");
+                    builder.append("style.innerHTML = '");
+                    count = 0;
+                }
+            }
+            if (count > 0) {
+                builder.append(" { display: none !important; height: 0px !important; }'; ");
+                builder.append("document.head.appendChild(style); ");
+            }
+            builder.append("})()");
+            return builder.toString();
+        }
+
         public boolean shouldBlock(String urlString) {
             if (urlString == null) return false;
             String lowerUrl = urlString.toLowerCase();
 
-            // Extract the host domain safely for lightning fast O(1) checking
             String host = null;
             try {
                 android.net.Uri uri = android.net.Uri.parse(lowerUrl);
                 host = uri.getHost();
             } catch (Exception ignored) {}
 
-            // 1. Check instant whitelist domains
             if (host != null && whitelistDomains.contains(host)) return false;
 
-            // 2. Check complex whitelist paths
             for (String pattern : whitelistPatterns) {
                 if (matchPattern(lowerUrl, pattern)) return false;
             }
 
-            // 3. Check instant block domains (Matches 85%+ of trackers instantaneously)
             if (host != null) {
                 String tempHost = host;
                 while (tempHost != null && tempHost.contains(".")) {
@@ -1806,7 +1856,6 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                 }
             }
 
-            // 4. Check complex block paths fallback
             for (String pattern : blockPatterns) {
                 if (matchPattern(lowerUrl, pattern)) return true;
             }
@@ -1859,8 +1908,9 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                 filterEngine.whitelistDomains.addAll(newEngine.whitelistDomains);
                 filterEngine.blockPatterns.addAll(newEngine.blockPatterns);
                 filterEngine.whitelistPatterns.addAll(newEngine.whitelistPatterns);
+                filterEngine.cosmeticSelectors.addAll(newEngine.cosmeticSelectors);
             }
-
+            
             prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
         }).start();
     }
