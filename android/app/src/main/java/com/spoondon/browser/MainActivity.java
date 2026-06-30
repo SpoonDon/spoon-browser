@@ -921,11 +921,7 @@ case "Exit":
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         
-        android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(webView, true);
-        }
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true);
         
         // Allow file access so our asset:// dashboard loads local storage models smoothly
         settings.setAllowFileAccess(true);
