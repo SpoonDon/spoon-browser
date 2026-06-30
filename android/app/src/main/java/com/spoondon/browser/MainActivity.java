@@ -1148,6 +1148,12 @@ case "Exit":
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+    if (view != null) {
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
+    }
+    android.webkit.CookieManager.getInstance().flush();
+}
                 
                 if (url != null && url.startsWith("http")) {
                     android.net.Uri uri = android.net.Uri.parse(url);
@@ -1157,7 +1163,8 @@ case "Exit":
                         if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
 
                     // Phishing Scanner Alert Core
-                    if (isPhishingRisk(cleanHost)) {
+                    if (isPhishingRisk(cleanHost) || (url != null && url.contains("vault.html"))) {
+
                         String warningJs = "javascript:(function() {" +
                             "var overlay = document.createElement('div');" +
                             "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +
