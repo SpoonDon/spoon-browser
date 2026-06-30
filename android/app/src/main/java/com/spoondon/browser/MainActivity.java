@@ -2197,7 +2197,7 @@ case "Exit":
         if (clean.startsWith("www.")) clean = clean.substring(4);
         
         // Protect high-value targets from lookalikes
-        String[] protectedDomains = {"google.com", "paypal.com", "facebook.com", "amazon.com", "netflix.com", "github.com"};
+        String[] protectedDomains = {"google.com", "paypal.com", "facebook.com", "amazon.com", "netflix.com", "github.com", "exampla.com"};
         
         for (String target : protectedDomains) {
             if (clean.equals(target)) return false; // Exact match is perfectly safe
