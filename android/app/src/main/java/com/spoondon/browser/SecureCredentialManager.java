@@ -210,6 +210,7 @@ public class SecureCredentialManager {
     }
 
     public synchronized boolean exportToCSV(Context context) {
+        Context appContext = context.getApplicationContext();
         StringBuilder csvContent = new StringBuilder("url,username,password\n");
 
         for (String key : memoryPrefs.keySet()) {
@@ -236,9 +237,9 @@ public class SecureCredentialManager {
             values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/csv");
             values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
 
-            android.net.Uri uri = context.getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            android.net.Uri uri = appContext.getContentResolver().insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
             if (uri != null) {
-                java.io.OutputStream out = context.getContentResolver().openOutputStream(uri);
+                java.io.OutputStream out = appContext.getContentResolver().openOutputStream(uri);
                 if (out != null) {
                     out.write(csvContent.toString().getBytes());
                     out.close();
