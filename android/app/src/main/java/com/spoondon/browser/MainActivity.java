@@ -1261,8 +1261,8 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                     // 1. Initialize the native DOM style container sheet on the main window thread
                 view.evaluateJavascript(filterEngine.compileCosmeticJavascript(), null);
 
-                // 2. Stream the parsed rule fragments sequentially to stay well within memory limits
-                java.util.List<String> cssBatches = filterEngine.getCosmeticStyleBatches();
+                // 2. Stream target-scoped layout rules exclusively matching the current domain
+                java.util.List<String> cssBatches = filterEngine.getCosmeticStyleBatches(url);
                 for (String cssChunk : cssBatches) {
                     String cleanChunk = cssChunk.replace("\\", "\\\\").replace("'", "\\'");
                     String injectScript = "javascript:(function() {" +
@@ -1271,7 +1271,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                             "})()";
                     view.evaluateJavascript(injectScript, null);
                 }
-
+                    
                 }
 
                 if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
@@ -1741,27 +1741,42 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         public final java.util.List<String> blockPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
         public final java.util.List<String> whitelistPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-        // Global Cosmetic Selectors Cache
-        public final java.util.Set<String> cosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
+        // Site-Specific and Global Cosmetic Cache Buckets
+        public final java.util.Set<String> globalCosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
+        public final java.util.Map<String, java.util.Set<String>> siteCosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>();
 
         public void clear() {
             blockDomains.clear();
             whitelistDomains.clear();
             blockPatterns.clear();
             whitelistPatterns.clear();
-            cosmeticSelectors.clear();
+            globalCosmeticSelectors.clear();
+            siteCosmeticSelectors.clear();
         }
 
         public void addRule(String rule) {
             if (rule == null || rule.isEmpty()) return;
             
-            // Handle true cosmetic rules (e.g., example.com##.ad-box)
+            // Handle true cosmetic rules (e.g., cnn.com##.ad-box or ##.ad-banner)
             if (rule.contains("##")) {
                 int index = rule.indexOf("##");
+                String domainPart = rule.substring(0, index).trim();
                 String selector = rule.substring(index + 2).trim();
-                // Skip rules that contain complex inline logical operations or scripts
-                if (!selector.isEmpty() && !selector.contains("{") && !selector.contains("(")) {
-                    cosmeticSelectors.add(selector);
+                
+                if (selector.isEmpty() || selector.contains("{") || selector.contains("(")) return;
+
+                if (domainPart.isEmpty()) {
+                    // Global rule applies to everything
+                    globalCosmeticSelectors.add(selector);
+                } else {
+                    // Site-specific rule (Handles comma-separated domains if present)
+                    String[] domains = domainPart.split(",");
+                    for (String domain : domains) {
+                        domain = domain.trim().toLowerCase();
+                        if (!domain.isEmpty() && !domain.startsWith("~")) { // Skip exception rules for simplicity
+                            siteCosmeticSelectors.computeIfAbsent(domain, k -> new java.util.concurrent.ConcurrentHashMap<>().newKeySet()).add(selector);
+                        }
+                    }
                 }
                 return;
             }
@@ -1793,7 +1808,6 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         }
 
         public String compileCosmeticJavascript() {
-            // Initializes a dedicated style element on the page if it doesn't exist yet
             return "javascript:(function() {" +
                     "var id = 'spoon-cosmetic-sheets';" +
                     "var style = document.getElementById(id);" +
@@ -1805,9 +1819,37 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                     "})()";
         }
 
-        public java.util.List<String> getCosmeticStyleBatches() {
+        // Extracts targeted rules matching the specific domain currently running
+        public java.util.List<String> getCosmeticStyleBatches(String urlString) {
             java.util.List<String> batches = new java.util.ArrayList<>();
-            if (cosmeticSelectors.isEmpty()) {
+            java.util.Set<String> activeSelectors = new java.util.HashSet<>(globalCosmeticSelectors);
+
+            // Extract host domain to fetch specific rules
+            String host = null;
+            if (urlString != null) {
+                try {
+                    android.net.Uri uri = android.net.Uri.parse(urlString.toLowerCase());
+                    host = uri.getHost();
+                } catch (Exception ignored) {}
+            }
+
+            if (host != null) {
+                String tempHost = host;
+                while (tempHost != null && tempHost.contains(".")) {
+                    java.util.Set<String> siteRules = siteCosmeticSelectors.get(tempHost);
+                    if (siteRules != null) {
+                        activeSelectors.addAll(siteRules);
+                    }
+                    int nextDot = tempHost.indexOf('.');
+                    if (nextDot != -1 && nextDot < tempHost.length() - 1) {
+                        tempHost = tempHost.substring(nextDot + 1);
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            if (activeSelectors.isEmpty()) {
                 batches.add(".ad-box, .ad-banner, .adsbygoogle, [id^=\"google_ads_\"], .ad-container, #carbonads { display: none !important; height: 0px !important; }");
                 return batches;
             }
@@ -1815,7 +1857,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
             StringBuilder currentBatch = new StringBuilder();
             int ruleCount = 0;
 
-            for (String selector : cosmeticSelectors) {
+            for (String selector : activeSelectors) {
                 String cleanSelector = selector.replace("'", "\\'").replace("\n", "").trim();
                 if (cleanSelector.isEmpty()) continue;
 
@@ -1823,7 +1865,6 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                 currentBatch.append(cleanSelector);
                 ruleCount++;
 
-                // Package selectors in lightweight 250-item fragments to keep heap load flat
                 if (ruleCount >= 250) {
                     currentBatch.append(" { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }");
                     batches.add(currentBatch.toString());
@@ -1921,7 +1962,12 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                 filterEngine.whitelistDomains.addAll(newEngine.whitelistDomains);
                 filterEngine.blockPatterns.addAll(newEngine.blockPatterns);
                 filterEngine.whitelistPatterns.addAll(newEngine.whitelistPatterns);
-                filterEngine.cosmeticSelectors.addAll(newEngine.cosmeticSelectors);
+                filterEngine.globalCosmeticSelectors.addAll(newEngine.globalCosmeticSelectors);
+                
+                // Perform thread-safe mapping for site-scoped map targets
+                for (java.util.Map.Entry<String, java.util.Set<String>> entry : newEngine.siteCosmeticSelectors.entrySet()) {
+                    filterEngine.siteCosmeticSelectors.computeIfAbsent(entry.getKey(), k -> new java.util.concurrent.ConcurrentHashMap<>().newKeySet()).addAll(entry.getValue());
+                }
             }
             
             prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
@@ -2279,9 +2325,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         openUrl(url);
 
     }
-
-
-
+    
     private void triggerExternalDownload(String url, String mimeType) {
         try {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
