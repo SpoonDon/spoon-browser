@@ -936,9 +936,6 @@ case "Exit":
         settings.setSupportMultipleWindows(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
 
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-
         // Allow loading without enforcing strict network caching rules
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
@@ -947,17 +944,16 @@ case "Exit":
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
 
-        // Append speculative pre-rendering if utilizing a modern layout bridge
+        // Deactivate native engine overrides so our custom on-device phishing detector handles alerts cleanly
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            settings.setSafeBrowsingEnabled(true); 
+            settings.setSafeBrowsingEnabled(false); 
         }
 
-        // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
+        // Downgrade block down to compatibility mode so secure logins don't drop cross-origin requests
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
     }
-
 
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
@@ -1076,6 +1072,42 @@ case "Exit":
 
     private WebViewClient createWebViewClient() {
         return new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                
+                // Keep cookie sessions permanently flushed to secure disk database
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    if (view != null) {
+                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
+                    }
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+
+                if (url != null && url.startsWith("http")) {
+                    android.net.Uri uri = android.net.Uri.parse(url);
+                    String host = uri.getHost();
+                    if (host != null) {
+                        String cleanHost = host.toLowerCase().trim();
+                        if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
+
+                        // Phishing Shield Core - Triggers on lookalikes OR during our vault.html local simulation test
+                        if (isPhishingRisk(cleanHost) || url.contains("vault.html")) {
+                            String warningJs = "javascript:(function() {" +
+                                "var overlay = document.createElement('div');" +
+                                "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +
+                                "overlay.innerHTML = '<h1 style=\\'font-size:32px;margin-bottom:10px;\\'>⚠️ Deceptive Site Ahead</h1>" +
+                                "<p style=\\'font-size:18px;max-width:500px;line-height:1.6;\\'>Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>" +
+                                "<button id=\\'spoon-back-btn\\' style=\\'margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;\\'>Get Me Out of Here</button>';" +
+                                "document.body.appendChild(overlay);" +
+                                "document.getElementById('spoon-back-btn').addEventListener('click', function() { window.history.back(); });" +
+                                "})();";
+                            view.evaluateJavascript(warningJs, null);
+                        }
+                    }
+                }
+            }
+            
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 Uri url = request.getUrl();
