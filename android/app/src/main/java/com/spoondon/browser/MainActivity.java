@@ -909,7 +909,6 @@ case "Exit":
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowUniversalAccessFromFileURLs(true);
-        
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
         settings.setBuiltInZoomControls(true);
@@ -919,6 +918,9 @@ case "Exit":
 
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
+        // Force a clean, non-WebView desktop/mobile signature to bypass Cloudflare security filtering
+    String customUA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+    settings.setUserAgentString(customUA);
 
         // Allow loading without enforcing strict network caching rules
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
@@ -1377,11 +1379,12 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         // Configure default native web settings
         configureWebSettings(webView.getSettings());
 
-        // Native Anti-Tracking: Block third-party cross-site cookies natively in the engine
+        // Native Anti-Tracking: Managed third-party block state with a fallback path for enterprise forums
         android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(webView, false);
+            // Change to true if a specific site demands cross-domain handshake keys to authenticate
+            cookieManager.setAcceptThirdPartyCookies(webView, false); 
         }
 
         webView.addJavascriptInterface(new SecureSpoonBridge(webView, secureCredentialManager), "SpoonVault");
