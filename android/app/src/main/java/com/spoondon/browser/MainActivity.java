@@ -1161,9 +1161,9 @@ case "Exit":
                         String warningJs = "javascript:(function() {" +
                             "var overlay = document.createElement('div');" +
                             "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +
-                            "overlay.innerHTML = '<h1 style="font-size:32px;margin-bottom:10px;">⚠️ Deceptive Site Ahead</h1>" +
-                            "<p style="font-size:18px;max-width:500px;line-height:1.6;">Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>" +
-                            "<button id="spoon-back-btn" style="margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;">Get Me Out of Here</button>';" +
+                            "overlay.innerHTML = '<h1 style="\"font-size:32px;margin-bottom:10px;\"">⚠️ Deceptive Site Ahead</h1>" +
+                            "<p style=\"\"font-size:18px;max-width:500px;line-height:1.6;\"\">Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>\" +" +
+                            "<button id=\"spoon-back-btn\" style=\"margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;\">Get Me Out of Here</button>';" +
                             "document.body.appendChild(overlay);" +
                             "document.getElementById('spoon-back-btn').addEventListener('click', function() { window.history.back(); });" +
                             "})();";
