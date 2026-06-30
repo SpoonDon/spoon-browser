@@ -1127,6 +1127,12 @@ case "Exit":
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                // CRITICAL CAPTCHA FIX: Let background iframes (like Cloudflare) load natively
+                // without interrupting the main page or resetting the form DOM.
+                if (!request.isForMainFrame()) {
+                    return false; 
+                }
+
                 Uri url = request.getUrl();
                 if (url != null) {
                     String urlString = url.toString();
@@ -1134,6 +1140,7 @@ case "Exit":
                     // Route magnet links and torrent files to external download managers
                     if (urlString.startsWith("magnet:") || urlString.endsWith(".torrent")) {
                         try {
+
                             Intent intent = new Intent(Intent.ACTION_VIEW, url);
                             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             view.getContext().startActivity(intent);
