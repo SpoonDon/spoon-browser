@@ -127,6 +127,10 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
+        
+        android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
+        isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+        
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
         }
@@ -2407,6 +2411,10 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
 
     private void toggleDesktopMode() {
         isDesktopMode = !isDesktopMode;
+
+        // Save the new state permanently so it survives app restarts
+        android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
+        prefs.edit().putBoolean("isDesktopMode", isDesktopMode).apply();
         
         if (currentTab >= 0 && currentTab < tabs.size()) {
             WebView activeWebView = tabs.get(currentTab);
