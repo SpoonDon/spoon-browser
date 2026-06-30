@@ -1258,10 +1258,19 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
 
                         view.evaluateJavascript(js, null);
                     }
+                    // 1. Initialize the native DOM style container sheet on the main window thread
+                view.evaluateJavascript(filterEngine.compileCosmeticJavascript(), null);
 
-                // High-performance Dynamic Cosmetic Adblocking Engine Injection
-                String cosmeticJs = filterEngine.compileCosmeticJavascript();
-                view.evaluateJavascript(cosmeticJs, null);
+                // 2. Stream the parsed rule fragments sequentially to stay well within memory limits
+                java.util.List<String> cssBatches = filterEngine.getCosmeticStyleBatches();
+                for (String cssChunk : cssBatches) {
+                    String cleanChunk = cssChunk.replace("\\", "\\\\").replace("'", "\\'");
+                    String injectScript = "javascript:(function() {" +
+                            "var style = document.getElementById('spoon-cosmetic-sheets');" +
+                            "if (style) { style.appendChild(document.createTextNode('" + cleanChunk + "\\n')); }" +
+                            "})()";
+                    view.evaluateJavascript(injectScript, null);
+                }
 
                 }
 
@@ -1722,8 +1731,8 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
     private void saveHistory() {
         prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
     }
-
-        private static class ContentFilterEngine {
+    
+    private static class ContentFilterEngine {
         // Fast direct domain lookup buckets
         public final java.util.Set<String> blockDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
         public final java.util.Set<String> whitelistDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
@@ -1746,11 +1755,11 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         public void addRule(String rule) {
             if (rule == null || rule.isEmpty()) return;
             
-            // Handle true cosmetic rules (e.g., example.com##.ad-box or ##.ad-banner)
+            // Handle true cosmetic rules (e.g., example.com##.ad-box)
             if (rule.contains("##")) {
                 int index = rule.indexOf("##");
                 String selector = rule.substring(index + 2).trim();
-                // We target global cosmetic rules and clean general element rules
+                // Skip rules that contain complex inline logical operations or scripts
                 if (!selector.isEmpty() && !selector.contains("{") && !selector.contains("(")) {
                     cosmeticSelectors.add(selector);
                 }
@@ -1765,7 +1774,6 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                 pattern = pattern.substring(0, optionIdx);
             }
 
-            // Clean standard host markers
             pattern = pattern.replace("||", "").replace("^", "").trim().toLowerCase();
             if (pattern.isEmpty()) return;
 
@@ -1785,46 +1793,51 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         }
 
         public String compileCosmeticJavascript() {
+            // Initializes a dedicated style element on the page if it doesn't exist yet
+            return "javascript:(function() {" +
+                    "var id = 'spoon-cosmetic-sheets';" +
+                    "var style = document.getElementById(id);" +
+                    "if (!style) {" +
+                    "  style = document.createElement('style');" +
+                    "  style.id = id;" +
+                    "  document.head.appendChild(style);" +
+                    "}" +
+                    "})()";
+        }
+
+        public java.util.List<String> getCosmeticStyleBatches() {
+            java.util.List<String> batches = new java.util.ArrayList<>();
             if (cosmeticSelectors.isEmpty()) {
-                // High-performance fallback array matching our core baseline rules
-                return "javascript:(function() { " +
-                        "var selectors = ['.ad-box', '.ad-banner', '.adsbygoogle', '[id^=\"google_ads_\"]', '.ad-container', '.ad_wrapper', '#carbonads']; " +
-                        "var style = document.createElement('style'); " +
-                        "style.innerHTML = selectors.join(', ') + ' { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }'; " +
-                        "document.head.appendChild(style); " +
-                        "})()";
+                batches.add(".ad-box, .ad-banner, .adsbygoogle, [id^=\"google_ads_\"], .ad-container, #carbonads { display: none !important; height: 0px !important; }");
+                return batches;
             }
-            
-            // Build the injected layout stylesheet directly from parsed list rules
-            StringBuilder builder = new StringBuilder();
-            builder.append("javascript:(function() { ");
-            builder.append("var style = document.createElement('style'); ");
-            builder.append("style.innerHTML = '");
-            
-            int count = 0;
+
+            StringBuilder currentBatch = new StringBuilder();
+            int ruleCount = 0;
+
             for (String selector : cosmeticSelectors) {
-                // Escape simple string breaks safely
                 String cleanSelector = selector.replace("'", "\\'").replace("\n", "").trim();
                 if (cleanSelector.isEmpty()) continue;
-                
-                builder.append(cleanSelector);
-                count++;
-                if (count < 800) { // Keep single injection blocks optimized for mobile memory
-                    builder.append(", ");
-                } else {
-                    builder.append(" { display: none !important; height: 0px !important; }'; ");
-                    builder.append("document.head.appendChild(style); ");
-                    builder.append("style = document.createElement('style'); ");
-                    builder.append("style.innerHTML = '");
-                    count = 0;
+
+                if (ruleCount > 0) currentBatch.append(", ");
+                currentBatch.append(cleanSelector);
+                ruleCount++;
+
+                // Package selectors in lightweight 250-item fragments to keep heap load flat
+                if (ruleCount >= 250) {
+                    currentBatch.append(" { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }");
+                    batches.add(currentBatch.toString());
+                    currentBatch = new StringBuilder();
+                    ruleCount = 0;
                 }
             }
-            if (count > 0) {
-                builder.append(" { display: none !important; height: 0px !important; }'; ");
-                builder.append("document.head.appendChild(style); ");
+
+            if (ruleCount > 0) {
+                currentBatch.append(" { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }");
+                batches.add(currentBatch.toString());
             }
-            builder.append("})()");
-            return builder.toString();
+
+            return batches;
         }
 
         public boolean shouldBlock(String urlString) {
@@ -1878,7 +1891,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
             return url.contains(pattern);
         }
     }
-
+    
     private final ContentFilterEngine filterEngine = new ContentFilterEngine();
 
     private void refreshFilterLists() {
