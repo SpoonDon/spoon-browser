@@ -109,7 +109,7 @@ public class MainActivity extends AppCompatActivity {
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> history = new CopyOnWriteArrayList<>();
-    private final HashMap<String, String> pageTitles = new HashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<String, String> pageTitles = new java.util.concurrent.ConcurrentHashMap<>();
     private SharedPreferences prefs;
     private int currentTab = 0;
     private boolean suppressSuggestions = false;
@@ -2284,7 +2284,8 @@ case "Exit":
     }
 
     private void showAbout() {
-        synchronized (blockedDomains) {
+        synchronized (filterEngine) {
+
             String webViewVer = "Unknown";
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 android.content.pm.PackageInfo pi = android.webkit.WebView.getCurrentWebViewPackage();
