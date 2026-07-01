@@ -947,7 +947,7 @@ case "Exit":
         // 2. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        settings.setSaveFormData(false);
+        settings.setSaveFormData(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
         // 3. File & Local Storage Access Configuration
@@ -1190,12 +1190,17 @@ case "Exit":
                 return false; // Force internal loading of standard web addresses instead of dropping back to super
             }
 
-            @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                // Force transient security cookies to commit to disk right as the navigation handoff begins
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+
+                // Native Anti-Tracking: Remove app tracking footprint safely
                 if (view != null) {
                     try {
                         java.lang.reflect.Method method = view.getSettings().getClass().getMethod(
-                            "setXRequestedWithHeaderOriginAllowList", 
+                            "setXRequestedWithHeaderOriginAllowList",
                             java.util.Set.class
                         );
                         method.invoke(view.getSettings(), new java.util.HashSet<String>());
@@ -1206,7 +1211,7 @@ case "Exit":
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
                 }
 
-                if (url != null && !url.isEmpty() && !url.equals("about:blank") 
+                if (url != null && !url.isEmpty() && !url.equals("about:blank")
                         && !url.startsWith("chrome-error://") && !url.startsWith("data:") && !url.startsWith("file://")) {
                     if (history.isEmpty() || !history.get(history.size() - 1).equals(url)) {
                         history.add(url);
