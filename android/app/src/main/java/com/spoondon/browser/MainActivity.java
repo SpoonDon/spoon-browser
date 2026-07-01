@@ -966,7 +966,6 @@ case "Exit":
                 }
             }
         } catch (Exception ignored) {}
-    } // Closes our safe injected block wrapper cleanly
 
         if (settings == null) return; // Fail-safe guard against startup NullPointerExceptions
 
