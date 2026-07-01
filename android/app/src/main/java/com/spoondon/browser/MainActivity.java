@@ -938,25 +938,46 @@ case "Exit":
     
     private void configureWebSettings(WebSettings settings) {
         if (settings == null) return;
-        
-        // 1. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
+
+        // 1. Core Web & Javascript Capabilities
         settings.setJavaScriptEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
+
+        // 2. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
-        // 2. Cross-Origin Contexts & Mixed Security Handshakes
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
+        // 3. File & Local Storage Access Configuration
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setAllowFileAccessFromFileURLs(true);
+        settings.setAllowUniversalAccessFromFileURLs(true);
 
-        // 3. Media Decoder Stream Playback Configuration (Fixes YouTube playback)
+        // 4. Layout & UI Controls Optimization
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+        }
+        settings.setSupportZoom(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+        settings.setGeolocationEnabled(false);
+
+        // 5. Media Engine Initialization (Fixes YouTube Video Playback Loops)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
-        
-        // 4. Thread-Safe Session Authentication Cookie Synchronizers
+
+        // 6. Cross-Origin Contexts & Mixed Security Handshakes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true); 
+        }
+
+        // 7. Thread-Safe Session Authentication Cookie Synchronizers
         try {
             android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
             cm.setAcceptCookie(true);
@@ -967,57 +988,7 @@ case "Exit":
             }
         } catch (Exception ignored) {}
 
-        if (settings == null) return; // Fail-safe guard against startup NullPointerExceptions
-
-        // Core Web Capabilities
-        settings.setJavaScriptEnabled(true);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        
-        // Support cross-frame script modifications to prevent Cloudflare Turnstile form resets
-        settings.setSupportMultipleWindows(false);
-
-        // Allow file access so our asset:// dashboard loads local storage models smoothly
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
-
-        // Standard local data containers instead of legacy WebSQL engines
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        
-        // Keep the native disk-cache pipeline active to minimize hot network radio use
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-
-        // Fix micro-stutters during zoom/scroll by skipping frequent layout reflow passes
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
-            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
-        }
-
-        // Background Autoplay Optimization - Throttled to mitigate device heat spikes
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(true);
-        }
-
-        // Append speculative pre-rendering if utilizing a modern layout bridge
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            settings.setSafeBrowsingEnabled(true); 
-        }
-
-        // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        }
-
-        // Block untracked background location polling loops from eating battery cycles
-        settings.setGeolocationEnabled(false);
-
-        // Zoom UI controls setup
-        settings.setSupportZoom(true);
-        settings.setBuiltInZoomControls(true);
-        settings.setDisplayZoomControls(false);
-
-        // --- PERSISTENT USER-AGENT & VIEWPORT RESOLUTION MATRIX ---
+        // 8. User-Agent Profile Engine Matrix
         boolean forceDesktop = false;
         try {
             android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
@@ -1025,17 +996,14 @@ case "Exit":
                 forceDesktop = prefs.getBoolean("isDesktopMode", false);
             }
         } catch (Exception e) {
-            // Context wasn't fully initialized yet; fall back to standard mobile view safely
             forceDesktop = false;
         }
 
         if (forceDesktop) {
-            // Apply standard Linux x86 desktop footprint
             settings.setUserAgentString(DESKTOP_UA);
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
         } else {
-            // Revert back to cool responsive smartphone footprint
             settings.setUserAgentString(MOBILE_UA);
             settings.setUseWideViewPort(false);
             settings.setLoadWithOverviewMode(false);
