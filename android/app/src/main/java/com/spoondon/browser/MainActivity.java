@@ -1514,13 +1514,49 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
 
-        // Enable dedicated GPU layout compositing to eliminate scroll lag
+        // Force full hardware GPU pipeline rendering
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
             webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
         }
-        
-        // Prevent unnecessary bitmap duplication to save RAM and keep the phone cool
         webView.setDrawingCacheEnabled(false);
+
+        // NATIVE DOWNLOAD ENGINE INTEGRATION
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+            try {
+                // Initialize the System Download Manager Service
+                android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                
+                // Mirror the browser's current User-Agent and Cookies so authenticated sessions don't drop the download
+                request.setMimeType(mimetype);
+                String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                request.addRequestHeader("cookie", cookies);
+                request.addRequestHeader("User-Agent", userAgent);
+                
+                // Chrome-style configuration: visible status bar notifications during and after download completion
+                request.setDescription("Downloading file...");
+                String fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
+                request.setTitle(fileName);
+                
+                // Auto-scan the downloaded asset via media scanner systems
+                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+                    request.allowScanningByMediaScanner();
+                }
+                
+                // Notify the user when compilation completes
+                request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                
+                // Store file directly into the public shared Downloads directory ecosystem
+                request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
+                
+                android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                if (dm != null) {
+                    dm.enqueue(request);
+                    android.widget.Toast.makeText(this, "Download started: " + fileName, android.widget.Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                android.widget.Toast.makeText(this, "Download failed: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+            }
+        });
         
         tabs.add(webView);
         currentTab = tabs.size() - 1;
