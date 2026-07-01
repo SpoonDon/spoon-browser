@@ -1205,13 +1205,14 @@ case "Exit":
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-    if (view != null) {
-        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
-    }
-    android.webkit.CookieManager.getInstance().flush();
-}
-                
+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    if (view != null) {
+                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
+                    }
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+
                 if (url != null && url.startsWith("http")) {
                     android.net.Uri uri = android.net.Uri.parse(url);
                     String host = uri.getHost();
@@ -1454,7 +1455,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         cookieManager.setAcceptCookie(true);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             // Change to true if a specific site demands cross-domain handshake keys to authenticate
-            cookieManager.setAcceptThirdPartyCookies(webView, false); 
+            cookieManager.setAcceptThirdPartyCookies(webView, true); 
         }
 
         webView.addJavascriptInterface(new SecureSpoonBridge(webView, secureCredentialManager), "SpoonVault");
