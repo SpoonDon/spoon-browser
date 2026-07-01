@@ -1189,9 +1189,12 @@ case "Exit":
                 return false; // Force internal loading of standard web addresses instead of dropping back to super
             }
 
-
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT && view != null) {
+                    view.getSettings().setXRequestedWithHeaderOriginAllowList(new java.util.HashSet<>());
+                }
+
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
                 }
