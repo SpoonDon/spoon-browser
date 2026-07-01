@@ -937,6 +937,37 @@ case "Exit":
     }
     
     private void configureWebSettings(WebSettings settings) {
+        if (settings == null) return;
+        
+        // 1. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setJavaScriptEnabled(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+
+        // 2. Cross-Origin Contexts & Mixed Security Handshakes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
+
+        // 3. Media Decoder Stream Playback Configuration (Fixes YouTube playback)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            settings.setMediaPlaybackRequiresUserGesture(false);
+        }
+        
+        // 4. Thread-Safe Session Authentication Cookie Synchronizers
+        try {
+            android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
+            cm.setAcceptCookie(true);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                if (this.webView != null) {
+                    cm.setAcceptThirdPartyCookies(this.webView, true);
+                }
+            }
+        } catch (Exception ignored) {}
+    } // Closes our safe injected block wrapper cleanly
+
         if (settings == null) return; // Fail-safe guard against startup NullPointerExceptions
 
         // Core Web Capabilities
