@@ -95,6 +95,27 @@ public class SecureCredentialManager {
         saveVault();
     }
 
+    /**
+     * Deletes a specific saved login credential record from the vault.
+     */
+    public synchronized void deleteCredentials(String host, String username) {
+        if (host == null || username == null) return;
+        String cleanUser = username.trim();
+        memoryPrefs.remove(host + "_" + cleanUser + "_user");
+        memoryPrefs.remove(host + "_" + cleanUser + "_pass");
+        saveVault();
+    }
+
+    /**
+     * Modifies an existing saved password record inside the vault.
+     */
+    public synchronized void editCredentialPassword(String host, String username, String newPassword) {
+        if (host == null || username == null || newPassword == null) return;
+        String cleanUser = username.trim();
+        memoryPrefs.put(host + "_" + cleanUser + "_pass", newPassword);
+        saveVault();
+    }
+
     public synchronized String getUsername(String host) {
         // Fallback method used by legacy calls: returns the first user found
         if (host == null) return "";

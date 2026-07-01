@@ -89,5 +89,17 @@ public class SecureSpoonBridge {
         }
         credentialManager.saveCredentials(host, username, password);
     }
+
+    @JavascriptInterface
+    public void deleteLogin(String host, String username) {
+        if (host == null || username == null) return;
+        credentialManager.deleteCredentials(host, username);
+    }
+
+    @JavascriptInterface
+    public void editLoginPassword(String host, String username, String newPassword) {
+        if (host == null || username == null || newPassword == null) return;
+        credentialManager.editCredentialPassword(host, username, newPassword);
+    }
 }
 
