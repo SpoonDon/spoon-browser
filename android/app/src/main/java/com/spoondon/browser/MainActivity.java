@@ -1075,10 +1075,16 @@ case "Exit":
 
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
+                if (isDialog) {
+                    WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                    transport.setWebView(view);
+                    resultMsg.sendToTarget();
+                    return true;
+                }
                 createNewTab();
                 WebView newWebView = getCurrentWebView();
                 if (newWebView != null) {
-                    WebViewTransport transport = (WebViewTransport) resultMsg.obj;
+                    WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
                     transport.setWebView(newWebView);
                     resultMsg.sendToTarget();
                     return true;
