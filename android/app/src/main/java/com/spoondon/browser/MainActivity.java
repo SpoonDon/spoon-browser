@@ -976,18 +976,13 @@ case "Exit":
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true); 
         }
-
+        
         // 7. Thread-Safe Session Authentication Cookie Synchronizers
         try {
             android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
             cm.setAcceptCookie(true);
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                if (this.webView != null) {
-                    cm.setAcceptThirdPartyCookies(this.webView, true);
-                }
-            }
         } catch (Exception ignored) {}
-
+    
         // 8. User-Agent Profile Engine Matrix
         boolean forceDesktop = false;
         try {
