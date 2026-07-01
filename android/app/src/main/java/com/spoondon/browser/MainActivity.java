@@ -942,7 +942,7 @@ case "Exit":
         // 1. Core Web & Javascript Capabilities
         settings.setJavaScriptEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(false);
+        settings.setSupportMultipleWindows(true);
 
         // 2. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
         settings.setDomStorageEnabled(true);
