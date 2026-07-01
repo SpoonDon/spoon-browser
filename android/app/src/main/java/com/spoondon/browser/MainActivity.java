@@ -947,6 +947,7 @@ case "Exit":
         // 2. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
+        settings.setSaveFormData(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
         // 3. File & Local Storage Access Configuration
@@ -1461,6 +1462,10 @@ case "Exit":
         WebView webView = new WebView(this);
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
+        
+        // Stabilize focus persistence across dynamic layout changes
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
 
         // Configure default native web settings
         configureWebSettings(webView.getSettings());
