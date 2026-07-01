@@ -1192,7 +1192,12 @@ case "Exit":
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT && view != null) {
-                    view.getSettings().setXRequestedWithHeaderOriginAllowList(new java.util.HashSet<>());
+                    try {
+                        androidx.webkit.WebSettingsCompat.setRequestedWithHeaderOriginAllowList(
+                            view.getSettings(), 
+                            new java.util.HashSet<String>()
+                        );
+                    } catch (Throwable ignored) {}
                 }
 
                 if (view == getCurrentWebView() && addressBar != null) {
