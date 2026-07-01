@@ -937,8 +937,10 @@ case "Exit":
                 TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
         );
     }
-
+    
     private void configureWebSettings(WebSettings settings) {
+        if (settings == null) return; // Fail-safe guard against startup NullPointerExceptions
+
         // Core Web Capabilities
         settings.setJavaScriptEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
@@ -988,9 +990,16 @@ case "Exit":
         settings.setDisplayZoomControls(false);
 
         // --- PERSISTENT USER-AGENT & VIEWPORT RESOLUTION MATRIX ---
-        // Read saved setting to override volatile state memory variables
-        android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
-        boolean forceDesktop = prefs.getBoolean("isDesktopMode", isDesktopMode);
+        boolean forceDesktop = false;
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
+            if (prefs != null) {
+                forceDesktop = prefs.getBoolean("isDesktopMode", false);
+            }
+        } catch (Exception e) {
+            // Context wasn't fully initialized yet; fall back to standard mobile view safely
+            forceDesktop = false;
+        }
 
         if (forceDesktop) {
             // Apply standard Linux x86 desktop footprint
