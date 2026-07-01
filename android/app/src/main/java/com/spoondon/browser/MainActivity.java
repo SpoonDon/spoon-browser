@@ -1511,7 +1511,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         return webView;
     }
 
-    private void createNewTab() {
+        private void createNewTab() {
         WebView webView = createConfiguredWebView();
 
         // Force full hardware GPU pipeline rendering
@@ -1520,44 +1520,67 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
         }
         webView.setDrawingCacheEnabled(false);
 
-        // NATIVE DOWNLOAD ENGINE INTEGRATION
+        // Instantiated bridge reference to keep background allocations clean
+        BlobDownloader downloaderBridge = new BlobDownloader(this);
+
+        // Link the javascript extraction layout bridge to the view context
+        webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
+
+        // The Unified Core Download Engine Interface
         webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
             try {
-                // Initialize the System Download Manager Service
-                android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
-                
-                // Mirror the browser's current User-Agent and Cookies so authenticated sessions don't drop the download
-                request.setMimeType(mimetype);
-                String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
-                request.addRequestHeader("cookie", cookies);
-                request.addRequestHeader("User-Agent", userAgent);
-                
-                // Chrome-style configuration: visible status bar notifications during and after download completion
-                request.setDescription("Downloading file...");
-                String fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
-                request.setTitle(fileName);
-                
-                // Auto-scan the downloaded asset via media scanner systems
-                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
-                    request.allowScanningByMediaScanner();
+                String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
+
+                if (url.startsWith("blob:")) {
+                    // Script extraction path for javascript memory space blobs
+                    String extractionScript = "javascript:(function() {" +
+                            "  var request = new XMLHttpRequest();" +
+                            "  request.open('GET', '" + url + "', true);" +
+                            "  request.responseType = 'blob';" +
+                            "  request.onload = function() {" +
+                            "    if (this.status === 200) {" +
+                            "      var dataReader = new FileReader();" +
+                            "      dataReader.readAsDataURL(this.response);" +
+                            "      dataReader.onloadend = function() {" +
+                            "        AndroidDownloader.saveBase64ToFile(dataReader.result, '" + mimetype + "', '" + targetFileName + "');" +
+                            "      };" +
+                            "    }" +
+                            "  };" +
+                            "  request.send();" +
+                            "})();";
+                    webView.evaluateJavascript(extractionScript, null);
+                } 
+                else if (url.startsWith("data:")) {
+                    // Directly hand processing array down to base64 decoder
+                    downloaderBridge.saveBase64ToFile(url, mimetype, targetFileName);
+                } 
+                else {
+                    // Standard Download Engine block for normal files/links
+                    android.app.DownloadManager.Request downloadRequest = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                    downloadRequest.setMimeType(mimetype);
+                    
+                    String activeCookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                    downloadRequest.addRequestHeader("cookie", activeCookies);
+                    downloadRequest.addRequestHeader("User-Agent", userAgent);
+                    
+                    downloadRequest.setTitle(targetFileName);
+                    downloadRequest.setDescription("Downloading file assets...");
+                    downloadRequest.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    
+                    java.io.File destinationPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    downloadRequest.setDestinationUri(android.net.Uri.fromFile(new java.io.File(destinationPath, targetFileName)));
+                    
+                    android.app.DownloadManager systemService = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    if (systemService != null) {
+                        systemService.enqueue(downloadRequest);
+                        android.widget.Toast.makeText(this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
+                    }
                 }
-                
-                // Notify the user when compilation completes
-                request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                
-                // Store file directly into the public shared Downloads directory ecosystem
-                request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName);
-                
-                android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                if (dm != null) {
-                    dm.enqueue(request);
-                    android.widget.Toast.makeText(this, "Download started: " + fileName, android.widget.Toast.LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                android.widget.Toast.makeText(this, "Download failed: " + e.getMessage(), android.widget.Toast.LENGTH_SHORT).show();
+            } catch (Exception err) {
+                android.widget.Toast.makeText(this, "Download manager initialization failed", android.widget.Toast.LENGTH_SHORT).show();
             }
         });
-        
+
         tabs.add(webView);
         currentTab = tabs.size() - 1;
 
@@ -1568,7 +1591,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
             );
             // Natively attach to layout tree immediately, default to hidden
             webView.setVisibility(View.GONE);
-                        if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
+            if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
             browserContainer.addView(webView, params);
         }
         
