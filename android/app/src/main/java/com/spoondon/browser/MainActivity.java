@@ -1191,10 +1191,10 @@ case "Exit":
             }
 
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                // Force transient security cookies to commit to disk right as the navigation handoff begins
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    android.webkit.CookieManager.getInstance().flush();
-                }
+            // Force transient security cookies to commit to disk right as the navigation handoff begins
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                android.webkit.CookieManager.getInstance().flush();
+            }
 
                 // Native Anti-Tracking: Remove app tracking footprint safely
                 if (view != null) {
