@@ -2093,15 +2093,33 @@ case "Exit":
 
             ContentFilterEngine newEngine = new ContentFilterEngine();
             for (String filterUrl : filterLists) {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(new java.net.URL(filterUrl).openStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        line = line.trim();
-                        if (line.isEmpty() || line.startsWith("!")) continue;
-                        newEngine.addRule(line);
+                try {
+                    // Look for the saved file on the device first
+                    String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
+                    java.io.File localFile = new java.io.File(getFilesDir(), filename);
+                    java.io.InputStream inputStream;
+
+                    if (localFile.exists()) {
+                        // Load instantly from local storage cache (Zero network usage!)
+                        inputStream = new java.io.FileInputStream(localFile);
+                    } else {
+                        // Fallback to network download only if it hasn't been saved yet
+                        java.net.URLConnection conn = new java.net.URL(filterUrl).openConnection();
+                        conn.setConnectTimeout(5000);
+                        conn.setReadTimeout(5000);
+                        inputStream = conn.getInputStream();
+                    }
+
+                    try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            line = line.trim();
+                            if (line.isEmpty() || line.startsWith("!")) continue;
+                            newEngine.addRule(line);
+                        }
                     }
                 } catch (Exception e) {
-                    android.util.Log.e("SpoonBlocker", "Filter download failed: " + filterUrl);
+                    android.util.Log.e("SpoonBlocker", "Filter load failed: " + filterUrl);
                 }
             }
 
