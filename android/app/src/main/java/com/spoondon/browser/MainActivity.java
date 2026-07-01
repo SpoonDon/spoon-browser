@@ -1567,7 +1567,8 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP)
                     downloadRequest.setDescription("Downloading file assets...");
                     downloadRequest.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                     
-                    java.io.File destinationPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    java.io.File destinationPath = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                    
                     downloadRequest.setDestinationUri(android.net.Uri.fromFile(new java.io.File(destinationPath, targetFileName)));
                     
                     android.app.DownloadManager systemService = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
