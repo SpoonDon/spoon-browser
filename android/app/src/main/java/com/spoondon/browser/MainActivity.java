@@ -964,9 +964,9 @@ case "Exit":
             settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
         }
 
-        // Background Autoplay Optimization (Correct API Method Target)
+        // Background Autoplay Optimization - Throttled to mitigate device heat spikes
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setMediaPlaybackRequiresUserGesture(true);
         }
 
         // Append speculative pre-rendering if utilizing a modern layout bridge
@@ -976,44 +976,35 @@ case "Exit":
 
         // Securely handle modern mixed HTTPS/HTTP layout assets dynamically
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            // Set to MIXED_CONTENT_COMPATIBILITY_MODE to allow flawless rendering of 
-            // mixed content elements (like third-party images/avatars on forums) just like mainstream browsers
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
 
-        // Dynamically scale viewports and signatures according to mode selection
-        if (isDesktopMode) {
+        // Block untracked background location polling loops from eating battery cycles
+        settings.setGeolocationEnabled(false);
+
+        // Zoom UI controls setup
+        settings.setSupportZoom(true);
+        settings.setBuiltInZoomControls(true);
+        settings.setDisplayZoomControls(false);
+
+        // --- PERSISTENT USER-AGENT & VIEWPORT RESOLUTION MATRIX ---
+        // Read saved setting to override volatile state memory variables
+        android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
+        boolean forceDesktop = prefs.getBoolean("isDesktopMode", isDesktopMode);
+
+        if (forceDesktop) {
+            // Apply standard Linux x86 desktop footprint
             settings.setUserAgentString(DESKTOP_UA);
             settings.setUseWideViewPort(true);
             settings.setLoadWithOverviewMode(true);
-            settings.setSupportZoom(true);
-            settings.setBuiltInZoomControls(true);
-            settings.setDisplayZoomControls(false);
         } else {
+            // Revert back to cool responsive smartphone footprint
             settings.setUserAgentString(MOBILE_UA);
             settings.setUseWideViewPort(false);
             settings.setLoadWithOverviewMode(false);
-            settings.setSupportZoom(true);
-            settings.setBuiltInZoomControls(true);
-            settings.setDisplayZoomControls(false);
-        }
-
-                // 1. Throttle background JavaScript loops to lower CPU spikes
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(true);
-        }
-
-        // 2. Prevent infinite render cache building (stops memory-leak heating)
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        
-        // 3. Block tracking scripts and location-polling loops from eating background cycles
-        settings.setGeolocationEnabled(false);
-        
-        // 4. Force memory management optimizations on the rendering layer
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            WebView.enableSlowWholeDocumentDraw(); 
         }
     }
+
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
             @Override
