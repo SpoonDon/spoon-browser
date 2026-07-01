@@ -1438,7 +1438,6 @@ case "Exit":
             @Override
             public void onSafeBrowsingHit(WebView view, WebResourceRequest request, int threatType, SafeBrowsingResponse callback) {
                 callback.backToSafety(true);
-            }
         };
     }
 
