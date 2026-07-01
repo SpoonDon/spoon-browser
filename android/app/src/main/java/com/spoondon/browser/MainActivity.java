@@ -997,6 +997,22 @@ case "Exit":
             settings.setBuiltInZoomControls(true);
             settings.setDisplayZoomControls(false);
         }
+
+                // 1. Throttle background JavaScript loops to lower CPU spikes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            settings.setMediaPlaybackRequiresUserGesture(true);
+        }
+
+        // 2. Prevent infinite render cache building (stops memory-leak heating)
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        
+        // 3. Block tracking scripts and location-polling loops from eating background cycles
+        settings.setGeolocationEnabled(false);
+        
+        // 4. Force memory management optimizations on the rendering layer
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            WebView.enableSlowWholeDocumentDraw(); 
+        }
     }
     private WebChromeClient createWebChromeClient() {
         return new WebChromeClient() {
