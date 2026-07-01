@@ -173,6 +173,17 @@ public class SecureCredentialManager {
         return array.toString();
     }
 
+    
+    /**
+     * Modifies an existing saved password record inside the vault.
+     */
+    public synchronized void editCredentialPassword(String host, String username, String newPassword) {
+        if (host == null || username == null || newPassword == null) return;
+        String cleanUser = username.trim();
+        memoryPrefs.put(host + "_" + cleanUser + "_pass", newPassword);
+        saveVault();
+    }
+
     public synchronized void deleteCredentials(String host, String username) {
         if (host == null || username == null) return;
         try {
