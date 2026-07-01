@@ -128,9 +128,6 @@ public class MainActivity extends AppCompatActivity {
         
         super.onCreate(savedInstanceState);
         
-        android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
-        isDesktopMode = prefs.getBoolean("isDesktopMode", false);
-        
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
         }
@@ -167,7 +164,8 @@ public class MainActivity extends AppCompatActivity {
         );
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-
+        // Safely load your desktop mode preference here where context is fully ready
+        isDesktopMode = prefs.getBoolean("isDesktopMode", false);
         setupRootLayout();
         createToolbarViews();
         setupToolbarListeners();
