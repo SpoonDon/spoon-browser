@@ -1048,19 +1048,26 @@ case "Exit":
                 root.addView(customView);
             }
 
-            @Override
-            public void onPermissionRequest(final android.webkit.PermissionRequest request) {
-                String[] resources = request.getResources();
-                for (String resource : resources) {
-                    if (resource.equals(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) || 
-                        resource.equals(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
-                        request.deny();
-                        return;
-                    }
-                }
-                super.onPermissionRequest(request);
+    @Override
+    public void onPermissionRequest(final android.webkit.PermissionRequest request) {
+        // 1. Create a dynamic bucket for safe, verified resources
+        java.util.List<String> allowedResources = new java.util.ArrayList<>();
+        
+        // 2. Filter incoming tokens individually instead of treating the request as a single block
+        for (String resource : request.getResources()) {
+            if (!resource.equals(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) &&
+                !resource.equals(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                allowedResources.add(resource);
             }
-
+        }
+        
+        // 3. Grant only the harmless components, otherwise deny if nothing safe remains
+        if (!allowedResources.isEmpty()) {
+            request.grant(allowedResources.toArray(new String[0]));
+        } else {
+            request.deny();
+        }
+    }
 
             @Override
             public void onHideCustomView() {
