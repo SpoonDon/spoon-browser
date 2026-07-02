@@ -1602,7 +1602,6 @@ case "Exit":
         saveCurrentTab();
         updateTabIndicator();
         updateTabBadgeCount();
-        updateTabBadgeCount();
 
         if (browserContainer != null) {
             // High-Performance Visibility Toggle Pattern
