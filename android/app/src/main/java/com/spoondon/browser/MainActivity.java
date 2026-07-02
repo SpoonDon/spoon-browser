@@ -37,9 +37,6 @@ import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.PopupMenu;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
 import android.text.TextUtils;
 import android.app.AlertDialog;
 
