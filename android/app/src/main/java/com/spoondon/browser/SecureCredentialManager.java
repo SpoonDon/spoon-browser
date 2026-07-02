@@ -52,16 +52,37 @@ public class SecureCredentialManager {
     }
 
     private synchronized void saveVault() {
-        try (FileOutputStream fos = new FileOutputStream(vaultFile);
-             FileWriter writer = new FileWriter(fos.getFD())) {
-            for (Map.Entry<String, String> entry : memoryPrefs.entrySet()) {
-                if (entry.getValue() != null) {
-                    writer.write(entry.getKey() + "=" + encrypt(entry.getValue()) + "\n");
+        // Create a separate temporary ledger file within the same secure private directory
+        File tempFile = new File(vaultFile.getParentFile(), vaultFile.getName() + ".tmp");
+        
+        try {
+            // OPTIMIZATION: Explicitly bind file stream to UTF_8 to guarantee cross-platform compatibility
+            try (FileOutputStream fos = new FileOutputStream(tempFile);
+                 java.io.OutputStreamWriter writer = new java.io.OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
+                
+                for (Map.Entry<String, String> entry : memoryPrefs.entrySet()) {
+                    if (entry.getValue() != null) {
+                        writer.write(entry.getKey() + "=" + encrypt(entry.getValue()) + "\n");
+                    }
                 }
+                // Push the software buffer down to the kernel layer
+                writer.flush();
+                
+                // OPTIMIZATION: Force physical disk sectors to sync before the atomic swap takes place
+                fos.getFD().sync();
             }
-            writer.flush();
+
+            // OPTIMIZATION: Atomic file swap preserves the original database if a power-loss event occurs
+            if (!tempFile.renameTo(vaultFile)) {
+                throw new java.io.IOException("Failed to rename temporary vault file to production file");
+            }
+            
         } catch (Exception e) {
             e.printStackTrace();
+            // Perform fallback cleanup to prevent stray file accumulation
+            if (tempFile.exists()) {
+                tempFile.delete();
+            }
         }
     }
 
