@@ -1220,7 +1220,6 @@ case "Exit":
             }
 
                 // Native Anti-Tracking: Remove app tracking footprint safely
-                /* TEMPORARY MEDIA CHECK: Commenting out to see if empty allowlist blocks streams
                 if (view != null) {
                     try {
                         java.lang.reflect.Method method = view.getSettings().getClass().getMethod(
@@ -1230,8 +1229,7 @@ case "Exit":
                         method.invoke(view.getSettings(), new java.util.HashSet<String>());
                     } catch (Throwable ignored) {}
                 }
-                */
-
+                
                 if (view == getCurrentWebView() && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
                 }
