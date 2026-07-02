@@ -132,7 +132,6 @@ public class MainActivity extends AppCompatActivity {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
         }
 
-        setContentView(R.layout.activity_main);
         secureCredentialManager = new SecureCredentialManager(this);
  
         passwordImportLauncher = registerForActivityResult(
