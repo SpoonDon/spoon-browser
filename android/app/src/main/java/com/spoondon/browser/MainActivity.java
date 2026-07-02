@@ -984,16 +984,15 @@ case "Exit":
             cm.setAcceptCookie(true);
         } catch (Exception ignored) {}
     
-        // 8. User-Agent Profile Engine Matrix
-        boolean forceDesktop = false;
-        try {
-            android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
-            if (prefs != null) {
-                forceDesktop = prefs.getBoolean("isDesktopMode", false);
-            }
-        } catch (Exception e) {
-            forceDesktop = false;
-        }
+     // 8. User-Agent Profile Engine Matrix
+     boolean forceDesktop = false;
+     try {
+         if (prefs != null) {
+             forceDesktop = prefs.getBoolean("isDesktopMode", false);
+         }
+     } catch (Exception e) {
+         forceDesktop = false;
+     }
 
         if (forceDesktop) {
             settings.setUserAgentString(DESKTOP_UA);
@@ -2486,13 +2485,14 @@ case "Exit":
         }
     }
 
-    private void toggleDesktopMode() {
-        isDesktopMode = !isDesktopMode;
+ private void toggleDesktopMode() {
+     isDesktopMode = !isDesktopMode;
 
-        // Save the new state permanently so it survives app restarts
-        android.content.SharedPreferences prefs = getSharedPreferences("SpoonBrowserPrefs", MODE_PRIVATE);
-        prefs.edit().putBoolean("isDesktopMode", isDesktopMode).apply();
-        
+     // Save the new state permanently so it survives app restarts
+     if (prefs != null) {
+         prefs.edit().putBoolean("isDesktopMode", isDesktopMode).apply();
+     }
+    
         if (currentTab >= 0 && currentTab < tabs.size()) {
             WebView activeWebView = tabs.get(currentTab);
             if (activeWebView != null) {
