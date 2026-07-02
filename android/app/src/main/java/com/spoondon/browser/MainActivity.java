@@ -190,15 +190,17 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
     }
-
+    
     @Override
     public void onResume() {
         super.onResume();
         handleIncomingIntent(getIntent());
-        try {
-            stopService(new Intent(this, BackgroundMediaService.class));
-        } catch (Exception e) {
-            e.printStackTrace();
+        
+        // OPTIMIZATION: Wake up the active WebView engine and resume its internal rendering loops
+        WebView activeWebView = getCurrentWebView();
+        if (activeWebView != null) {
+            activeWebView.onResume();
+            activeWebView.resumeTimers();
         }
     }
     
@@ -225,7 +227,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Keep this clean and lightweight to prevent thread-locking with onStop
+        
+        // OPTIMIZATION: Suspend active media streams, CSS animations, and JS intervals.
+        // This resets HTML5 Page Visibility targets, completely fixing the YouTube main stream loading bug.
+        WebView activeWebView = getCurrentWebView();
+        if (activeWebView != null) {
+            activeWebView.onPause();
+            activeWebView.pauseTimers();
+        }
     }
 
     @Override
