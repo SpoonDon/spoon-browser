@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.core.app.NotificationCompat;
@@ -29,14 +30,24 @@ public class BackgroundMediaService extends Service {
                 .setOngoing(true)
                 .build();
 
-        // Start as an explicit mediaPlayback foreground service
-        startForeground(NOTIFICATION_ID, notification);
+        // OPTIMIZATION: Enforce explicit runtime service types to comply with Android 14/15 security models
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
 
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        // OPTIMIZATION: Force immediate removal of persistent notifications to prevent zombie icons
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
         super.onDestroy();
     }
 
