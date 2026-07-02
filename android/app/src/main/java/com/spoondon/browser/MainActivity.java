@@ -419,74 +419,93 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-
-
+    
     private void showSavedPasswordsDialog() {
         if (secureCredentialManager == null) return;
         
-        // Find all unique hosts by checking keys in our custom vault file layer
-        java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
-        java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
-        if (vaultFile.exists()) {
-            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(vaultFile), java.nio.charset.StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (line.contains("_user=")) {
-                        String host = line.split("_user=")[0];
-                        if (!hosts.contains(host)) {
-                            hosts.add(host);
+        new Thread(() -> {
+            // 1. Offload file disk parsing safely to background worker thread
+            java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
+            java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
+            if (vaultFile.exists()) {
+                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(vaultFile), java.nio.charset.StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = r.readLine()) != null) {
+                        if (line.contains("_user=")) {
+                            String host = line.split("_user=")[0];
+                            if (!hosts.contains(host)) {
+                                hosts.add(host);
+                            }
                         }
                     }
-                }
+                } catch (Exception e) { e.printStackTrace(); }
+            }
 
-            } catch (Exception e) { e.printStackTrace(); }
-        }
+            // 2. Switch back to the UI thread if no passwords exist to paint the empty alert dialog
+            if (hosts.isEmpty()) {
+                runOnUiThread(() -> {
+                    new AlertDialog.Builder(this)
+                        .setTitle("Saved Passwords")
+                        .setMessage("No passwords saved yet.")
+                        .setPositiveButton("OK", null)
+                        .show();
+                });
+                return;
+            }
 
-        if (hosts.isEmpty()) {
-            new AlertDialog.Builder(this)
-                .setTitle("Saved Passwords")
-                .setMessage("No passwords saved yet.")
-                .setPositiveButton("OK", null)
-                .show();
-            return;
-        }
+            // 3. Process background decryption operations before attempting view rendering
+            java.util.ArrayList<String> displayList = new java.util.ArrayList<>();
+            for (String h : hosts) {
+                String user = secureCredentialManager.getUsername(h);
+                displayList.add(h + " (" + user + ")");
+            }
 
-        java.util.ArrayList<String> displayList = new java.util.ArrayList<>();
-        for (String h : hosts) {
-            String user = secureCredentialManager.getUsername(h);
-            displayList.add(h + " (" + user + ")");
-        }
+            // 4. Safely return back to the main layout channel to build and show the dialog boxes
+            runOnUiThread(() -> {
+                ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayList);
+                ListView listView = new ListView(this);
+                listView.setAdapter(adapter);
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayList);
-        ListView listView = new ListView(this);
-        listView.setAdapter(adapter);
+                AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle("Saved Passwords")
+                    .setView(listView)
+                    .setPositiveButton("Close", null)
+                    .create();
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("Saved Passwords")
-            .setView(listView)
-            .setPositiveButton("Close", null)
-            .create();
+                listView.setOnItemClickListener((parent, view, position, id) -> {
+                    String selectedHost = hosts.get(position);
+                    
+                    // Offload individual account key extraction to a worker thread
+                    new Thread(() -> {
+                        String user = secureCredentialManager.getUsername(selectedHost);
+                        String pass = secureCredentialManager.getPassword(selectedHost);
+                        
+                        runOnUiThread(() -> {
+                            new AlertDialog.Builder(this)
+                                .setTitle(selectedHost)
+                                .setMessage("Username: " + user + "\nPassword: " + pass)
+                                .setNegativeButton("Delete", (d, w) -> {
+                                    // Handle safe asynchronous database cleanup entries
+                                    new Thread(() -> {
+                                        secureCredentialManager.clearCredentials(selectedHost);
+                                        runOnUiThread(() -> {
+                                            Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
+                                            dialog.dismiss();
+                                            showSavedPasswordsDialog(); // Safe refresh loop recursion
+                                        });
+                                    }).start();
+                                })
+                                .setPositiveButton("OK", null)
+                                .show();
+                        });
+                    }).start();
+                });
 
-        listView.setOnItemClickListener((parent, view, position, id) -> {
-            String selectedHost = hosts.get(position);
-            String user = secureCredentialManager.getUsername(selectedHost);
-            String pass = secureCredentialManager.getPassword(selectedHost);
-            
-            new AlertDialog.Builder(this)
-                .setTitle(selectedHost)
-                .setMessage("Username: " + user + "\nPassword: " + pass)
-                .setNegativeButton("Delete", (d, w) -> {
-                    secureCredentialManager.clearCredentials(selectedHost);
-                    Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
-                    dialog.dismiss();
-                    showSavedPasswordsDialog(); // Refresh
-                })
-                .setPositiveButton("OK", null)
-                .show();
-        });
-
-        dialog.show();
+                dialog.show();
+            });
+        }).start();
     }
+
 
     private void setupMenuButton() {
     menuButton.setOnClickListener(v -> {
