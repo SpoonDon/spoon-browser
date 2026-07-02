@@ -718,9 +718,9 @@ case "Exit":
         });
 
         // Keep your existing adapter and text watcher setups underneath...
-        
-        addressBarAdapter = new ArrayAdapter<String>(this, R.layout.modern_list_item, new ArrayList<>()) {
-            @Override
+        addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
+
+                    @Override
             public android.widget.Filter getFilter() {
                 return new android.widget.Filter() {
                     @Override
