@@ -2113,7 +2113,7 @@ case "Exit":
 
     }
     
-    private void triggerExternalDownload(String url, String mimeType) {
+private void triggerExternalDownload(String url, String mimeType) {
         try {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
             if (mimeType != null && !mimeType.isEmpty()) {
@@ -2122,20 +2122,20 @@ case "Exit":
                 intent.setData(android.net.Uri.parse(url));
             }
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-            android.content.Intent chooser = android.content.Intent.createChooser(intent, "Download File via...");
-            chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(chooser);
-        } catch (Exception e) {
-            try {
-                android.content.Intent fallback = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
-                fallback.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(fallback);
-            } catch (Exception fatal) {
-                Toast.makeText(MainActivity.this, "No download handler found on device", Toast.LENGTH_SHORT).show();
+            
+            // Safe check to ensure an app exists to handle this
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(android.content.Intent.createChooser(intent, "Download File via..."));
+            } else {
+                Toast.makeText(this, "No external app found to handle this download.", Toast.LENGTH_SHORT).show();
             }
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "No compatible app found on device.", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Download failed to initiate.", Toast.LENGTH_SHORT).show();
         }
     }
-
+    
  private void toggleDesktopMode() {
      isDesktopMode = !isDesktopMode;
 
@@ -2153,7 +2153,7 @@ case "Exit":
         }
     }
 
-    // Phishing & Typosquatting Detection Engine
+// Phishing & Typosquatting Detection Engine
     private boolean isPhishingRisk(String host) {
         if (host == null) return false;
         String clean = host.toLowerCase().trim();
@@ -2170,10 +2170,14 @@ case "Exit":
             if (distance > 0 && distance <= 2) {
                 return true; // Dangerously close variation detected!
             }
+
+            // Check for malicious subdomains or hyphenated fakes (e.g., secure-paypal.com)
+            if (clean.contains(target.replace(".com", "")) && !clean.endsWith("." + target) && !clean.equals(target)) {
+                return true; 
+            }
         }
         return false;
     }
-
     private int getLevenshteinDistance(String s, String t) {
         if (s == null || t == null) return 0;
         int[] p = new int[s.length() + 1];
