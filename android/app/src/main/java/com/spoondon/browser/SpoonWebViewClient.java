@@ -90,16 +90,52 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
 
-        // 2. Inject Vault Credentials Securely (Base64 Refactored)
-        if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
-            String rawJson = activity.secureCredentialManager.getAllCredentialsAsJson();
-            String base64Data = Base64.encodeToString(rawJson.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-            String injectionJs = "javascript:(function() {" +
-                                 "  if (typeof receiveNativeData === 'function') {" +
-                                 "    receiveNativeData(atob('" + base64Data + "'));" +
-                                 "  }" +
-                                 "})();";
-            view.evaluateJavascript(injectionJs, null);
-        }
+if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
+    String secureAutofillScript = "javascript:(function() {" +
+        "  if (typeof spoonVaultMessage === 'undefined') return;" +
+        "  " +
+        "  spoonVaultMessage.addEventListener('message', function(event) {" +
+        "    try {" +
+        "      var accounts = JSON.parse(event.data);" +
+        "      if (accounts && accounts.length > 0) {" +
+        "        var inputs = document.querySelectorAll('input');" +
+        "        inputs.forEach(function(input) {" +
+        "          var type = (input.type || '').toLowerCase();" +
+        "          if (type === 'password') input.value = accounts[0].password;" +
+        "          else if (['text', 'email', 'tel'].indexOf(type) !== -1) input.value = accounts[0].username;" +
+        "        });" +
+        "      }" +
+        "    } catch(e) {}" +
+        "  });" +
+        "  " +
+        "  spoonVaultMessage.postMessage('FETCH_CREDENTIALS');" +
+        "  " +
+        "  function hookForms() {" +
+        "    try {" +
+        "      var forms = document.querySelectorAll('form');" +
+        "      forms.forEach(function(form) {" +
+        "        if (form.dataset.spoonHooked) return;" +
+        "        form.dataset.spoonHooked = 'true';" +
+        "        form.addEventListener('submit', function() {" +
+        "          var user = ''; var pass = '';" +
+        "          var inputs = form.querySelectorAll('input');" +
+        "          inputs.forEach(function(input) {" +
+        "            var type = (input.type || '').toLowerCase();" +
+        "            if (type === 'password') pass = input.value;" +
+        "            else if (['text', 'email', 'tel'].indexOf(type) !== -1) user = input.value;" +
+        "          });" +
+        "          if (user && pass) {" +
+        "            spoonVaultMessage.postMessage('SAVE_LOGIN:' + user + ':' + pass);" +
+        "          }" +
+        "        });" +
+        "      });" +
+        "    } catch(e) {}" +
+        "  }" +
+        "  hookForms();" +
+        "  setTimeout(hookForms, 2000);" +
+        "})();";
+
+    view.evaluateJavascript(secureAutofillScript, null);
+}
     }
 }
