@@ -1032,131 +1032,7 @@ case "Exit":
             settings.setLoadWithOverviewMode(false);
         }
     }
-
-    private WebChromeClient createWebChromeClient() {
-        return new WebChromeClient() {
-            @Override
-            public void onShowCustomView(View view, CustomViewCallback callback) {
-                if (customView != null) {
-                    callback.onCustomViewHidden();
-                    return;
-                }
-                if (view.getParent() instanceof ViewGroup) {
-                    ((ViewGroup) view.getParent()).removeView(view);
-                }
-                customView = view;
-                customViewCallback = callback;
-                customView.setKeepScreenOn(true);
-                toolbar.setVisibility(View.GONE);
-                browserContainer.setVisibility(View.GONE);
-                root.addView(customView);
-            }
-            
-            @Override
-            public void onPermissionRequest(final android.webkit.PermissionRequest request) {
-                android.net.Uri origin = request.getOrigin();
-                String host = (origin != null && origin.getHost() != null) 
-                    ? origin.getHost().toLowerCase(java.util.Locale.ROOT) 
-                    : "";
-
-                java.util.List<String> allowedResources = new java.util.ArrayList<>();
-
-                for (String resource : request.getResources()) {
-                    // SURGICAL GATEWAY: Only intercept secure media decryption keys
-                    if (resource.equals(android.webkit.PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID)) {
-                        // Verify the request originates strictly from a trusted media streaming platform
-                        if (host.endsWith("youtube.com") || 
-                            host.endsWith("googlevideo.com") || 
-                            host.endsWith("twitch.tv") || 
-                            host.endsWith("spotify.com")) {
-                            allowedResources.add(resource);
-                        }
-                    }
-                    // Camera, Microphone, MIDI, and all other background security probes 
-                    // are completely ignored here, leaving allowedResources empty for them.
-                }
-
-                // Grant exclusively our verified media playback token, otherwise fallback
-                // to a clean rejection to preserve the browser's native login signature.
-                if (!allowedResources.isEmpty()) {
-                    request.grant(allowedResources.toArray(new String[0]));
-                } else {
-                    request.deny();
-                }
-            }
-
-            @Override
-            public void onHideCustomView() {
-                toolbar.setVisibility(View.VISIBLE);
-                browserContainer.setVisibility(View.VISIBLE);
-                if (customView != null) {
-                    root.removeView(customView);
-                }
-                if (customViewCallback != null) {
-                    customViewCallback.onCustomViewHidden();
-                }
-                customView = null;
-                customViewCallback = null;
-            }
-
-            @Override
-            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                if (fileChooserCallback != null) {
-                    fileChooserCallback.onReceiveValue(null);
-                }
-                fileChooserCallback = filePathCallback;
-                try {
-                    filePickerLauncher.launch("*/*");
-                } catch (Exception e) {
-                    fileChooserCallback = null;
-                    return false;
-                }
-                return true;
-            }
-
-            @Override
-            public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
-                // Deny geolocation permissions automatically to keep container security maintenance-free
-                callback.invoke(origin, false, false);
-            }
-
-            @Override
-            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
-                if (isDialog) {
-                    WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                    transport.setWebView(view);
-                    resultMsg.sendToTarget();
-                    return true;
-                }
-                createNewTab();
-                WebView newWebView = getCurrentWebView();
-                if (newWebView != null) {
-                    WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                    transport.setWebView(newWebView);
-                    resultMsg.sendToTarget();
-                    return true;
-                }
-                return false;
-            }
-
-            @Override
-            public void onReceivedTitle(WebView view, String title) {
-                try {
-                    String url = null;
-                    try { url = view.getUrl(); } catch (Exception ignored) {}
-                    if (url != null && title != null && !title.isEmpty()) {
-                        synchronized (pageTitles) {
-                            pageTitles.put(url, title);
-                        }
-                        savePageTitles();
-                    }
-                } catch (Exception e) {
-                    android.util.Log.w("SpoonBrowser", "onReceivedTitle failed", e);
-                }
-            }
-        };
-    }
-
+    
     private View.OnLongClickListener createImageLongClickListener(WebView webView) {
         return v -> {
             WebView.HitTestResult result = webView.getHitTestResult();
@@ -1170,347 +1046,6 @@ case "Exit":
                 return true;
             }
             return false;
-        };
-    }
-
-    private WebViewClient createWebViewClient() {
-        return new WebViewClient() {
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                Uri url = request.getUrl();
-                if (url != null) {
-                    String urlString = url.toString();
-                    synchronized (filterEngine) {
-                        if (filterEngine.shouldBlock(urlString)) {
-                            return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
-                        }
-                    }
-                }
-                return super.shouldInterceptRequest(view, request);
-            }
-
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                // CRITICAL CAPTCHA FIX: Let background iframes (like Cloudflare) load natively
-                // without interrupting the main page or resetting the form DOM.
-                if (!request.isForMainFrame()) {
-                    return false; 
-                }
-
-                Uri url = request.getUrl();
-                if (url != null) {
-                    String urlString = url.toString();
-
-                    // Route magnet links and torrent files to external download managers
-                    if (urlString.startsWith("magnet:") || urlString.endsWith(".torrent")) {
-                        try {
-
-                            Intent intent = new Intent(Intent.ACTION_VIEW, url);
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            view.getContext().startActivity(intent);
-                            return true; // Tells WebView we handled the link externally
-                        } catch (Exception e) {
-                            android.widget.Toast.makeText(view.getContext(),
-                                "No app found to handle torrent/magnet links",
-                                android.widget.Toast.LENGTH_SHORT).show();
-                            return true;
-                        }
-                    }
-
-                    // Fail-Safe: Intercept App Intents & Custom Deep-Links (Point #4/Engine Safety Patch)
-                    // This stops native rendering engines from crashing when web apps force a redirect
-                    if (!urlString.startsWith("http://") && !urlString.startsWith("https://") && !urlString.startsWith("javascript:")) {
-                        try {
-                            Intent intent = Intent.parseUri(urlString, Intent.URI_INTENT_SCHEME);
-                            if (intent != null) {
-                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                view.getContext().startActivity(intent);
-                                return true; // Block the WebView from trying to compile a custom URI scheme
-                            }
-                        } catch (Exception e) {
-                            // If no deep-link app handler exists on device, drop the unrenderable URL silently
-                            return true;
-                        }
-                    }
-                }
-                return false; // Force internal loading of standard web addresses instead of dropping back to super
-            }
-
-            public void onPageStarted(WebView view, String url, Bitmap favicon) {
-            // Force transient security cookies to commit to disk right as the navigation handoff begins
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                android.webkit.CookieManager.getInstance().flush();
-            }
-
-                // Native Anti-Tracking: Remove app tracking footprint safely
-                if (view != null) {
-                    try {
-                        java.lang.reflect.Method method = view.getSettings().getClass().getMethod(
-                            "setXRequestedWithHeaderOriginAllowList",
-                            java.util.Set.class
-                        );
-                        method.invoke(view.getSettings(), new java.util.HashSet<String>());
-                    } catch (Throwable ignored) {}
-                }
-                
-                if (view == getCurrentWebView() && addressBar != null) {
-                    addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
-                }
-
-                if (url != null && !url.isEmpty() && !url.equals("about:blank")
-                        && !url.startsWith("chrome-error://") && !url.startsWith("data:") && !url.startsWith("file://")) {
-                    if (history.isEmpty() || !history.get(history.size() - 1).equals(url)) {
-                        history.add(url);
-                        while (history.size() > MAX_HISTORY) {
-                            history.remove(0);
-                        }
-                        saveHistory();
-                    }
-                }
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    if (view != null) {
-                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(view, true);
-                    }
-                    android.webkit.CookieManager.getInstance().flush();
-                }
-
-                if (url != null && url.startsWith("http")) {
-                    android.net.Uri uri = android.net.Uri.parse(url);
-                    String host = uri.getHost();
-                    if (host != null) {
-                        String cleanHost = host.toLowerCase().trim();
-                        if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
-
-                        final String finalUrl = url;
-                        final String finalHost = cleanHost;
-                        backgroundExecutor.execute(() -> {
-                                boolean isRisk = isPhishingRisk(finalHost) || (finalUrl != null && finalUrl.contains("vault.html") && !finalUrl.startsWith("file:///android_asset/"));
-                                if (isRisk) {
-                                    runOnUiThread(() -> {
-                                                String warningJs = "javascript:(function() {" +
-                                                    "var overlay = document.createElement('div');" +
-                                                    "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +                
-                                                    "overlay.innerHTML = '<h1 style=\'font-size:32px;margin-bottom:10px;\'>⚠️ Deceptive Site Ahead</h1>" +
-                                                    "<p style=\'font-size:18px;max-width:500px;line-height:1.6;\'>Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>" +
-                                                    "<button id=\'spoon-back-btn\' style=\'margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;\'>Get Me Out of Here</button>';" +
-                                                    "document.body.appendChild(overlay);" +
-                                                    "document.getElementById('spoon-back-btn').addEventListener('click', function() { window.history.back(); });" +
-                                                    "})();";
-                                                view.evaluateJavascript(warningJs, null);
-        
-                                            });
-                                }
-                        });
-                        
-                        String js = "javascript:(function() {" +
-                            "var host = '" + cleanHost + "';" +
-                            "var usernamesData = [];" +
-                            "try { usernamesData = JSON.parse(SpoonVault.getAvailableUsernames(host)); } catch(e) {}" +
-
-                            "function forceUpdateValue(element, value) {" +
-                            "    element.value = value;" +
-                            "    ['input', 'change', 'blur'].forEach(function(type) {" +
-                            "        element.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));" +
-                            "    });" +
-                            "}" +
-
-                            "function findInputs(root) {" +
-                            "    var inputs = Array.from(root.querySelectorAll('input'));" +
-                            "    root.querySelectorAll('*').forEach(function(el) {" +
-                            "        if (el.shadowRoot) inputs = inputs.concat(findInputs(el.shadowRoot));" +
-                            "    });" +
-                            "    return inputs;" +
-                            "}" +
-
-                            "function createSpoonUI(targetInput, isPassword) {" +
-                            "    if (!usernamesData || usernamesData.length === 0) return;" +
-                            "    var activeMenu = document.getElementById('spoon-floating-vault-ui');" +
-                            "    if (activeMenu) activeMenu.remove();" +
-
-                            "    var menu = document.createElement('div');" +
-                            "    menu.id = 'spoon-floating-vault-ui';" +
-                            "    menu.style.cssText = 'position: absolute; z-index: 2147483647; background: #fff; border: 1px solid #ccc; box-shadow: 0px 4px 12px rgba(0,0,0,0.15); border-radius: 8px; font-family: sans-serif; width: ' + Math.max(targetInput.offsetWidth, 220) + 'px;';" +
-                            "    var rect = targetInput.getBoundingClientRect();" +
-                            "    menu.style.top = (rect.bottom + window.scrollY) + 'px';" +
-                            "    menu.style.left = (rect.left + window.scrollX) + 'px';" +
-
-                            "    usernamesData.forEach(function(acc) {" +
-                            "        var item = document.createElement('div');" +
-                            "        item.style.cssText = 'padding: 12px 14px; border-bottom: 1px solid #eee; cursor: pointer; color: #333; font-size: 14px; background: #fff;';" +
-                            "        item.innerText = isPassword ? 'Password for: ' + acc.username : acc.username;" +
-                            "        item.addEventListener('touchstart', function(e) {" +
-                            "            e.preventDefault(); e.stopPropagation();" +
-                            "            if (isPassword) {" +
-                            "                forceUpdateValue(targetInput, '');" +
-                            "                SpoonVault.requestPasswordFill(host, acc.username);" +
-                            "            } else {" +
-                            "                forceUpdateValue(targetInput, acc.username);" +
-                            "                SpoonVault.requestPasswordFill(host, acc.username);" +
-                            "            }" +
-                            "            menu.remove();" +
-                            "        }, { passive: false });" +
-                            "        menu.appendChild(item);" +
-                            "    });" +
-                            "    document.body.appendChild(menu);" +
-                            "}" +
-
-                            "document.addEventListener('click', function(e) {" +
-                            "    var target = e.composedPath ? e.composedPath()[0] : e.target;" +
-                            "    if (target && target.tagName === 'INPUT') {" +
-                            "        var type = (target.type || '').toLowerCase();" +
-                            "        var isUser = ['text', 'email', 'tel'].indexOf(type) !== -1 || !type;" +
-                            "        var isPass = type === 'password';" +
-                            "        if (isUser || isPass) { createSpoonUI(target, isPass); return; }" +
-                            "    }" +
-                            "    var menu = document.getElementById('spoon-floating-vault-ui');" +
-                            "    if (menu && !menu.contains(target)) menu.remove();" +
-                            "}, true);" +
-
-                            "document.addEventListener('change', function(e) {" +
-                            "    var target = e.composedPath ? e.composedPath()[0] : e.target;" +
-                            "    if (target && target.type === 'password') {" +
-                            "        var typedPass = target.value;" +
-                            "        var typedUser = '';" +
-                            "        findInputs(document).forEach(function(ui) {" +
-                            "            var ut = (ui.type || '').toLowerCase();" +
-                            "            if (ui.value && ['text', 'email', 'tel'].indexOf(ut) !== -1) typedUser = ui.value;" +
-                            "        });" +
-                            "        if (typedUser && typedPass && window.SpoonVault) SpoonVault.saveLogin(host, typedUser, typedPass);" +
-                            "    }" +
-                            "}, true);" +
-                            "})();";
-
-                        view.evaluateJavascript(js, null);
-                    }
-                    // 1. Initialize the native DOM style container sheet on the main window thread
-                view.evaluateJavascript(filterEngine.compileCosmeticJavascript(), null);
-
-                // 2. Stream target-scoped layout rules exclusively matching the current domain
-                java.util.List<String> cssBatches = filterEngine.getCosmeticStyleBatches(url);
-                for (String cssChunk : cssBatches) {
-                    String cleanChunk = cssChunk.replace("\\", "\\\\").replace("'", "\\'");
-                    String injectScript = "javascript:(function() {" +
-                            "var style = document.getElementById('spoon-cosmetic-sheets');" +
-                            "if (style) { style.appendChild(document.createTextNode('" + cleanChunk + "\\n')); }" +
-                            "})()";
-                    view.evaluateJavascript(injectScript, null);
-                }
-                    
-                }
-
-                if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
-                    String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                    String base64Data = android.util.Base64.encodeToString(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
-                    String injectionJs = "javascript:(function() {" +
-                                         "  if (typeof receiveNativeData === 'function') {" +
-                                         "    receiveNativeData(atob('" + base64Data + "'));" +
-                                         "  }" +
-                                         "})();";
-                    view.evaluateJavascript(injectionJs, null);
-                }
-
-                android.webkit.CookieManager.getInstance().flush();
-                if (view == getCurrentWebView() && addressBar != null) {
-                    addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
-                    try { if (addressBar.isAttachedToWindow()) addressBar.dismissDropDown(); } catch (Exception ignored) {}
-                }
-                updateTabIndicator();
-                saveOpenTabs();
-            } // This bracket closes the single onPageFinished method neatly
-
-
-            @Override
-            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
-                String url = null;
-                try {
-                    url = view.getUrl();
-                } catch (Exception ignored) {}
-
-                int index = tabs.indexOf(view);
-                if (index >= 0) {
-                    view.stopLoading();
-                    view.removeAllViews();
-                    view.destroy();
-                    
-                    WebView replacement = createConfiguredWebView();
-                    tabs.set(index, replacement);
-
-                    if (index == currentTab) {
-                        browserContainer.removeAllViews();
-                        browserContainer.addView(replacement);
-                    }
-                    if (url != null && !url.isEmpty()) {
-                        replacement.loadUrl(url);
-                    }
-                }
-                return true;
-            }
-
-            @Override
-            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
-                if (!request.isForMainFrame()) return;
-                Toast.makeText(MainActivity.this, "Page load failed", Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onReceivedHttpError(WebView view, android.webkit.WebResourceRequest request, WebResourceResponse errorResponse) {
-                if (!request.isForMainFrame()) return;
-                android.util.Log.w("SpoonBrowser", "HTTP Error: " + errorResponse.getStatusCode());
-            }
-
-            @Override
-            public void onReceivedSslError(WebView view, final android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
-                // Build a native dialog to warn the user, giving them explicit choice to bypass
-                final androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this);
-                
-                String message = "The security certificate for this website is invalid or untrusted.\n\n"
-                               + "Error Code: " + error.getPrimaryError() + "\n"
-                               + "URL: " + error.getUrl() + "\n\n"
-                               + "Do you want to proceed anyway at your own risk?";
-                
-                builder.setTitle("Security Certificate Warning");
-                builder.setMessage(message);
-                
-                // If they insist, allow the engine to proceed
-                builder.setPositiveButton("Proceed Anyway", new android.content.DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(android.content.DialogInterface dialog, int which) {
-                        handler.proceed();
-                    }
-                });
-                
-                // If they back out, drop the network line instantly
-                builder.setNegativeButton("Go Back", new android.content.DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(android.content.DialogInterface dialog, int which) {
-                        handler.cancel();
-                    }
-                });
-
-                // Ensure that tapping outside the dialog cancels the request safely
-                builder.setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
-                    @Override
-                    public void onCancel(android.content.DialogInterface dialog) {
-                        handler.cancel();
-                    }
-                });
-
-                // Display the warning overlay contextually on the main thread
-                androidx.appcompat.app.AlertDialog dialog = builder.create();
-                dialog.show();
-            }
-
-
-            @Override
-            public void onSafeBrowsingHit(WebView view, WebResourceRequest request, int threatType, SafeBrowsingResponse callback) {
-                callback.backToSafety(true);
-            }    
         };
     }
 
@@ -1531,10 +1066,10 @@ case "Exit":
         }
 
         webView.addJavascriptInterface(new SecureSpoonBridge(webView, secureCredentialManager), "SpoonVault");
-
-        webView.setWebChromeClient(createWebChromeClient());
+        webView.setWebChromeClient(new SpoonWebChromeClient(this));
         webView.setOnLongClickListener(createImageLongClickListener(webView));
-        webView.setWebViewClient(createWebViewClient());
+        webView.setWebViewClient(new SpoonWebViewClient(this));
+
         
         // Initialize bridge references for javascript memory space blobs and base64 strings natively
         BlobDownloader downloaderBridge = new BlobDownloader(this);
@@ -1893,12 +1428,17 @@ case "Exit":
     }
 
     private void saveBookmarks() {
-        prefs.edit().putString(KEY_BOOKMARKS, TextUtils.join("\n", bookmarks)).apply();
+        backgroundExecutor.execute(() -> {
+            prefs.edit().putString(KEY_BOOKMARKS, TextUtils.join("\n", bookmarks)).apply();
+        });
     }
 
     private void saveHistory() {
-        prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
+        backgroundExecutor.execute(() -> {
+            prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
+        });
     }
+
     
     private static class ContentFilterEngine {
         // Fast direct domain lookup buckets
@@ -2202,14 +1742,16 @@ case "Exit":
     }
 
     private void saveOpenTabs() {
-        ArrayList<String> urls = new ArrayList<>();
-        for (WebView tab : tabs) {
-            String url = tab.getUrl();
-            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
-                urls.add(url);
+        backgroundExecutor.execute(() -> {
+            ArrayList<String> urls = new ArrayList<>();
+            for (WebView tab : tabs) {
+                String url = tab.getUrl();
+                if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
+                    urls.add(url);
+                }
             }
-        }
-        prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", urls)).apply();
+            prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", urls)).apply();
+        });
     }
 
     private void saveCurrentTab() {
