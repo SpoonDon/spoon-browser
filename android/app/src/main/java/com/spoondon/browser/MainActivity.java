@@ -103,6 +103,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> filePickerLauncher;
     private ActivityResultLauncher<String> passwordImportLauncher;
 
+    private final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> history = new CopyOnWriteArrayList<>();
@@ -261,6 +262,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        backgroundExecutor.shutdownNow();
     }
 
         private boolean restoreSession() {
@@ -434,7 +436,7 @@ public class MainActivity extends AppCompatActivity {
     private void showSavedPasswordsDialog() {
         if (secureCredentialManager == null) return;
         
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             // 1. Offload file disk parsing safely to background worker thread
             java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
             java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
@@ -487,7 +489,7 @@ public class MainActivity extends AppCompatActivity {
                     String selectedHost = hosts.get(position);
                     
                     // Offload individual account key extraction to a worker thread
-                    new Thread(() -> {
+                    backgroundExecutor.execute(() -> {
                         String user = secureCredentialManager.getUsername(selectedHost);
                         String pass = secureCredentialManager.getPassword(selectedHost);
                         
@@ -497,7 +499,7 @@ public class MainActivity extends AppCompatActivity {
                                 .setMessage("Username: " + user + "\nPassword: " + pass)
                                 .setNegativeButton("Delete", (d, w) -> {
                                     // Handle safe asynchronous database cleanup entries
-                                    new Thread(() -> {
+                                    backgroundExecutor.execute(() -> {
                                         secureCredentialManager.clearCredentials(selectedHost);
                                         runOnUiThread(() -> {
                                             Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
@@ -1285,22 +1287,27 @@ case "Exit":
                         String cleanHost = host.toLowerCase().trim();
                         if (cleanHost.startsWith("www.")) cleanHost = cleanHost.substring(4);
 
-                    // Phishing Scanner Alert Core
-                if (isPhishingRisk(cleanHost) || (url != null && url.contains("vault.html") && !url.startsWith("file:///android_asset/"))) {
-       
-                        String warningJs = "javascript:(function() {" +
-                            "var overlay = document.createElement('div');" +
-                            "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +
-                            "overlay.innerHTML = '<h1 style=\'font-size:32px;margin-bottom:10px;\'>⚠️ Deceptive Site Ahead</h1>" +
-                            "<p style=\'font-size:18px;max-width:500px;line-height:1.6;\'>Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>" +
-                            "<button id=\'spoon-back-btn\' style=\'margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;\'>Get Me Out of Here</button>';" +
-                            "document.body.appendChild(overlay);" +
-                            "document.getElementById('spoon-back-btn').addEventListener('click', function() { window.history.back(); });" +
-                            "})();";
-                        view.evaluateJavascript(warningJs, null);
-                    }
-
-
+                        final String finalUrl = url;
+                        final String finalHost = cleanHost;
+                        backgroundExecutor.execute(() -> {
+                                boolean isRisk = isPhishingRisk(finalHost) || (finalUrl != null && finalUrl.contains("vault.html") && !finalUrl.startsWith("file:///android_asset/"));
+                                if (isRisk) {
+                                    runOnUiThread(() -> {
+                                                String warningJs = "javascript:(function() {" +
+                                                    "var overlay = document.createElement('div');" +
+                                                    "overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#7a0000;color:white;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;padding:30px;box-sizing:border-box;text-align:center;';" +                
+                                                    "overlay.innerHTML = '<h1 style=\'font-size:32px;margin-bottom:10px;\'>⚠️ Deceptive Site Ahead</h1>" +
+                                                    "<p style=\'font-size:18px;max-width:500px;line-height:1.6;\'>Spoon Browser detected that this website structure closely mimics a trusted domain name layout and may be attempting to steal your credentials.</p>" +
+                                                    "<button id=\'spoon-back-btn\' style=\'margin-top:25px;padding:12px 30px;background:white;color:#7a0000;border:none;border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;\'>Get Me Out of Here</button>';" +
+                                                    "document.body.appendChild(overlay);" +
+                                                    "document.getElementById('spoon-back-btn').addEventListener('click', function() { window.history.back(); });" +
+                                                    "})();";
+                                                view.evaluateJavascript(warningJs, null);
+        
+                                            });
+                                }
+                        });
+                        
                         String js = "javascript:(function() {" +
                             "var host = '" + cleanHost + "';" +
                             "var usernamesData = [];" +
@@ -1399,10 +1406,10 @@ case "Exit":
 
                 if (url != null && (url.contains("android_asset/vault.html") || url.startsWith("file:///android_asset/vault.html"))) {
                     String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                    String cleanJson = rawJson.replace("\\", "\\\\").replace("'", "\\'");
+                    String base64Data = android.util.Base64.encodeToString(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
                     String injectionJs = "javascript:(function() {" +
                                          "  if (typeof receiveNativeData === 'function') {" +
-                                         "    receiveNativeData('" + cleanJson + "');" +
+                                         "    receiveNativeData(atob('" + base64Data + "'));" +
                                          "  }" +
                                          "})();";
                     view.evaluateJavascript(injectionJs, null);
@@ -1719,7 +1726,7 @@ case "Exit":
         
         // Final explicit teardown to signal Chromium to release its native layer RAM immediately
         webView.destroy();
-
+        webView = null;
 
         saveOpenTabs();
         if (currentTab >= tabs.size()) {
@@ -2104,7 +2111,7 @@ case "Exit":
             return; 
         }
 
-        new Thread(() -> {
+        backgroundExecutor.execute(() -> {
             boolean allDownloadsSucceeded = true;
             ContentFilterEngine newEngine = new ContentFilterEngine();
             
@@ -2264,7 +2271,7 @@ case "Exit":
                             Toast.makeText(this, "No lists to update", Toast.LENGTH_SHORT).show();
                         } else {
                             Toast.makeText(this, "Updating filter lists in background...", Toast.LENGTH_SHORT).show();
-                            new Thread(() -> {
+                            backgroundExecutor.execute(() -> {
                                 boolean totalSuccess = true;
                                 for (String listUrl : filterLists) {
                                     try {
