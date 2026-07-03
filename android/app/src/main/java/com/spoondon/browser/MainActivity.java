@@ -72,7 +72,7 @@ import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class MainActivity extends AppCompatActivity {
-    private SecureCredentialManager secureCredentialManager;
+    SecureCredentialManager secureCredentialManager;
 
     private static final String PREFS_NAME = "spoon_browser";
     private static final String KEY_BOOKMARKS = "bookmarks";
@@ -84,11 +84,11 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_CURRENT_TAB = "current_tab";
     private static final int MAX_HISTORY = 500;
 
-    private AutoCompleteTextView addressBar;
+    AutoCompleteTextView addressBar;
     private ArrayAdapter<String> addressBarAdapter;
     private String cachedHomeHtml = null;
-    private LinearLayout root;
-    private LinearLayout browserContainer;
+    LinearLayout root;
+    LinearLayout browserContainer;
     private TextView tabIndicator;
     private LinearLayout toolbar;
     private Button forwardButton;
@@ -97,8 +97,8 @@ public class MainActivity extends AppCompatActivity {
     private Button newTabButton;
     private Button menuButton;
     private Button tabBadgeButton;
-    private View customView;
-    private WebChromeClient.CustomViewCallback customViewCallback;
+    View customView;
+    WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<String> filePickerLauncher;
     private ActivityResultLauncher<String> passwordImportLauncher;
@@ -1641,7 +1641,7 @@ case "Exit":
         }
     }
 
-    private final ContentFilterEngine filterEngine = new ContentFilterEngine();
+    final ContentFilterEngine filterEngine = new ContentFilterEngine();
     private final java.util.concurrent.atomic.AtomicBoolean isFilterUpdating = new java.util.concurrent.atomic.AtomicBoolean(false);
 
 
