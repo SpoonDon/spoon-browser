@@ -183,6 +183,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         loadSavedData();
+
+        checkAndAutoUpdateFilters();
     }
 
     @Override
@@ -1048,26 +1050,25 @@ case "Exit":
                 root.addView(customView);
             }
 
-    @Override
-    public void onPermissionRequest(final android.webkit.PermissionRequest request) {
-        // 1. Create a dynamic bucket for safe, verified resources
-        java.util.List<String> allowedResources = new java.util.ArrayList<>();
-        
-        // 2. Filter incoming tokens individually instead of treating the request as a single block
-        for (String resource : request.getResources()) {
-            if (!resource.equals(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) &&
-                !resource.equals(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
-                allowedResources.add(resource);
+            @Override
+            public void onPermissionRequest(final android.webkit.PermissionRequest request) {
+                java.util.List<String> allowedResources = new java.util.ArrayList<>();
+                
+                // Fine-grained filtering: intercept intrusive hooks while allowing media paths
+                for (String resource : request.getResources()) {
+                    if (!resource.equals(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) &&
+                        !resource.equals(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                        allowedResources.add(resource);
+                    }
+                }
+                
+                // Grant safe tokens natively, otherwise reject if nothing clean remains
+                if (!allowedResources.isEmpty()) {
+                    request.grant(allowedResources.toArray(new String[0]));
+                } else {
+                    request.deny();
+                }
             }
-        }
-        
-        // 3. Grant only the harmless components, otherwise deny if nothing safe remains
-        if (!allowedResources.isEmpty()) {
-            request.grant(allowedResources.toArray(new String[0]));
-        } else {
-            request.deny();
-        }
-    }
 
             @Override
             public void onHideCustomView() {
@@ -2079,48 +2080,56 @@ case "Exit":
             return url.contains(pattern);
         }
     }
-    
+
     private final ContentFilterEngine filterEngine = new ContentFilterEngine();
+    private final java.util.concurrent.atomic.AtomicBoolean isFilterUpdating = new java.util.concurrent.atomic.AtomicBoolean(false);
+
 
     private void refreshFilterLists() {
+        // Concurrency Guard: Drop duplicate network requests if a sync is already running
+        if (!isFilterUpdating.compareAndSet(false, true)) {
+            return; 
+        }
+
         new Thread(() -> {
-            if (filterLists.isEmpty()) {
-                filterLists.add("https://easylist.to/easylist/easylist.txt");
-                filterLists.add("https://easylist.to/easylist/easyprivacy.txt");
-            }
-
+            boolean allDownloadsSucceeded = true;
             ContentFilterEngine newEngine = new ContentFilterEngine();
-            for (String filterUrl : filterLists) {
-                try {
-                    // Look for the saved file on the device first
-                    String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
-                    java.io.File localFile = new java.io.File(getFilesDir(), filename);
-                    java.io.InputStream inputStream;
+            
+            // process custom user filters exclusively
+            if (filterLists != null && !filterLists.isEmpty()) {
+                for (String filterUrl : filterLists) {
+                    try {
+                        String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
+                        java.io.File localFile = new java.io.File(getFilesDir(), filename);
+                        java.io.InputStream inputStream;
 
-                    if (localFile.exists()) {
-                        // Load instantly from local storage cache (Zero network usage!)
-                        inputStream = new java.io.FileInputStream(localFile);
-                    } else {
-                        // Fallback to network download only if it hasn't been saved yet
-                        java.net.URLConnection conn = new java.net.URL(filterUrl).openConnection();
-                        conn.setConnectTimeout(5000);
-                        conn.setReadTimeout(5000);
-                        inputStream = conn.getInputStream();
-                    }
+                        boolean isNetworkFetch = !localFile.exists();
 
-                    try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.isEmpty() || line.startsWith("!")) continue;
-                            newEngine.addRule(line);
+                        if (!isNetworkFetch) {
+                            inputStream = new java.io.FileInputStream(localFile);
+                        } else {
+                            java.net.URLConnection conn = new java.net.URL(filterUrl).openConnection();
+                            conn.setConnectTimeout(5000);
+                            conn.setReadTimeout(5000);
+                            inputStream = conn.getInputStream();
                         }
+
+                        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                line = line.trim();
+                                if (line.isEmpty() || line.startsWith("!")) continue;
+                                newEngine.addRule(line);
+                            }
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.e("SpoonBlocker", "Filter load failed: " + filterUrl);
+                        allDownloadsSucceeded = false; // Trigger offline protection path
                     }
-                } catch (Exception e) {
-                    android.util.Log.e("SpoonBlocker", "Filter load failed: " + filterUrl);
                 }
             }
 
+            // Atomic memory-space swap
             synchronized (filterEngine) {
                 filterEngine.clear();
                 filterEngine.blockDomains.addAll(newEngine.blockDomains);
@@ -2128,15 +2137,31 @@ case "Exit":
                 filterEngine.blockPatterns.addAll(newEngine.blockPatterns);
                 filterEngine.whitelistPatterns.addAll(newEngine.whitelistPatterns);
                 filterEngine.globalCosmeticSelectors.addAll(newEngine.globalCosmeticSelectors);
-                
-                // Perform thread-safe mapping for site-scoped map targets
+
                 for (java.util.Map.Entry<String, java.util.Set<String>> entry : newEngine.siteCosmeticSelectors.entrySet()) {
                     filterEngine.siteCosmeticSelectors.computeIfAbsent(entry.getKey(), k -> new java.util.concurrent.ConcurrentHashMap<>().newKeySet()).addAll(entry.getValue());
                 }
             }
-            
-            prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
+
+            // Rolling Timer Reset: Only advance the 24-hour auto schedule if downloads actually succeed 
+            // or if the list is completely empty. Prevents offline lockouts.
+            if (allDownloadsSucceeded || filterLists.isEmpty()) {
+                prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
+            }
+
+            isFilterUpdating.set(false);
         }).start();
+    }
+    
+    private void checkAndAutoUpdateFilters() {
+        long lastRefresh = prefs.getLong(KEY_FILTER_REFRESH_TIME, 0);
+        long currentTime = System.currentTimeMillis();
+        long twentyFourHours = 24 * 60 * 60 * 1000L; // 86,400,000 ms
+
+        // Fire the compiler automatically only when the 24-hour rolling delta has expired
+        if (currentTime - lastRefresh >= twentyFourHours) {
+            refreshFilterLists();
+        }
     }
 
     private void rebuildBlockedDomains() {
