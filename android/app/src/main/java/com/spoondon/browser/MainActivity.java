@@ -1081,43 +1081,44 @@ case "Exit":
         BlobDownloader downloaderBridge = new BlobDownloader(this);
         webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
 
-        webView.setDownloadListener(new DownloadListener() {
-            @Override
-            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                if (url == null) return;
+webView.setDownloadListener(new android.webkit.DownloadListener() {
+        @Override
+        public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+            if (url == null) return;
                 
-                try {
-                    String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
+            try {
+                String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
 
-                    // 1. Asynchronous extraction path for javascript memory blobs
-                    if (url.startsWith("blob:")) {
-                        String extractionScript = "javascript:(function() {" +
-                                "  var request = new XMLHttpRequest();" +
-                                "  request.open('GET', '" + url + "', true);" +
-                                "  request.responseType = 'blob';" +
-                                "  request.onload = function() {" +
-                                "    if (this.status === 200) {" +
-                                "      var dataReader = new FileReader();" +
-                                "      dataReader.readAsDataURL(this.response);" +
-                                "      dataReader.onloadend = function() {" +
-                                "        AndroidDownloader.saveBase64ToFile(dataReader.result, '" + mimeType + "', '" + targetFileName + "');" +
-                                "      };" +
-                                "    }" +
-                                "  };" +
-                                "  request.send();" +
-                                "})();";
-                        webView.evaluateJavascript(extractionScript, null);
-                        return;
-                    } 
+                // 1. Asynchronous extraction path for javascript memory blobs (Upgraded to Secure WebMessageListener)
+                if (url.startsWith("blob:")) {
+                    String extractionScript = "javascript:(function() {" +
+                            "  var request = new XMLHttpRequest();" +
+                            "  request.open('GET', '" + url + "', true);" +
+                            "  request.responseType = 'blob';" +
+                            "  request.onload = function() {" +
+                            "    if (this.status === 200) {" +
+                            "      var dataReader = new FileReader();" +
+                            "      dataReader.readAsDataURL(this.response);" +
+                            "      dataReader.onloadend = function() {" +
+                            "        var payload = JSON.stringify({fileName: '" + targetFileName + "', mimeType: '" + mimeType + "', data: dataReader.result});" +
+                            "        if(window.SecureBlobBridge) { window.SecureBlobBridge.postMessage(payload); }" +
+                            "      };" +
+                            "    }" +
+                            "  };" +
+                            "  request.send();" +
+                            "})();";
+                    webView.evaluateJavascript(extractionScript, null);
+                    return;
+                } 
                     
-                    // 2. Direct decoding path for Base64 data URIs
-                    if (url.startsWith("data:")) {
-                        downloaderBridge.saveBase64ToFile(url, mimeType, targetFileName);
-                        return;
-                    }
+                // 2. Direct decoding path for Base64 data URIs (Upgraded to new safe MediaStore class)
+                if (url.startsWith("data:")) {
+                    new BlobDownloader(MainActivity.this).saveBase64ToFile(url, mimeType, targetFileName);
+                    return;
+                }
 
-// 3. Proper direct downloader with automated fallback support for standard links
-                    new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                // 3. Proper direct downloader with automated fallback support for standard links
+                new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle("Download File")
                         .setMessage("Do you want to download " + targetFileName + "?")
                         .setPositiveButton("Download", (dialog, item) -> {
@@ -1155,11 +1156,11 @@ case "Exit":
                         .setNegativeButton("Cancel", null)
                         .show();
 
-                } catch (Exception err) {
-                    Toast.makeText(MainActivity.this, "Download manager initialization failed", Toast.LENGTH_SHORT).show();
-                }
+            } catch (Exception err) {
+                Toast.makeText(MainActivity.this, "Download manager initialization failed", Toast.LENGTH_SHORT).show();
             }
-        });
+        }
+    });
 
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", 
