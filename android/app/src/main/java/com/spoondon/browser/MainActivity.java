@@ -61,6 +61,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+import androidx.webkit.WebMessageCompat;
+import androidx.webkit.WebMessagePortCompat;
 
 // Java Standard Core Utilities & I/O Packages
 import java.io.BufferedReader;
@@ -70,6 +74,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Collections;
 
 public class MainActivity extends AppCompatActivity {
     SecureCredentialManager secureCredentialManager;
