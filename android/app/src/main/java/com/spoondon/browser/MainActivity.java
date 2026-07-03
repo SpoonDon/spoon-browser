@@ -90,7 +90,7 @@ public class MainActivity extends AppCompatActivity {
     LinearLayout root;
     LinearLayout browserContainer;
     private TextView tabIndicator;
-    private LinearLayout toolbar;
+    LinearLayout toolbar;
     private Button forwardButton;
     private Button prevTabButton;
     private Button nextTabButton;
@@ -1409,7 +1409,7 @@ case "Exit":
         new AlertDialog.Builder(this).setTitle("History").setView(listView).show();
     }
 
-    private WebView getCurrentWebView() {
+    WebView getCurrentWebView() {
         if (tabs.isEmpty() || currentTab < 0 || currentTab >= tabs.size()) return null;
         return tabs.get(currentTab);
     }
@@ -1440,7 +1440,7 @@ case "Exit":
     }
 
     
-    private static class ContentFilterEngine {
+    static class ContentFilterEngine {
         // Fast direct domain lookup buckets
         public final java.util.Set<String> blockDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
         public final java.util.Set<String> whitelistDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
