@@ -1159,9 +1159,36 @@ case "Exit":
             }
         });
 
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", 
+                java.util.Collections.singletonList("*"), 
+                new androidx.webkit.WebViewCompat.WebMessageListener() {
+                    @Override
+                    public void onPostMessage(android.webkit.WebView view, androidx.webkit.WebMessageCompat message, android.net.Uri sourceOrigin, boolean isMainFrame, androidx.webkit.WebMessagePortCompat replyProxy) {
+                        
+                        // Natively verified origin (e.g., "bank.com" or "oauth.google.com")
+                        String verifiedFrameHost = sourceOrigin.getHost();
+                        String action = message.getData();
+
+                        if (action != null && action.startsWith("SAVE_LOGIN:")) {
+                            // Parse the payload (Format: SAVE_LOGIN:username:password)
+                            String[] parts = action.split(":", 3);
+                            if (parts.length == 3) {
+                                // Route to your background executor securely
+                                // SecureCredentialManager.save(verifiedFrameHost, parts[1], parts[2]);
+                            }
+                        } else if ("FETCH_CREDENTIALS".equals(action)) {
+                            // Fetch securely on background thread, then reply ONLY to this specific frame
+                            // String credentialsJson = SecureCredentialManager.get(verifiedFrameHost);
+                            // replyProxy.postMessage(new androidx.webkit.WebMessageCompat(credentialsJson));
+                        }
+                    }
+                });
+        }
+
         return webView;
     }
-
+    
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
 
