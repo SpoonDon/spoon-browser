@@ -506,17 +506,17 @@ public class MainActivity extends AppCompatActivity {
                                             dialog.dismiss();
                                             showSavedPasswordsDialog(); // Safe refresh loop recursion
                                         });
-                                    }).start();
+                                    });
                                 })
                                 .setPositiveButton("OK", null)
                                 .show();
                         });
-                    }).start();
+                    });
                 });
 
                 dialog.show();
             });
-        }).start();
+        });
     }
 
 
@@ -1710,7 +1710,7 @@ case "Exit":
             }
 
             isFilterUpdating.set(false);
-        }).start();
+        });
     }
     
     private void checkAndAutoUpdateFilters() {
@@ -1851,7 +1851,7 @@ case "Exit":
                                         Toast.makeText(this, "Updates finished, but some lists failed to download", Toast.LENGTH_LONG).show();
                                     }
                                 });
-                            }).start();
+                            });
                         }
                     }
                 })
