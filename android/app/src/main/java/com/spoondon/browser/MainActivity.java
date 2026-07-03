@@ -1052,17 +1052,44 @@ case "Exit":
 
             @Override
             public void onPermissionRequest(final android.webkit.PermissionRequest request) {
+                // 1. Normalize the requesting host domain to lowercase
+                // This eliminates case-sensitivity string bypasses and prevents null pointer exceptions
+                android.net.Uri origin = request.getOrigin();
+                String host = (origin != null && origin.getHost() != null) 
+                    ? origin.getHost().toLowerCase(java.util.Locale.ROOT) 
+                    : "";
+
                 java.util.List<String> allowedResources = new java.util.ArrayList<>();
-                
-                // Fine-grained filtering: intercept intrusive hooks while allowing media paths
+
+                // 2. High-performance switch routing (faster bytecode processing than nested if-else strings)
                 for (String resource : request.getResources()) {
-                    if (!resource.equals(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE) &&
-                        !resource.equals(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
-                        allowedResources.add(resource);
+                    switch (resource) {
+                        // Strict Privacy Blocks: Immediately drop intrusive camera/microphone tracking attempts
+                        case android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE:
+                        case android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE:
+                            break;
+
+                        // Granular Media Scope: Grant hardware-decoding keys strictly to trusted domains.
+                        // This keeps strict anti-bot attestation walls from breaking your login fields.
+                        case android.webkit.PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID:
+                            if (host.endsWith("youtube.com") || 
+                                host.endsWith("googlevideo.com") || 
+                                host.endsWith("twitch.tv") || 
+                                host.endsWith("spotify.com") || 
+                                host.contains("googleusercontent")) {
+                                allowedResources.add(resource);
+                            }
+                            break;
+
+                        // Future-Proofing: Automatically pass through general web capabilities safely 
+                        // (e.g., Web MIDI API, future layout tokens) without modifying Java code later.
+                        default:
+                            allowedResources.add(resource);
+                            break;
                     }
                 }
-                
-                // Grant safe tokens natively, otherwise reject if nothing clean remains
+
+                // 3. Apply the filtered grant matrix or invoke a clean rejection fallback
                 if (!allowedResources.isEmpty()) {
                     request.grant(allowedResources.toArray(new String[0]));
                 } else {
