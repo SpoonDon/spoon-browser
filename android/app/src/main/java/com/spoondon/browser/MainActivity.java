@@ -591,6 +591,7 @@ public class MainActivity extends AppCompatActivity {
                             .setTitle("Password Management")
                             .setItems(options, (dialog, which) -> {
                                 if (which == 0) {
+                                    createNewTab();
                                     openUrl("file:///android_asset/vault.html");
                                 } else if (which == 1) {
                                     passwordImportLauncher.launch("text/*");
@@ -1115,41 +1116,42 @@ case "Exit":
                         return;
                     }
 
-                    // 3. Combined Dual-Downloader Options Selection for standard HTTP/HTTPS file links
-                    CharSequence[] options = new CharSequence[]{"Native Browser Downloader", "External App (ADM/1DM/System chooser)"};
-                    
+// 3. Proper direct downloader with automated fallback support for standard links
                     new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle("Download File")
-                        .setItems(options, (dialog, item) -> {
-                            if (item == 0) {
-                                // --- OPTION 1: NATIVE DOWNLOADER ---
-                                try {
-                                    android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
-                                    String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                        .setMessage("Do you want to download " + targetFileName + "?")
+                        .setPositiveButton("Download", (dialog, item) -> {
+                            try {
+                                android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                                if (cookies != null) {
                                     request.addRequestHeader("Cookie", cookies);
-                                    request.addRequestHeader("User-Agent", userAgent);
-                                    request.setMimeType(mimeType);
-                                    
-                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, targetFileName);
-                                    request.allowScanningByMediaScanner();
-                                    request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                                    request.setTitle(targetFileName);
-                                    request.setDescription("Downloading file...");
-
-                                    android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                                    if (manager != null) {
-                                        manager.enqueue(request);
-                                        Toast.makeText(MainActivity.this, "Download started natively...", Toast.LENGTH_SHORT).show();
-                                    }
-                                } catch (Exception e) {
-                                    Toast.makeText(MainActivity.this, "Native download failed. Switching to external fallback.", Toast.LENGTH_SHORT).show();
-                                    triggerExternalDownload(url, mimeType);
                                 }
-                            } else {
-                                // --- OPTION 2: EXTERNAL DOWNLOADER ---
+                                if (userAgent != null) {
+                                    request.addRequestHeader("User-Agent", userAgent);
+                                }
+                                if (mimeType != null && !mimeType.isEmpty()) {
+                                    request.setMimeType(mimeType);
+                                }
+                                
+                                request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, targetFileName);
+                                request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                request.setTitle(targetFileName);
+                                request.setDescription("Downloading file...");
+
+                                android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                                if (manager != null) {
+                                    manager.enqueue(request);
+                                    Toast.makeText(MainActivity.this, "Download started...", Toast.LENGTH_SHORT).show();
+                                } else {
+                                    throw new Exception("System DownloadManager unavailable");
+                                }
+                            } catch (Exception e) {
+                                Toast.makeText(MainActivity.this, "Native downloader failed. Routing to external fallback...", Toast.LENGTH_SHORT).show();
                                 triggerExternalDownload(url, mimeType);
                             }
                         })
+                        .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, mimeType))
                         .setNegativeButton("Cancel", null)
                         .show();
 
