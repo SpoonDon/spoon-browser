@@ -868,10 +868,8 @@ case "Exit":
         inputParams.setMargins(dp(8), 0, dp(8), 0);
         addressBar.setLayoutParams(inputParams);
 
-        // Calculate device width profile dynamically
-        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
-        getWindowManager().getDefaultDisplay().getMetrics(metrics);
-        float widthDp = metrics.widthPixels / metrics.density;
+        // Calculate device width profile dynamically using modern Configuration bounds
+        float widthDp = getResources().getConfiguration().screenWidthDp;
 
         if (widthDp >= 600) {
             // TABLET LAYOUT: Show all individual controls side-by-side
@@ -2015,10 +2013,8 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     private void showHome() {
         // High-Performance Lazy Initialization String Caching (Preserved!)
         if (cachedHomeHtml == null) {
-            // Check screen width once during initialization
-            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
-            getWindowManager().getDefaultDisplay().getMetrics(metrics);
-            float widthDp = metrics.widthPixels / metrics.density;
+            // Check screen width once during initialization natively
+            float widthDp = getResources().getConfiguration().screenWidthDp;
 
             StringBuilder sb = new StringBuilder();
             sb.append("<html>")
