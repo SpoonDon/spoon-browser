@@ -140,7 +140,7 @@ exportCsvLauncher = registerForActivityResult(
                 try {
                     java.io.OutputStream os = getContentResolver().openOutputStream(uri);
                     if (os != null) {
-                        String rawJson = secureCredentialManager.getAllCredentialsAsJson();
+                        String rawJson = secureCredentialManager.getAllCredentialsAsCsv();
                         os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                         os.close();
                         runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Passwords exported successfully", android.widget.Toast.LENGTH_LONG).show());
