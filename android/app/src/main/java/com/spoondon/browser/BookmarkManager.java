@@ -18,36 +18,38 @@ public class BookmarkManager {
         this.prefs = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    // OPTIMIZATION: Synchronized execution blocks prevent concurrent threads from wiping out database commits
+    private JSONArray cachedBookmarks = null;
+
+    public synchronized JSONArray getBookmarksJson() {
+        if (cachedBookmarks != null) {
+            return cachedBookmarks;
+        }
+        try {
+            String data = prefs.getString(KEY, "[]");
+            cachedBookmarks = new JSONArray(data != null ? data : "[]");
+            return cachedBookmarks;
+        } catch (Exception e) {
+            cachedBookmarks = new JSONArray();
+            return cachedBookmarks;
+        }
+    }
+
+    // Update addBookmark to clear the cache so it stays fresh
     public synchronized void addBookmark(String title, String url) {
         if (url == null || url.isEmpty()) return;
-        
         try {
             JSONArray bookmarks = getBookmarksJson();
-
             JSONObject bookmark = new JSONObject();
             bookmark.put("title", title != null ? title.trim() : "Untitled");
             bookmark.put("url", url.trim());
             bookmark.put("timestamp", System.currentTimeMillis());
 
             bookmarks.put(bookmark);
-
-            prefs.edit()
-                    .putString(KEY, bookmarks.toString())
-                    .apply();
-
-        } catch (Exception ignored) {
-            // Guard pipeline against runtime json mutation errors
-        }
-    }
-
-    public synchronized JSONArray getBookmarksJson() {
-        try {
-            String data = prefs.getString(KEY, "[]");
-            return new JSONArray(data != null ? data : "[]");
-        } catch (Exception e) {
-            return new JSONArray();
-        }
+            prefs.edit().putString(KEY, bookmarks.toString()).apply();
+            
+            // Invalidate cache to force a fresh read on next access
+            cachedBookmarks = null; 
+        } catch (Exception ignored) {}
     }
 
     public synchronized List<String> getTitles() {
