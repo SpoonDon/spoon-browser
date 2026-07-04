@@ -1463,51 +1463,61 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     }
 
     private void showHistoryDialog() {
-        // Grab the native Chromium history for the current tab
-        android.webkit.WebBackForwardList webHistory = getCurrentWebView().copyBackForwardList();
-        
+        // 1. Get the current active tab
+        android.webkit.WebView currentWebView = tabs.get(currentTab);
+        if (currentWebView == null) return;
+
+        // 2. Extract Chromium's native, bulletproof history for this tab
+        android.webkit.WebBackForwardList webHistory = currentWebView.copyBackForwardList();
+
+        // Add the Toast so it never fails silently again!
         if (webHistory.getSize() == 0) {
-            Toast.makeText(this, "Tab history is empty", Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(this, "History is empty", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // Convert native history into your clean BrowserItem list
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        for (int i = webHistory.getSize() - 1; i >= 0; i--) { // Reverse order (newest first)
+        // 3. Build your BrowserItems directly from the engine (Newest to Oldest)
+        java.util.ArrayList<BrowserItem> items = new java.util.ArrayList<>();
+        for (int i = webHistory.getSize() - 1; i >= 0; i--) { 
             String title = webHistory.getItemAtIndex(i).getTitle();
             String url = webHistory.getItemAtIndex(i).getUrl();
             items.add(new BrowserItem(title != null ? title : url, url));
         }
 
-        // Pass it to your existing adapter and UI
+        // 4. YOUR exact adapter and UI code
         BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        ListView listView = new ListView(this);
+        android.widget.ListView listView = new android.widget.ListView(this);
         listView.setAdapter(adapter);
 
+        // Standard click navigates through the native history stack natively
         listView.setOnItemClickListener((parent, view, which, id) -> {
-            // Calculate steps to go back
             int targetIndex = webHistory.getSize() - 1 - which;
             int steps = targetIndex - webHistory.getCurrentIndex();
-            getCurrentWebView().goBackOrForward(steps);
+            currentWebView.goBackOrForward(steps);
         });
-        
+
+        // YOUR exact Long-Click menu (with the safe bookmarks logic that compiles!)
         listView.setOnItemLongClickListener((parent, view, which, id) -> {
             String[] options = {"Open in New Tab", "Add Bookmark"};
-            new AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
+            new android.app.AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
                 if (item == 0) {
                     createNewTab();
                     openUrl(items.get(which).url);
                 } else if (item == 1) {
                     String url = items.get(which).url;
-                    // Use your new BookmarkManager class here!
-                    bookmarkManager.addBookmark(items.get(which).title, url);
-                    Toast.makeText(this, "Bookmark added", Toast.LENGTH_SHORT).show();
+                    
+                    // Reverted back to your proven logic!
+                    if (!bookmarks.contains(url)) {
+                        bookmarks.add(url);
+                        saveBookmarks();
+                        android.widget.Toast.makeText(MainActivity.this, "Bookmark added", android.widget.Toast.LENGTH_SHORT).show();
+                    }
                 }
             }).show();
             return true;
         });
 
-        new AlertDialog.Builder(this).setTitle("Tab History").setView(listView).show();
+        new android.app.AlertDialog.Builder(this).setTitle("History").setView(listView).show();
     }
 
     WebView getCurrentWebView() {
