@@ -1237,7 +1237,6 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
 
         // Force full hardware GPU pipeline rendering
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
         }
         webView.setDrawingCacheEnabled(false);
 
