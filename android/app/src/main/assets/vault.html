@@ -139,7 +139,7 @@
             if(confirm("Delete this saved password?")) {
                 var item = allData[idx];
                 if(typeof spoonVaultMessage !== 'undefined') {
-                    spoonVaultMessage.postMessage('DELETE_LOGIN:' + item.host + ':' + item.username);
+                    spoonVaultMessage.postMessage(JSON.stringify({ action: 'DELETE_LOGIN', host: item.host, username: item.username }));
                 }
                 allData.splice(idx, 1);
                 renderCards();
@@ -182,9 +182,9 @@
 
             if(typeof spoonVaultMessage !== 'undefined') {
                 if (isEditing && (h !== editOriginalHost || u !== editOriginalUser)) {
-                    spoonVaultMessage.postMessage('DELETE_LOGIN:' + editOriginalHost + ':' + editOriginalUser);
+                    spoonVaultMessage.postMessage(JSON.stringify({ action: 'DELETE_LOGIN', host: editOriginalHost, username: editOriginalUser }));
                 }
-                spoonVaultMessage.postMessage('SAVE_LOGIN:' + h + ':' + u + ':' + p);
+                spoonVaultMessage.postMessage(JSON.stringify({ action: 'SAVE_LOGIN', host: h, username: u, password: p }));
             }
 
             if (isEditing) {
