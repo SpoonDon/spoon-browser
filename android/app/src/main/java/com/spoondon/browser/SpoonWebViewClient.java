@@ -61,6 +61,24 @@ public class SpoonWebViewClient extends WebViewClient {
         }
         return false;
     }
+    // Legacy support for Android 5.0 - 6.0
+    @SuppressWarnings("deprecation")
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, String urlString) {
+        if (urlString != null && (urlString.startsWith("magnet:") || urlString.endsWith(".torrent"))) {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(urlString));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                view.getContext().startActivity(intent);
+                return true;
+            } catch (Exception e) {
+                Toast.makeText(view.getContext(), "No app found to handle torrent links", Toast.LENGTH_SHORT).show();
+                return true;
+            }
+        }
+        return false;
+    }
+    
 
     @Override
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
