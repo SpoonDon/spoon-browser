@@ -34,3 +34,7 @@
 # SpoonVault Security Framework - Ignore compile-time lint annotations used by Tink Crypto
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.annotation.**
+
+-keepclassmembers class com.spoondon.browser.BlobDownloader {
+    @android.webkit.JavascriptInterface <methods>;
+}
