@@ -1084,8 +1084,7 @@ case "Exit":
             // Change to true if a specific site demands cross-domain handshake keys to authenticate
             cookieManager.setAcceptThirdPartyCookies(webView, true); 
         }
-
-        webView.addJavascriptInterface(new SecureSpoonBridge(webView, secureCredentialManager), "SpoonVault");
+        
         webView.setWebChromeClient(new SpoonWebChromeClient(this));
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(new SpoonWebViewClient(this));
@@ -1180,7 +1179,7 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
 
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", 
-                java.util.Collections.singleton("*"), // FIXED: Uses singleton() to return a Set<String>
+                java.util.Collections.singleton("*"), 
                 new androidx.webkit.WebViewCompat.WebMessageListener() {
                     @Override
                     public void onPostMessage(
@@ -1188,20 +1187,44 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                         androidx.webkit.WebMessageCompat message, 
                         android.net.Uri sourceOrigin, 
                         boolean isMainFrame, 
-                        androidx.webkit.JavaScriptReplyProxy replyProxy // FIXED: Uses JavaScriptReplyProxy
+                        androidx.webkit.JavaScriptReplyProxy replyProxy
                     ) {
-                        
                         String verifiedFrameHost = sourceOrigin != null ? sourceOrigin.getHost() : "";
-                        String action = message.getData();
+                        String payload = message.getData();
 
-                        if (action != null && action.startsWith("SAVE_LOGIN:")) {
-                            String[] parts = action.split(":", 3);
-                            if (parts.length == 3) {
-                                // Background save logic goes here
-                            }
-                        } else if ("FETCH_CREDENTIALS".equals(action)) {
-                            // Background fetch and reply logic goes here
-                        }
+                        if (payload == null || secureCredentialManager == null) return;
+                        
+                        // Push all database I/O to the background thread
+                        backgroundExecutor.execute(() -> {
+                            try {
+                                if (payload.equals("FETCH_ALL_VAULT_DATA")) {
+                                    // Only allow the local internal vault page to fetch the entire database
+                                    if (verifiedFrameHost == null || verifiedFrameHost.isEmpty()) { 
+                                         String allData = secureCredentialManager.getAllCredentialsAsJson();
+                                         runOnUiThread(() -> replyProxy.postMessage(allData));
+                                    }
+                                } else if (payload.startsWith("SAVE_LOGIN:")) {
+                                    // Format: SAVE_LOGIN:host:user:pass
+                                    String[] p = payload.split(":", 4);
+                                    if (p.length == 4) {
+                                        String targetHost = p[1].isEmpty() ? verifiedFrameHost : p[1];
+                                        secureCredentialManager.saveCredentials(targetHost, p[2], p[3]);
+                                    }
+                                } else if (payload.startsWith("DELETE_LOGIN:")) {
+                                    // Format: DELETE_LOGIN:host:user
+                                    String[] p = payload.split(":", 3);
+                                    if (p.length == 3) {
+                                        secureCredentialManager.deleteCredentials(p[1], p[2]);
+                                    }
+                                } else if ("FETCH_CREDENTIALS".equals(payload)) {
+                                    // Standard autofill request from a website
+                                    if (verifiedFrameHost != null && !verifiedFrameHost.isEmpty()) {
+                                        String credentials = secureCredentialManager.getAllAccountsForHost(verifiedFrameHost);
+                                        runOnUiThread(() -> replyProxy.postMessage(credentials));
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                        });
                     }
                 });
         }
