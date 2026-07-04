@@ -115,11 +115,34 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "    try {" +
         "      var accounts = JSON.parse(event.data);" +
         "      if (accounts && accounts.length > 0) {" +
-        "        var inputs = document.querySelectorAll('input');" +
-        "        inputs.forEach(function(input) {" +
-        "          var type = (input.type || '').toLowerCase();" +
-        "          if (type === 'password') input.value = accounts[0].password;" +
-        "          else if (['text', 'email', 'tel'].indexOf(type) !== -1) input.value = accounts[0].username;" +
+        "        var dl = document.getElementById('spoon-vault-list');" +
+        "        if (!dl) { dl = document.createElement('datalist'); dl.id = 'spoon-vault-list'; document.body.appendChild(dl); }" +
+        "        dl.innerHTML = '';" +
+        "        accounts.forEach(function(acc) { " +
+        "           var opt = document.createElement('option'); " +
+        "           opt.value = acc.username; " +
+        "           dl.appendChild(opt); " +
+        "        });" +
+        "        var uInp = []; var pInp = [];" +
+        "        document.querySelectorAll('input').forEach(function(i) {" +
+        "          var t = (i.type || '').toLowerCase();" +
+        "          if (['text', 'email', 'tel'].indexOf(t) !== -1) { " +
+        "             i.setAttribute('list', 'spoon-vault-list'); " +
+        "             i.autocomplete = 'off'; " +
+        "             uInp.push(i); " +
+        "          } else if (t === 'password') {" +
+        "             pInp.push(i);" +
+        "          }" +
+        "        });" +
+        "        if (accounts.length === 1) {" +
+        "           uInp.forEach(function(i) { if(!i.value) i.value = accounts[0].username; });" +
+        "           pInp.forEach(function(i) { if(!i.value) i.value = accounts[0].password; });" +
+        "        }" +
+        "        uInp.forEach(function(ui) {" +
+        "          ui.addEventListener('input', function() {" +
+        "            var match = accounts.find(function(a) { return a.username === ui.value; });" +
+        "            if (match) pInp.forEach(function(pi) { pi.value = match.password; });" +
+        "          });" +
         "        });" +
         "      }" +
         "    } catch(e) {}" +
@@ -142,7 +165,7 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "            else if (['text', 'email', 'tel'].indexOf(type) !== -1) user = input.value;" +
         "          });" +
         "          if (user && pass) {" +
-        "            spoonVaultMessage.postMessage('SAVE_LOGIN:' + user + ':' + pass);" +
+        "            spoonVaultMessage.postMessage(JSON.stringify({action: 'SAVE_LOGIN', host: '', username: user, password: pass}));" +
         "          }" +
         "        });" +
         "      });" +
@@ -151,7 +174,6 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "  hookForms();" +
         "  setTimeout(hookForms, 2000);" +
         "})();";
-
     view.evaluateJavascript(secureAutofillScript, null);
 }
     }
