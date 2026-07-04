@@ -63,7 +63,8 @@ public class BrowserItemAdapter extends ArrayAdapter<BrowserItem> {
             holder.titleView.setText(item.title);
 
             try {
-                String host = URI.create(item.url).getHost();
+                // android.net.Uri is fault-tolerant for malformed browser URLs
+                String host = android.net.Uri.parse(item.url).getHost();
                 if (host != null && host.startsWith("www.")) {
                     host = host.substring(4);
                 }
