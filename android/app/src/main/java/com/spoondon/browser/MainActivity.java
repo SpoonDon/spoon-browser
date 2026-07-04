@@ -1824,15 +1824,18 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     }
 
     private void saveOpenTabs() {
-        backgroundExecutor.execute(() -> {
-            ArrayList<String> urls = new ArrayList<>();
-            for (WebView tab : tabs) {
-                String url = tab.getUrl();
-                if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
-                    urls.add(url);
-                }
+        // 1. Capture the URLs on the Main UI Thread where Chromium is happy
+        ArrayList<String> safeUrls = new ArrayList<>();
+        for (WebView tab : tabs) {
+            String url = tab.getUrl(); // 100% safe here!
+            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
+                safeUrls.add(url);
             }
-            prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", urls)).apply();
+        }
+
+        // 2. Pass the standard Java strings into the background for heavy disk I/O
+        backgroundExecutor.execute(() -> {
+            prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", safeUrls)).apply();
         });
     }
 
