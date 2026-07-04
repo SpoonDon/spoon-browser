@@ -29,10 +29,9 @@ public class SpoonWebViewClient extends WebViewClient {
         Uri url = request.getUrl();
         if (url != null) {
             String urlString = url.toString();
-            synchronized (activity.filterEngine) {
-                if (activity.filterEngine.shouldBlock(urlString)) {
-                    return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
-                }
+            // Removed synchronized lock: filterEngine is inherently thread-safe
+            if (activity.filterEngine.shouldBlock(urlString)) {
+                return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
             }
         }
         return super.shouldInterceptRequest(view, request);
