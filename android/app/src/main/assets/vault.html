@@ -56,14 +56,23 @@
         var editOriginalHost = '';
         var editOriginalUser = '';
 
-        window.receiveNativeData = function(jsonString) {
-            try {
-                if (jsonString) {
-                    allData = JSON.parse(jsonString);
-                    renderCards();
-                }
-            } catch(e) {
-                document.getElementById('vault-root').innerHTML = '<div style="color:red;">Error loading data.</div>';
+        // Modern Jetpack WebMessageListener Initialization
+        window.onload = function() {
+            if (typeof spoonVaultMessage !== 'undefined') {
+                spoonVaultMessage.addEventListener('message', function(event) {
+                    if (event.data) {
+                        try {
+                            allData = JSON.parse(event.data);
+                            renderCards();
+                        } catch(e) {
+                            document.getElementById('vault-root').innerHTML = '<div style="color:red;">Error parsing data.</div>';
+                        }
+                    }
+                });
+                // Request data immediately on load
+                spoonVaultMessage.postMessage('FETCH_ALL_VAULT_DATA');
+            } else {
+                document.getElementById('vault-root').innerHTML = '<div style="color:#666; text-align:center; margin-top:40px;">Waiting for native bridge...</div>';
             }
         };
 
@@ -83,7 +92,7 @@
                 var card = document.createElement('div');
                 card.className = 'card';
 
-                // Natively secure textContent prevents HTML injection (XSS)
+                // Natively secure DOM creation to prevent XSS injection
                 var hostDiv = document.createElement('div');
                 hostDiv.className = 'host';
                 hostDiv.textContent = item.host;
@@ -92,7 +101,6 @@
                 userDiv.className = 'user';
                 userDiv.textContent = item.username;
 
-                // Action buttons are safe to use innerHTML because idx is strictly an integer
                 var actionsDiv = document.createElement('div');
                 actionsDiv.className = 'actions';
                 actionsDiv.innerHTML = 
@@ -109,9 +117,6 @@
 
         function copyPass(idx, btnElement) {
             var pass = allData[idx].password;
-            if(!pass && window.SpoonVault && SpoonVault.getPassword) {
-                pass = SpoonVault.getPassword(allData[idx].host, allData[idx].username);
-            }
             if(pass) {
                 var temp = document.createElement("input");
                 temp.value = pass;
@@ -120,7 +125,6 @@
                 document.execCommand("copy");
                 document.body.removeChild(temp);
                 
-                // Visual feedback
                 var originalText = btnElement.innerText;
                 btnElement.innerText = "Copied!";
                 btnElement.style.background = "#28a745";
@@ -134,7 +138,9 @@
         function deleteCard(idx) {
             if(confirm("Delete this saved password?")) {
                 var item = allData[idx];
-                if(window.SpoonVault) SpoonVault.deleteLogin(item.host, item.username);
+                if(typeof spoonVaultMessage !== 'undefined') {
+                    spoonVaultMessage.postMessage('DELETE_LOGIN:' + item.host + ':' + item.username);
+                }
                 allData.splice(idx, 1);
                 renderCards();
             }
@@ -174,11 +180,11 @@
 
             if(!h || !u || !p) return;
 
-            if(window.SpoonVault) {
+            if(typeof spoonVaultMessage !== 'undefined') {
                 if (isEditing && (h !== editOriginalHost || u !== editOriginalUser)) {
-                    SpoonVault.deleteLogin(editOriginalHost, editOriginalUser);
+                    spoonVaultMessage.postMessage('DELETE_LOGIN:' + editOriginalHost + ':' + editOriginalUser);
                 }
-                SpoonVault.saveLogin(h, u, p);
+                spoonVaultMessage.postMessage('SAVE_LOGIN:' + h + ':' + u + ':' + p);
             }
 
             if (isEditing) {
