@@ -130,6 +130,26 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
+        // Modern Android 11+ Storage Access Framework for CSV Exports
+        androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher = registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),
+            uri -> {
+                if (uri != null && secureCredentialManager != null) {
+                    backgroundExecutor.execute(() -> {
+                        try {
+                            java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                            if (os != null) {
+                                String rawJson = secureCredentialManager.getAllCredentialsAsJson();
+                                os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                os.close();
+                                runOnUiThread(() -> Toast.makeText(this, "Passwords exported successfully", Toast.LENGTH_LONG).show());
+                            }
+                        } catch (Exception e) {
+                            runOnUiThread(() -> Toast.makeText(this, "Export failed", Toast.LENGTH_SHORT).show());
+                        }
+                    });
+                }
+            });
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
@@ -596,15 +616,8 @@ public class MainActivity extends AppCompatActivity {
                                 } else if (which == 1) {
                                     passwordImportLauncher.launch("text/*");
                                 } else if (which == 2) {
-                                    if (secureCredentialManager != null) {
-                                        java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
-                                        java.io.File csvFile = new java.io.File(downloadDir, "passwords.csv");
-                                        if (secureCredentialManager.exportToCSV(MainActivity.this)) {
-                                            Toast.makeText(this, "Passwords exported to Downloads/passwords.csv", Toast.LENGTH_LONG).show();
-                                        } else {
-                                            Toast.makeText(this, "Failed to export passwords", Toast.LENGTH_SHORT).show();
-                                        }
-                                    }
+                                    // Trigger the modern safe file picker
+                                    exportCsvLauncher.launch("spoon_passwords.csv");
                                 }
                             })
                             .show();
@@ -1135,7 +1148,9 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                                     request.setMimeType(mimeType);
                                 }
                                 
-                                request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, targetFileName);
+                                // Create a safe MediaStore-compliant URI for the download manager
+                                android.net.Uri safeUri = android.net.Uri.withAppendedPath(android.net.Uri.parse("content://downloads/public_downloads"), targetFileName);
+                                request.setDestinationUri(safeUri);
                                 request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                                 request.setTitle(targetFileName);
                                 request.setDescription("Downloading file...");
