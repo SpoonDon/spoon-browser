@@ -82,14 +82,27 @@
 
                 var card = document.createElement('div');
                 card.className = 'card';
-                card.innerHTML = 
-                    '<div class="host">' + item.host + '</div>' +
-                    '<div class="user">' + item.username + '</div>' +
-                    '<div class="actions">' +
-                        '<button class="btn" onclick="copyPass(' + idx + ', this)">Copy Pass</button>' +
-                        '<button class="btn" onclick="editCard(' + idx + ')">Edit</button>' +
-                        '<button class="btn danger" onclick="deleteCard(' + idx + ')">Del</button>' +
-                    '</div>';
+
+                // Natively secure textContent prevents HTML injection (XSS)
+                var hostDiv = document.createElement('div');
+                hostDiv.className = 'host';
+                hostDiv.textContent = item.host;
+
+                var userDiv = document.createElement('div');
+                userDiv.className = 'user';
+                userDiv.textContent = item.username;
+
+                // Action buttons are safe to use innerHTML because idx is strictly an integer
+                var actionsDiv = document.createElement('div');
+                actionsDiv.className = 'actions';
+                actionsDiv.innerHTML = 
+                    '<button class="btn" onclick="copyPass(' + idx + ', this)">Copy Pass</button>' +
+                    '<button class="btn" onclick="editCard(' + idx + ')">Edit</button>' +
+                    '<button class="btn danger" onclick="deleteCard(' + idx + ')">Del</button>';
+
+                card.appendChild(hostDiv);
+                card.appendChild(userDiv);
+                card.appendChild(actionsDiv);
                 root.appendChild(card);
             });
         }
