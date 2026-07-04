@@ -32,7 +32,10 @@ public class BrowserItemAdapter extends ArrayAdapter<BrowserItem> {
         if (convertView == null) {
             layout = new LinearLayout(getContext());
             layout.setOrientation(LinearLayout.VERTICAL);
-            layout.setPadding(32, 24, 32, 24);
+            float density = getContext().getResources().getDisplayMetrics().density;
+            int padX = (int) (16 * density); // ~32px on xhdpi
+            int padY = (int) (12 * density); // ~24px on xhdpi
+            layout.setPadding(padX, padY, padX, padY);
             layout.setGravity(Gravity.CENTER_VERTICAL);
 
             holder = new ViewHolder();
