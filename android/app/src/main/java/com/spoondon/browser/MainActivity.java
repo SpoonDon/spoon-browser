@@ -1195,33 +1195,43 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                         // Push all database I/O to the background thread
                         backgroundExecutor.execute(() -> {
                             try {
+                                // 1. Handle the legacy flat-string commands first
                                 if (payload.equals("FETCH_ALL_VAULT_DATA")) {
-                                    // Only allow the local internal vault page to fetch the entire database
                                     if (verifiedFrameHost == null || verifiedFrameHost.isEmpty()) { 
                                          String allData = secureCredentialManager.getAllCredentialsAsJson();
                                          runOnUiThread(() -> replyProxy.postMessage(allData));
                                     }
-                                } else if (payload.startsWith("SAVE_LOGIN:")) {
-                                    // Format: SAVE_LOGIN:host:user:pass
-                                    String[] p = payload.split(":", 4);
-                                    if (p.length == 4) {
-                                        String targetHost = p[1].isEmpty() ? verifiedFrameHost : p[1];
-                                        secureCredentialManager.saveCredentials(targetHost, p[2], p[3]);
-                                    }
-                                } else if (payload.startsWith("DELETE_LOGIN:")) {
-                                    // Format: DELETE_LOGIN:host:user
-                                    String[] p = payload.split(":", 3);
-                                    if (p.length == 3) {
-                                        secureCredentialManager.deleteCredentials(p[1], p[2]);
-                                    }
+                                    return;
                                 } else if ("FETCH_CREDENTIALS".equals(payload)) {
-                                    // Standard autofill request from a website
                                     if (verifiedFrameHost != null && !verifiedFrameHost.isEmpty()) {
                                         String credentials = secureCredentialManager.getAllAccountsForHost(verifiedFrameHost);
                                         runOnUiThread(() -> replyProxy.postMessage(credentials));
                                     }
+                                    return;
                                 }
-                            } catch (Exception ignored) {}
+
+                                // 2. Handle the new JSON structured commands for Save/Delete
+                                if (payload.startsWith("{")) {
+                                    org.json.JSONObject json = new org.json.JSONObject(payload);
+                                    String action = json.optString("action", "");
+                                    
+                                    if (action.equals("SAVE_LOGIN")) {
+                                        String targetHost = json.optString("host", "");
+                                        if (targetHost.isEmpty()) targetHost = verifiedFrameHost;
+                                        String user = json.optString("username", "");
+                                        String pass = json.optString("password", "");
+                                        secureCredentialManager.saveCredentials(targetHost, user, pass);
+                                    } 
+                                    else if (action.equals("DELETE_LOGIN")) {
+                                        String targetHost = json.optString("host", "");
+                                        if (targetHost.isEmpty()) targetHost = verifiedFrameHost;
+                                        String user = json.optString("username", "");
+                                        secureCredentialManager.deleteCredentials(targetHost, user);
+                                    }
+                                }
+                            } catch (Exception ignored) {
+                                // Ignore malformed payloads from rogue sites
+                            }
                         });
                     }
                 });
