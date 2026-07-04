@@ -63,6 +63,7 @@ public class SpoonWebChromeClient extends WebChromeClient {
                 if (host.endsWith("youtube.com") || 
                     host.endsWith("googlevideo.com") || 
                     host.endsWith("twitch.tv") || 
+                    host.endsWith("googleusercontent.com") || 
                     host.endsWith("spotify.com")) {
                     allowedResources.add(resource);
                 }
