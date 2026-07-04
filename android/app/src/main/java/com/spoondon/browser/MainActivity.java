@@ -1463,13 +1463,34 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     }
 
     private void showHistoryDialog() {
-        if (history.isEmpty()) return;
-        ArrayList<BrowserItem> items = buildHistoryItems();
+        // Grab the native Chromium history for the current tab
+        android.webkit.WebBackForwardList webHistory = getCurrentWebView().copyBackForwardList();
+        
+        if (webHistory.getSize() == 0) {
+            Toast.makeText(this, "Tab history is empty", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Convert native history into your clean BrowserItem list
+        ArrayList<BrowserItem> items = new ArrayList<>();
+        for (int i = webHistory.getSize() - 1; i >= 0; i--) { // Reverse order (newest first)
+            String title = webHistory.getItemAtIndex(i).getTitle();
+            String url = webHistory.getItemAtIndex(i).getUrl();
+            items.add(new BrowserItem(title != null ? title : url, url));
+        }
+
+        // Pass it to your existing adapter and UI
         BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
         ListView listView = new ListView(this);
         listView.setAdapter(adapter);
 
-        listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
+        listView.setOnItemClickListener((parent, view, which, id) -> {
+            // Calculate steps to go back
+            int targetIndex = webHistory.getSize() - 1 - which;
+            int steps = targetIndex - webHistory.getCurrentIndex();
+            getCurrentWebView().goBackOrForward(steps);
+        });
+        
         listView.setOnItemLongClickListener((parent, view, which, id) -> {
             String[] options = {"Open in New Tab", "Add Bookmark"};
             new AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
@@ -1478,17 +1499,15 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                     openUrl(items.get(which).url);
                 } else if (item == 1) {
                     String url = items.get(which).url;
-                    if (!bookmarks.contains(url)) {
-                        bookmarks.add(url);
-                        saveBookmarks();
-                        Toast.makeText(this, "Bookmark added", Toast.LENGTH_SHORT).show();
-                    }
+                    // Use your new BookmarkManager class here!
+                    bookmarkManager.addBookmark(items.get(which).title, url);
+                    Toast.makeText(this, "Bookmark added", Toast.LENGTH_SHORT).show();
                 }
             }).show();
             return true;
         });
 
-        new AlertDialog.Builder(this).setTitle("History").setView(listView).show();
+        new AlertDialog.Builder(this).setTitle("Tab History").setView(listView).show();
     }
 
     WebView getCurrentWebView() {
