@@ -107,7 +107,8 @@ public class MainActivity extends AppCompatActivity {
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<String> filePickerLauncher;
     private ActivityResultLauncher<String> passwordImportLauncher;
-
+    
+    private androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher;
     private final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
@@ -130,26 +131,26 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
-        // Modern Android 11+ Storage Access Framework for CSV Exports
-        androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher = registerForActivityResult(
-            new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),
-            uri -> {
-                if (uri != null && secureCredentialManager != null) {
-                    backgroundExecutor.execute(() -> {
-                        try {
-                            java.io.OutputStream os = getContentResolver().openOutputStream(uri);
-                            if (os != null) {
-                                String rawJson = secureCredentialManager.getAllCredentialsAsJson();
-                                os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                                os.close();
-                                runOnUiThread(() -> Toast.makeText(this, "Passwords exported successfully", Toast.LENGTH_LONG).show());
-                            }
-                        } catch (Exception e) {
-                            runOnUiThread(() -> Toast.makeText(this, "Export failed", Toast.LENGTH_SHORT).show());
-                        }
-                    });
+        // Assign directly to the class variable without declaring the type here
+exportCsvLauncher = registerForActivityResult(
+    new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),
+    uri -> {
+        if (uri != null && secureCredentialManager != null) {
+            backgroundExecutor.execute(() -> {
+                try {
+                    java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                    if (os != null) {
+                        String rawJson = secureCredentialManager.getAllCredentialsAsJson();
+                        os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        os.close();
+                        runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Passwords exported successfully", android.widget.Toast.LENGTH_LONG).show());
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Export failed", android.widget.Toast.LENGTH_SHORT).show());
                 }
             });
+        }
+    });
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
@@ -1179,26 +1180,27 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
 
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", 
-                java.util.Collections.singletonList("*"), 
+                java.util.Collections.singleton("*"), // FIXED: Uses singleton() to return a Set<String>
                 new androidx.webkit.WebViewCompat.WebMessageListener() {
                     @Override
-                    public void onPostMessage(android.webkit.WebView view, androidx.webkit.WebMessageCompat message, android.net.Uri sourceOrigin, boolean isMainFrame, androidx.webkit.WebMessagePortCompat replyProxy) {
+                    public void onPostMessage(
+                        android.webkit.WebView view, 
+                        androidx.webkit.WebMessageCompat message, 
+                        android.net.Uri sourceOrigin, 
+                        boolean isMainFrame, 
+                        androidx.webkit.JavaScriptReplyProxy replyProxy // FIXED: Uses JavaScriptReplyProxy
+                    ) {
                         
-                        // Natively verified origin (e.g., "bank.com" or "oauth.google.com")
-                        String verifiedFrameHost = sourceOrigin.getHost();
+                        String verifiedFrameHost = sourceOrigin != null ? sourceOrigin.getHost() : "";
                         String action = message.getData();
 
                         if (action != null && action.startsWith("SAVE_LOGIN:")) {
-                            // Parse the payload (Format: SAVE_LOGIN:username:password)
                             String[] parts = action.split(":", 3);
                             if (parts.length == 3) {
-                                // Route to your background executor securely
-                                // SecureCredentialManager.save(verifiedFrameHost, parts[1], parts[2]);
+                                // Background save logic goes here
                             }
                         } else if ("FETCH_CREDENTIALS".equals(action)) {
-                            // Fetch securely on background thread, then reply ONLY to this specific frame
-                            // String credentialsJson = SecureCredentialManager.get(verifiedFrameHost);
-                            // replyProxy.postMessage(new androidx.webkit.WebMessageCompat(credentialsJson));
+                            // Background fetch and reply logic goes here
                         }
                     }
                 });
