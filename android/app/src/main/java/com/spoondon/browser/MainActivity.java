@@ -545,11 +545,10 @@ exportCsvLauncher = registerForActivityResult(
         });
     }
 
-
     private void setupMenuButton() {
     menuButton.setOnClickListener(v -> {
-        Context wrapper = new ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
-        PopupMenu popup = new PopupMenu(wrapper, menuButton, Gravity.END);
+        android.content.Context wrapper = new android.view.ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
+        android.widget.PopupMenu popup = new android.widget.PopupMenu(wrapper, menuButton, android.view.Gravity.END);
             popup.getMenu().add("New Tab");
             popup.getMenu().add("Reload");
             popup.getMenu().add("Bookmarks");
@@ -561,6 +560,7 @@ exportCsvLauncher = registerForActivityResult(
             popup.getMenu().add(isDesktopMode ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("About");
             popup.getMenu().add("Passwords");
+            popup.getMenu().add("🔑 Vault (Copy)"); // <--- WE ADDED THIS LINE HERE!
             popup.getMenu().add("Exit");
 
             popup.setOnMenuItemClickListener(item -> {
@@ -577,12 +577,12 @@ exportCsvLauncher = registerForActivityResult(
                         showBookmarks();
                         return true;
                     case "Add Bookmark":
-                        WebView wv = getCurrentWebView();
+                        android.webkit.WebView wv = getCurrentWebView();
                         String url = wv != null ? wv.getUrl() : null;
                         if (url != null && !url.isEmpty() && !bookmarks.contains(url)) {
                             bookmarks.add(url);
                             saveBookmarks();
-                            Toast.makeText(this, "Bookmark saved", Toast.LENGTH_SHORT).show();
+                            android.widget.Toast.makeText(this, "Bookmark saved", android.widget.Toast.LENGTH_SHORT).show();
                         }
                         return true;
                     case "History":
@@ -594,7 +594,7 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
                     case "Clear Cache":
                         if (getCurrentWebView() != null) getCurrentWebView().clearCache(true);
-                        Toast.makeText(this, "Cache cleared", Toast.LENGTH_SHORT).show();
+                        android.widget.Toast.makeText(this, "Cache cleared", android.widget.Toast.LENGTH_SHORT).show();
                         return true;
                     case "Filter Lists":
                         showFilterListsDialog();
@@ -608,7 +608,7 @@ exportCsvLauncher = registerForActivityResult(
                         return true;    
                     case "Passwords":
                         String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
-                        new AlertDialog.Builder(this)
+                        new android.app.AlertDialog.Builder(this)
                             .setTitle("Password Management")
                             .setItems(options, (dialog, which) -> {
                                 if (which == 0) {
@@ -623,7 +623,11 @@ exportCsvLauncher = registerForActivityResult(
                             })
                             .show();
                         return true;
-case "Exit":
+                    // 🛠️ THE MAGIC HOOK: This triggers the new right-side panel
+                    case "🔑 Vault (Copy)":
+                        showVaultForCurrentSite();
+                        return true;
+                    case "Exit":
                         finishAndRemoveTask();
                         return true;
                 }
@@ -632,6 +636,7 @@ case "Exit":
             popup.show();
         });
     }
+    
     private void setupToolbarListeners() {
         // Feature Removed: Disabled long press behavior entirely
         tabIndicator.setOnLongClickListener(null);
