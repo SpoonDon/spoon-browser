@@ -1463,40 +1463,35 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     }
 
     private void showHistoryDialog() {
-        // 1. Get the current active tab
         android.webkit.WebView currentWebView = tabs.get(currentTab);
         if (currentWebView == null) return;
 
-        // 2. Extract Chromium's native, bulletproof history for this tab
+        // Pull the flawless history directly from the Chromium engine
         android.webkit.WebBackForwardList webHistory = currentWebView.copyBackForwardList();
 
-        // Add the Toast so it never fails silently again!
         if (webHistory.getSize() == 0) {
             android.widget.Toast.makeText(this, "History is empty", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
 
-        // 3. Build your BrowserItems directly from the engine (Newest to Oldest)
-        java.util.ArrayList<BrowserItem> items = new java.util.ArrayList<>();
+        ArrayList<BrowserItem> items = new ArrayList<>();
+        // Iterate newest to oldest
         for (int i = webHistory.getSize() - 1; i >= 0; i--) { 
             String title = webHistory.getItemAtIndex(i).getTitle();
             String url = webHistory.getItemAtIndex(i).getUrl();
             items.add(new BrowserItem(title != null ? title : url, url));
         }
 
-        // 4. YOUR exact adapter and UI code
         BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        android.widget.ListView listView = new android.widget.ListView(this);
+        ListView listView = new ListView(this);
         listView.setAdapter(adapter);
 
-        // Standard click navigates through the native history stack natively
         listView.setOnItemClickListener((parent, view, which, id) -> {
             int targetIndex = webHistory.getSize() - 1 - which;
             int steps = targetIndex - webHistory.getCurrentIndex();
             currentWebView.goBackOrForward(steps);
         });
 
-        // YOUR exact Long-Click menu (with the safe bookmarks logic that compiles!)
         listView.setOnItemLongClickListener((parent, view, which, id) -> {
             String[] options = {"Open in New Tab", "Add Bookmark"};
             new android.app.AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
@@ -1505,8 +1500,7 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                     openUrl(items.get(which).url);
                 } else if (item == 1) {
                     String url = items.get(which).url;
-                    
-                    // Reverted back to your proven logic!
+                    // Safely uses your original MainActivity bookmarks list! No compile errors!
                     if (!bookmarks.contains(url)) {
                         bookmarks.add(url);
                         saveBookmarks();
@@ -1517,7 +1511,7 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
             return true;
         });
 
-        new android.app.AlertDialog.Builder(this).setTitle("History").setView(listView).show();
+        new android.app.AlertDialog.Builder(this).setTitle("Tab History").setView(listView).show();
     }
 
     WebView getCurrentWebView() {
