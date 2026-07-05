@@ -1183,7 +1183,6 @@ case "Exit":
             }
         });
         
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER))
         return webView;
     }
     
