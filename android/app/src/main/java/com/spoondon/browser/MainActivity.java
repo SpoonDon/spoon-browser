@@ -689,6 +689,34 @@ case "Exit":
         nextTabButton = makeButton("▶");
         newTabButton = makeButton("+");
         menuButton = makeButton("☰");
+        // Attach the native Android Popup Menu to your menuButton
+        menuButton.setOnClickListener(view -> {
+            android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(MainActivity.this, menuButton);
+            
+            // Add your menu items (You can add "Settings", "Bookmarks", etc. here later)
+            popupMenu.getMenu().add("Global History");
+            popupMenu.getMenu().add("🔑 Vault / Autofill"); // Our new indestructible option
+            
+            // Listen for which item the user tapped
+            popupMenu.setOnMenuItemClickListener(menuItem -> {
+                String title = menuItem.getTitle().toString();
+                
+                if (title.equals("🔑 Vault / Autofill")) {
+                    // Trigger the native Vault side-panel!
+                    showVaultForCurrentSite();
+                    return true;
+                } 
+                else if (title.equals("Global History")) {
+                    // Trigger your existing history dialog we fixed earlier
+                    showHistoryDialog();
+                    return true;
+                }
+                return false;
+            });
+            
+            // Display the menu on the screen
+            popupMenu.show();
+        });
 
         // Responsive UI Logic for Phones vs Tablets
         int screenWidth = getScreenWidthDp();
