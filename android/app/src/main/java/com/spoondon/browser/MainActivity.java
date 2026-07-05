@@ -1187,55 +1187,63 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                         boolean isMainFrame, 
                         androidx.webkit.JavaScriptReplyProxy replyProxy
                     ) {
+                        // inside addWebMessageListener...
                         String verifiedFrameHost = sourceOrigin != null ? sourceOrigin.getHost() : "";
                         String payload = message.getData();
 
                         if (payload == null || secureCredentialManager == null) return;
                         
-                        // Push all database I/O to the background thread
                         backgroundExecutor.execute(() -> {
                             try {
-                                // 1. Handle the legacy flat-string commands first
+                                // Strip www. globally so reads and writes always align perfectly
+                                String cleanHost = "";
+                                if (verifiedFrameHost != null && !verifiedFrameHost.isEmpty()) {
+                                    cleanHost = verifiedFrameHost.toLowerCase().trim().replaceFirst("^www\\.", "");
+                                }
+
+                                // 1. Handle Flat Strings
                                 if (payload.equals("FETCH_ALL_VAULT_DATA")) {
-                                    if (verifiedFrameHost == null || verifiedFrameHost.isEmpty()) { 
+                                    if (cleanHost.isEmpty()) { 
                                          String allData = secureCredentialManager.getAllCredentialsAsJson();
                                          runOnUiThread(() -> replyProxy.postMessage(allData));
                                     }
                                     return;
-                                }
-                                
+                                } 
                                 else if ("FETCH_CREDENTIALS".equals(payload)) {
-                                    if (verifiedFrameHost != null && !verifiedFrameHost.isEmpty()) {
-                                        // Strip www. to ensure it matches the format in your database!
-                                        String cleanHost = verifiedFrameHost.replaceFirst("^www\\.", "");
+                                    if (!cleanHost.isEmpty()) {
                                         String credentials = secureCredentialManager.getAllAccountsForHost(cleanHost);
                                         runOnUiThread(() -> replyProxy.postMessage(credentials));
                                     }
                                     return;
                                 }
 
-                                // 2. Handle the new JSON structured commands for Save/Delete
+                                // 2. Handle JSON Commands
                                 if (payload.startsWith("{")) {
                                     org.json.JSONObject json = new org.json.JSONObject(payload);
                                     String action = json.optString("action", "");
                                     
                                     if (action.equals("SAVE_LOGIN")) {
                                         String targetHost = json.optString("host", "");
-                                        if (targetHost.isEmpty()) targetHost = verifiedFrameHost;
-                                        String user = json.optString("username", "");
+                                        targetHost = targetHost.isEmpty() ? cleanHost : targetHost.toLowerCase().trim().replaceFirst("^www\\.", "");
+                                        
+                                        String user = json.optString("username", "").trim();
                                         String pass = json.optString("password", "");
-                                        secureCredentialManager.saveCredentials(targetHost, user, pass);
+                                        
+                                        if (!targetHost.isEmpty() && !user.isEmpty()) {
+                                            secureCredentialManager.saveCredentials(targetHost, user, pass);
+                                        }
                                     } 
                                     else if (action.equals("DELETE_LOGIN")) {
                                         String targetHost = json.optString("host", "");
-                                        if (targetHost.isEmpty()) targetHost = verifiedFrameHost;
-                                        String user = json.optString("username", "");
-                                        secureCredentialManager.deleteCredentials(targetHost, user);
+                                        targetHost = targetHost.isEmpty() ? cleanHost : targetHost.toLowerCase().trim().replaceFirst("^www\\.", "");
+                                        
+                                        String user = json.optString("username", "").trim();
+                                        if (!targetHost.isEmpty() && !user.isEmpty()) {
+                                            secureCredentialManager.deleteCredentials(targetHost, user);
+                                        }
                                     }
                                 }
-                            } catch (Exception ignored) {
-                                // Ignore malformed payloads from rogue sites
-                            }
+                            } catch (Exception ignored) {}
                         });
                     }
                 });
@@ -1523,12 +1531,20 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
         });
     }
 
-    private void saveHistory() {
+    public void saveHistory() {
+        // 1. Snapshot the array immediately on the Main Thread to avoid thread crashes
+        final java.util.ArrayList<String> historyCopy;
+        synchronized (history) {
+            historyCopy = new java.util.ArrayList<>(history);
+        }
+
+        // 2. Safely write the isolated copy to disk in the background
         backgroundExecutor.execute(() -> {
-            prefs.edit().putString(KEY_HISTORY, TextUtils.join("\n", history)).apply();
+            try {
+                prefs.edit().putString(KEY_HISTORY, android.text.TextUtils.join("\n", historyCopy)).apply();
+            } catch (Exception ignored) {}
         });
     }
-
     
     static class ContentFilterEngine {
         // Fast direct domain lookup buckets
@@ -1734,7 +1750,33 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     final ContentFilterEngine filterEngine = new ContentFilterEngine();
     private final java.util.concurrent.atomic.AtomicBoolean isFilterUpdating = new java.util.concurrent.atomic.AtomicBoolean(false);
 
+    public void recordPageVisit(String url, String title) {
+        if (url == null || url.startsWith("data:") || url.equals("about:blank") || url.startsWith("file://")) {
+            return; 
+        }
 
+        // 1. Safely update your private history arrays
+        synchronized (this.history) {
+            this.history.remove(url);
+            this.history.add(url);
+        }
+        synchronized (this.pageTitles) {
+            if (title != null && !title.isEmpty()) {
+                this.pageTitles.put(url, title);
+            }
+        }
+        
+        // 2. Immediately save to disk using your new thread-safe method
+        saveHistory();
+
+        // 3. INSTANT UI REFRESH: Tell your exact address bar adapter to update immediately
+        runOnUiThread(() -> {
+            if (addressBarAdapter != null) {
+                addressBarAdapter.notifyDataSetChanged();
+            }
+        });
+    }
+    
     private void refreshFilterLists() {
         // Concurrency Guard: Drop duplicate network requests if a sync is already running
         if (!isFilterUpdating.compareAndSet(false, true)) {
