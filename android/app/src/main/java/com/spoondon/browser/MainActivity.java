@@ -1135,6 +1135,8 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                         .setPositiveButton("Download", (dialog, item) -> {
                             try {
                                 android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                
+                                // Fetch cookies to ensure authenticated downloads (like PDF invoices) work
                                 String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
                                 if (cookies != null) {
                                     request.addRequestHeader("Cookie", cookies);
@@ -1146,22 +1148,28 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                                     request.setMimeType(mimeType);
                                 }
                                 
-                                // Create a safe MediaStore-compliant URI for the download manager
-                                android.net.Uri safeUri = android.net.Uri.withAppendedPath(android.net.Uri.parse("content://downloads/public_downloads"), targetFileName);
-                                request.setDestinationUri(safeUri);
+                                // CRITICAL FIX: Use the system-approved method for the public Downloads folder!
+                                // This completely bypasses the content:// URI crash.
+                                request.setDestinationInExternalPublicDir(
+                                        android.os.Environment.DIRECTORY_DOWNLOADS, 
+                                        targetFileName
+                                );
+                                
                                 request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                                 request.setTitle(targetFileName);
                                 request.setDescription("Downloading file...");
 
+                                // Enqueue the download
                                 android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                                 if (manager != null) {
                                     manager.enqueue(request);
-                                    Toast.makeText(MainActivity.this, "Download started...", Toast.LENGTH_SHORT).show();
+                                    android.widget.Toast.makeText(MainActivity.this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
                                 } else {
                                     throw new Exception("System DownloadManager unavailable");
                                 }
                             } catch (Exception e) {
-                                Toast.makeText(MainActivity.this, "Native downloader failed. Routing to external fallback...", Toast.LENGTH_SHORT).show();
+                                // e.printStackTrace(); // Uncomment for debugging if it still fails
+                                android.widget.Toast.makeText(MainActivity.this, "Native downloader failed. Routing to external fallback...", android.widget.Toast.LENGTH_SHORT).show();
                                 triggerExternalDownload(url, mimeType);
                             }
                         })
