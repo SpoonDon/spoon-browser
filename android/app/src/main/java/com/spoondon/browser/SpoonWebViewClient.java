@@ -39,45 +39,50 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        if (!request.isForMainFrame()) {
-            return false;
-        }
-
         Uri url = request.getUrl();
-        if (url != null) {
-            String urlString = url.toString();
+        if (url == null) return false;
+        String urlString = url.toString();
 
-            if (urlString.startsWith("magnet:") || urlString.endsWith(".torrent")) {
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW, url);
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    view.getContext().startActivity(intent);
-                    return true;
-                } catch (Exception e) {
-                    Toast.makeText(view.getContext(), "No app found to handle torrent links", Toast.LENGTH_SHORT).show();
-                    return true;
-                }
-            }
+        // 1. Let the WebView load standard web pages natively
+        if (urlString.startsWith("http://") || urlString.startsWith("https://")) {
+            return false; 
         }
-        return false;
-    }
-    
-    // Legacy support for Android 5.0 - 6.0
-    @SuppressWarnings("deprecation")
-    @Override
-    public boolean shouldOverrideUrlLoading(WebView view, String urlString) {
-        if (urlString != null && (urlString.startsWith("magnet:") || urlString.endsWith(".torrent"))) {
-            try {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(urlString));
+
+        // 2. Route EVERYTHING else (intent://, mailto:, tel:, market://, magnet:) to the Android OS
+        try {
+            Intent intent = Intent.parseUri(urlString, Intent.URI_INTENT_SCHEME);
+            if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 view.getContext().startActivity(intent);
                 return true;
-            } catch (Exception e) {
-                Toast.makeText(view.getContext(), "No app found to handle torrent links", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Toast.makeText(view.getContext(), "No app found to handle this link", Toast.LENGTH_SHORT).show();
+        }
+        return true; 
+    }
+
+    // Legacy support for older Android versions
+    @SuppressWarnings("deprecation")
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, String urlString) {
+        if (urlString == null) return false;
+        
+        if (urlString.startsWith("http://") || urlString.startsWith("https://")) {
+            return false;
+        }
+        
+        try {
+            Intent intent = Intent.parseUri(urlString, Intent.URI_INTENT_SCHEME);
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                view.getContext().startActivity(intent);
                 return true;
             }
+        } catch (Exception e) {
+             Toast.makeText(view.getContext(), "No app found to handle this link", Toast.LENGTH_SHORT).show();
         }
-        return false;
+        return true;
     }
   
     @Override
