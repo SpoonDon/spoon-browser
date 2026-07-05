@@ -1093,96 +1093,66 @@ case "Exit":
         webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
 
 webView.setDownloadListener(new android.webkit.DownloadListener() {
-        @Override
-        public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-            if (url == null) return;
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+                if (url == null) return;
                 
-            try {
-                String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
+                try {
+                    String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
 
-                // 1. Asynchronous extraction path for javascript memory blobs (Upgraded to Secure WebMessageListener)
-                if (url.startsWith("blob:")) {
-                    String extractionScript = "javascript:(function() {" +
-                            "  var request = new XMLHttpRequest();" +
-                            "  request.open('GET', '" + url + "', true);" +
-                            "  request.responseType = 'blob';" +
-                            "  request.onload = function() {" +
-                            "    if (this.status === 200) {" +
-                            "      var dataReader = new FileReader();" +
-                            "      dataReader.readAsDataURL(this.response);" +
-                            "      dataReader.onloadend = function() {" +
-                            "        var payload = JSON.stringify({fileName: '" + targetFileName + "', mimeType: '" + mimeType + "', data: dataReader.result});" +
-                            "        if(window.SecureBlobBridge) { window.SecureBlobBridge.postMessage(payload); }" +
-                            "      };" +
-                            "    }" +
-                            "  };" +
-                            "  request.send();" +
-                            "})();";
-                    webView.evaluateJavascript(extractionScript, null);
-                    return;
-                } 
-                    
-                // 2. Direct decoding path for Base64 data URIs (Upgraded to new safe MediaStore class)
-                if (url.startsWith("data:")) {
-                    new BlobDownloader(MainActivity.this).saveBase64ToFile(url, mimeType, targetFileName);
-                    return;
+                    // 🛠️ FIX A: Prevent Android from treating files like .gitignore as invisible system files
+                    if (targetFileName.startsWith(".")) {
+                        targetFileName = targetFileName.substring(1) + ".txt"; // turns .gitignore into gitignore.txt
+                    }
+
+                    // 🛠️ FIX B: Force correct extensions for known developer files that URLUtil messes up
+                    String lowerUrl = url.toLowerCase();
+                    if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
+                    if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
+
+                    // 🛠️ FIX C: DownloadManager silently fails if the MimeType is completely null
+                    String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
+
+                    // ... (Keep your blob: and data: checks here) ...
+
+                    // 3. Proper direct downloader with automated fallback support for standard links
+                    new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle("Download File")
+                            .setMessage("Do you want to download " + targetFileName + "?")
+                            .setPositiveButton("Download", (dialog, item) -> {
+                                try {
+                                    android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                    
+                                    String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                                    if (cookies != null) request.addRequestHeader("Cookie", cookies);
+                                    if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
+                                    
+                                    // Use our sanitized safeMimeType here to prevent crashes
+                                    request.setMimeType(safeMimeType); 
+                                    
+                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, targetFileName);
+                                    request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                    request.setTitle(targetFileName);
+                                    
+                                    android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                                    if (manager != null) {
+                                        manager.enqueue(request);
+                                        android.widget.Toast.makeText(MainActivity.this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
+                                    }
+                                } catch (Exception e) {
+                                    triggerExternalDownload(url, safeMimeType);
+                                }
+                            })
+                            .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, safeMimeType))
+                            .setNegativeButton("Cancel", null)
+                            .show();
+
+                } catch (Exception err) {
+                    android.widget.Toast.makeText(MainActivity.this, "Download manager initialization failed", android.widget.Toast.LENGTH_SHORT).show();
                 }
-
-                // 3. Proper direct downloader with automated fallback support for standard links
-                new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                        .setTitle("Download File")
-                        .setMessage("Do you want to download " + targetFileName + "?")
-                        .setPositiveButton("Download", (dialog, item) -> {
-                            try {
-                                android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
-                                
-                                // Fetch cookies to ensure authenticated downloads (like PDF invoices) work
-                                String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
-                                if (cookies != null) {
-                                    request.addRequestHeader("Cookie", cookies);
-                                }
-                                if (userAgent != null) {
-                                    request.addRequestHeader("User-Agent", userAgent);
-                                }
-                                if (mimeType != null && !mimeType.isEmpty()) {
-                                    request.setMimeType(mimeType);
-                                }
-                                
-                                // CRITICAL FIX: Use the system-approved method for the public Downloads folder!
-                                // This completely bypasses the content:// URI crash.
-                                request.setDestinationInExternalPublicDir(
-                                        android.os.Environment.DIRECTORY_DOWNLOADS, 
-                                        targetFileName
-                                );
-                                
-                                request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                                request.setTitle(targetFileName);
-                                request.setDescription("Downloading file...");
-
-                                // Enqueue the download
-                                android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                                if (manager != null) {
-                                    manager.enqueue(request);
-                                    android.widget.Toast.makeText(MainActivity.this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
-                                } else {
-                                    throw new Exception("System DownloadManager unavailable");
-                                }
-                            } catch (Exception e) {
-                                // e.printStackTrace(); // Uncomment for debugging if it still fails
-                                android.widget.Toast.makeText(MainActivity.this, "Native downloader failed. Routing to external fallback...", android.widget.Toast.LENGTH_SHORT).show();
-                                triggerExternalDownload(url, mimeType);
-                            }
-                        })
-                        .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, mimeType))
-                        .setNegativeButton("Cancel", null)
-                        .show();
-
-            } catch (Exception err) {
-                Toast.makeText(MainActivity.this, "Download manager initialization failed", Toast.LENGTH_SHORT).show();
             }
-        }
-    });
-
+        });
+        
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", 
                 java.util.Collections.singleton("*"), 
