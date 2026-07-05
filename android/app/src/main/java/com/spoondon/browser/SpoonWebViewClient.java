@@ -61,6 +61,7 @@ public class SpoonWebViewClient extends WebViewClient {
         }
         return false;
     }
+    
     // Legacy support for Android 5.0 - 6.0
     @SuppressWarnings("deprecation")
     @Override
@@ -116,3 +117,5 @@ public class SpoonWebViewClient extends WebViewClient {
         
         // Notice how clean this is now! No more autofill script headaches here.
     }
+    
+}
