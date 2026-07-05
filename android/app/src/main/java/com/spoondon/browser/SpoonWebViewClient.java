@@ -116,9 +116,14 @@ public class SpoonWebViewClient extends WebViewClient {
 
 if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
     String secureAutofillScript = "javascript:(function() {" +
-        "  if (typeof spoonVaultMessage === 'undefined') return;" +
+        "  if (window.spoonVaultInjected) return;" +
+        "  window.spoonVaultInjected = true;" +
         "  " +
-        "  /* THE BALANCED IMPERSONATOR: Beats React without triggering Cloudflare wipes */" +
+        "  /* 1. THE CACHE: Gives the script memory to survive Cloudflare wipes */" +
+        "  window.spoonCachedUser = '';" +
+        "  window.spoonCachedPass = '';" +
+        "  " +
+        "  /* 2. THE XENFORO BYPASS: Satisfies strict React/Vue state managers */" +
         "  function setNativeValue(el, val) {" +
         "    try {" +
         "      var prev = el.value;" +
@@ -127,33 +132,43 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "      if (tracker) tracker.setValue(prev);" +
         "      var desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');" +
         "      if (desc && desc.set) desc.set.call(el, val);" +
-        "      /* ONLY dispatch 'input'. Dispatching 'blur' causes Cloudflare to wipe the fields! */" +
         "      el.dispatchEvent(new Event('input', { bubbles: true }));" +
+        "      el.dispatchEvent(new Event('change', { bubbles: true }));" +
         "    } catch(e) {" +
         "      el.value = val;" +
         "      el.dispatchEvent(new Event('input', { bubbles: true }));" +
         "    }" +
         "  }" +
         "  " +
-        "  var pendingUser = ''; var pendingPass = '';" +
-        "  document.addEventListener('input', function(e) {" +
-        "    if (e.target && e.target.tagName === 'INPUT') {" +
-        "      var t = (e.target.type || 'text').toLowerCase();" +
-        "      if (t === 'password') pendingPass = e.target.value;" +
-        "      else if (['text', 'email', 'tel'].indexOf(t) !== -1) pendingUser = e.target.value;" +
-        "    }" +
-        "  }, true);" +
-        "  " +
         "  function commitSave() {" +
-        "    if (pendingUser && pendingPass) {" +
-        "      spoonVaultMessage.postMessage(JSON.stringify({action: 'SAVE_LOGIN', host: '', username: pendingUser, password: pendingPass}));" +
+        "    if (window.spoonCachedUser && window.spoonCachedPass) {" +
+        "      spoonVaultMessage.postMessage(JSON.stringify({action: 'SAVE_LOGIN', host: '', username: window.spoonCachedUser, password: window.spoonCachedPass}));" +
         "    }" +
         "  }" +
         "  " +
+        "  document.addEventListener('input', function(e) {" +
+        "    if (e.target && e.target.tagName === 'INPUT') {" +
+        "      var t = (e.target.type || 'text').toLowerCase();" +
+        "      if (t === 'password') window.spoonCachedPass = e.target.value;" +
+        "      else if (['text', 'email', 'tel'].indexOf(t) !== -1) window.spoonCachedUser = e.target.value;" +
+        "    }" +
+        "  }, true);" +
+        "  " +
+        "  /* 3. THE RESURRECTOR: Intercepts clicks and restores wiped fields instantly */" +
         "  document.addEventListener('click', function(e) {" +
         "    var el = e.target;" +
-        "    if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button')) || el.closest('button')) commitSave();" +
+        "    if (el && (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button')) || el.closest('button'))) {" +
+        "      if (window.spoonCachedUser && window.spoonCachedPass) {" +
+        "          document.querySelectorAll('input').forEach(function(i) {" +
+        "              var t = (i.type || 'text').toLowerCase();" +
+        "              if (t === 'password' && !i.value) setNativeValue(i, window.spoonCachedPass);" +
+        "              else if (['text', 'email', 'tel'].indexOf(t) !== -1 && !i.value) setNativeValue(i, window.spoonCachedUser);" +
+        "          });" +
+        "      }" +
+        "      commitSave();" +
+        "    }" +
         "  }, true);" +
+        "  " +
         "  document.addEventListener('keydown', function(e) { if (e.key === 'Enter') commitSave(); }, true);" +
         "  document.addEventListener('submit', function() { commitSave(); }, true);" +
         "  " +
@@ -166,7 +181,7 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "      if (!dropdown) {" +
         "        dropdown = document.createElement('div');" +
         "        dropdown.id = 'spoon-vault-dropdown';" +
-        "        dropdown.style.cssText = 'position:absolute; background:#fff; border:1px solid #ccc; border-radius:4px; box-shadow:0 4px 6px rgba(0,0,0,0.2); z-index:2147483647; display:none; max-height:150px; overflow-y:auto; min-width:200px; font-family:sans-serif;';" +
+        "        dropdown.style.cssText = 'position:absolute; background:#fff; border:1px solid #ccc; border-radius:4px; box-shadow:0 6px 12px rgba(0,0,0,0.3); z-index:2147483647; display:none; max-height:150px; overflow-y:auto; min-width:220px; font-family:sans-serif; margin-top:4px; padding:4px;';" +
         "        document.body.appendChild(dropdown);" +
         "      }" +
         "      dropdown.innerHTML = '';" +
@@ -174,43 +189,53 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "      " +
         "      accounts.forEach(function(acc) {" +
         "        var item = document.createElement('div');" +
-        "        item.style.cssText = 'padding:12px; border-bottom:1px solid #eee; color:#222; font-size:16px; cursor:pointer; background:#fff;';" +
+        "        item.style.cssText = 'padding:12px; border-bottom:1px solid #eee; color:#000; font-size:16px; font-weight:bold; cursor:pointer; background:#fff; border-radius:4px;';" +
         "        item.textContent = acc.username || 'Saved Password';" +
-        "        item.onmousedown = function(e) { e.preventDefault(); };" +
-        "        item.onclick = function() {" +
-        "          document.querySelectorAll('input').forEach(function(i) {" +
-        "            var t = (i.type || 'text').toLowerCase();" +
-        "            if (['text', 'email', 'tel'].indexOf(t) !== -1 && (!i.value || i === currentTarget)) {" +
-        "              setNativeValue(i, acc.username); pendingUser = acc.username;" +
-        "            } else if (t === 'password' && (!i.value || i === currentTarget)) {" +
-        "              setNativeValue(i, acc.password); pendingPass = acc.password;" +
-        "            }" +
-        "          });" +
+        "        item.onmousedown = function(e) { e.preventDefault(); e.stopPropagation(); };" +
+        "        item.onclick = function(e) {" +
+        "          e.preventDefault(); e.stopPropagation();" +
+        "          window.spoonCachedUser = acc.username;" +
+        "          window.spoonCachedPass = acc.password;" +
+        "          if (currentTarget) {" +
+        "            var t = (currentTarget.type || 'text').toLowerCase();" +
+        "            if (t === 'password') setNativeValue(currentTarget, acc.password);" +
+        "            else setNativeValue(currentTarget, acc.username);" +
+        "            " +
+        "            /* Auto-fill sibling fields simultaneously to enable strict login buttons */" +
+        "            document.querySelectorAll('input').forEach(function(i) {" +
+        "                if (i !== currentTarget) {" +
+        "                    var type = (i.type || 'text').toLowerCase();" +
+        "                    if (type === 'password' && !i.value) setNativeValue(i, acc.password);" +
+        "                    else if (['text', 'email', 'tel'].indexOf(type) !== -1 && !i.value) setNativeValue(i, acc.username);" +
+        "                }" +
+        "            });" +
+        "          }" +
         "          dropdown.style.display = 'none';" +
         "        };" +
         "        dropdown.appendChild(item);" +
         "      });" +
         "      " +
-        "      document.addEventListener('focusin', function(e) {" +
+        "      document.addEventListener('focus', function(e) {" +
         "        var el = e.target;" +
         "        if (el && el.tagName === 'INPUT') {" +
         "          var t = (el.type || 'text').toLowerCase();" +
         "          if (['text', 'email', 'tel', 'password'].indexOf(t) !== -1) {" +
         "            currentTarget = el;" +
+        "            if (!document.body.contains(dropdown)) document.body.appendChild(dropdown);" +
         "            var rect = el.getBoundingClientRect();" +
         "            dropdown.style.left = (rect.left + window.scrollX) + 'px';" +
-        "            dropdown.style.top = (rect.bottom + window.scrollY + 2) + 'px';" +
-        "            dropdown.style.width = Math.max(rect.width, 200) + 'px';" +
+        "            dropdown.style.top = (rect.bottom + window.scrollY) + 'px';" +
+        "            dropdown.style.width = Math.max(rect.width, 220) + 'px';" +
         "            dropdown.style.display = 'block';" +
         "          }" +
         "        }" +
-        "      });" +
+        "      }, true);" +
         "      " +
-        "      document.addEventListener('click', function(e) {" +
-        "        if (e.target.tagName !== 'INPUT' && !dropdown.contains(e.target)) {" +
+        "      document.addEventListener('mousedown', function(e) {" +
+        "        if (dropdown && dropdown.style.display === 'block' && e.target !== currentTarget && !dropdown.contains(e.target)) {" +
         "          dropdown.style.display = 'none';" +
         "        }" +
-        "      });" +
+        "      }, true);" +
         "    } catch(e) {}" +
         "  };" +
         "  " +
