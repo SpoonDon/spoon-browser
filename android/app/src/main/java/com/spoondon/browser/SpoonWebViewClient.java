@@ -99,12 +99,12 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void onPageFinished(WebView view, String url) {
+    public void onPageFinished(android.webkit.WebView view, String url) {
         super.onPageFinished(view, url);
 
         // 1. Inject Cosmetic AdBlock Filters
         view.evaluateJavascript(activity.filterEngine.compileCosmeticJavascript(), null);
-        List<String> cssBatches = activity.filterEngine.getCosmeticStyleBatches(url);
+        java.util.List<String> cssBatches = activity.filterEngine.getCosmeticStyleBatches(url);
         for (String cssChunk : cssBatches) {
             String cleanChunk = cssChunk.replace("\\", "\\\\").replace("'", "\\'");
             String injectScript = "javascript:(function() {" +
@@ -113,7 +113,6 @@ public class SpoonWebViewClient extends WebViewClient {
                     "})()";
             view.evaluateJavascript(injectScript, null);
         }
-
-if (url != null && !url.startsWith("file://") && !url.equals("about:blank"))
+        
+        // Notice how clean this is now! No more autofill script headaches here.
     }
-}
