@@ -1091,8 +1091,7 @@ case "Exit":
         // Initialize bridge references for javascript memory space blobs and base64 strings natively
         BlobDownloader downloaderBridge = new BlobDownloader(this);
         webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
-
-webView.setDownloadListener(new android.webkit.DownloadListener() {
+        webView.setDownloadListener(new android.webkit.DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 if (url == null) return;
@@ -1156,80 +1155,7 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
             }
         });
         
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", 
-                java.util.Collections.singleton("*"), 
-                new androidx.webkit.WebViewCompat.WebMessageListener() {
-                    @Override
-                    public void onPostMessage(
-                        android.webkit.WebView view, 
-                        androidx.webkit.WebMessageCompat message, 
-                        android.net.Uri sourceOrigin, 
-                        boolean isMainFrame, 
-                        androidx.webkit.JavaScriptReplyProxy replyProxy
-                    ) {
-                        // inside addWebMessageListener...
-                        String verifiedFrameHost = sourceOrigin != null ? sourceOrigin.getHost() : "";
-                        String payload = message.getData();
-
-                        if (payload == null || secureCredentialManager == null) return;
-                        
-                        backgroundExecutor.execute(() -> {
-                            try {
-                                // Strip www. globally so reads and writes always align perfectly
-                                String cleanHost = "";
-                                if (verifiedFrameHost != null && !verifiedFrameHost.isEmpty()) {
-                                    cleanHost = verifiedFrameHost.toLowerCase().trim().replaceFirst("^www\\.", "");
-                                }
-
-                                // 1. Handle Flat Strings
-                                if (payload.equals("FETCH_ALL_VAULT_DATA")) {
-                                    if (cleanHost.isEmpty()) { 
-                                         String allData = secureCredentialManager.getAllCredentialsAsJson();
-                                         runOnUiThread(() -> replyProxy.postMessage(allData));
-                                    }
-                                    return;
-                                } 
-                                else if ("FETCH_CREDENTIALS".equals(payload)) {
-                                    if (!cleanHost.isEmpty()) {
-                                        String credentials = secureCredentialManager.getAllAccountsForHost(cleanHost);
-                                        runOnUiThread(() -> replyProxy.postMessage(credentials));
-                                    }
-                                    return;
-                                }
-
-                                // 2. Handle JSON Commands
-                                if (payload.startsWith("{")) {
-                                    org.json.JSONObject json = new org.json.JSONObject(payload);
-                                    String action = json.optString("action", "");
-                                    
-                                    if (action.equals("SAVE_LOGIN")) {
-                                        String targetHost = json.optString("host", "");
-                                        targetHost = targetHost.isEmpty() ? cleanHost : targetHost.toLowerCase().trim().replaceFirst("^www\\.", "");
-                                        
-                                        String user = json.optString("username", "").trim();
-                                        String pass = json.optString("password", "");
-                                        
-                                        if (!targetHost.isEmpty() && !user.isEmpty()) {
-                                            secureCredentialManager.saveCredentials(targetHost, user, pass);
-                                        }
-                                    } 
-                                    else if (action.equals("DELETE_LOGIN")) {
-                                        String targetHost = json.optString("host", "");
-                                        targetHost = targetHost.isEmpty() ? cleanHost : targetHost.toLowerCase().trim().replaceFirst("^www\\.", "");
-                                        
-                                        String user = json.optString("username", "").trim();
-                                        if (!targetHost.isEmpty() && !user.isEmpty()) {
-                                            secureCredentialManager.deleteCredentials(targetHost, user);
-                                        }
-                                    }
-                                }
-                            } catch (Exception ignored) {}
-                        });
-                    }
-                });
-        }
-
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER))
         return webView;
     }
     
