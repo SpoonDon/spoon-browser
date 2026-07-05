@@ -78,8 +78,7 @@ public class SpoonWebViewClient extends WebViewClient {
         }
         return false;
     }
-    
-
+  
     @Override
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -88,6 +87,26 @@ public class SpoonWebViewClient extends WebViewClient {
 
         if (view == activity.getCurrentWebView() && activity.addressBar != null) {
             activity.addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
+        }
+    }
+
+    @Override
+    public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
+        super.doUpdateVisitedHistory(view, url, isReload);
+        // Ignore internal blank pages and data URIs
+        if (url != null && !url.startsWith("data:") && !url.equals("about:blank") && !url.startsWith("file://")) {
+            synchronized (activity.history) {
+                // Move the most recently visited URL to the top of the list
+                activity.history.remove(url);
+                activity.history.add(url);
+            }
+            synchronized (activity.pageTitles) {
+                String title = view.getTitle();
+                if (title != null && !title.isEmpty()) {
+                    activity.pageTitles.put(url, title);
+                }
+            }
+            // If you have a method to save history to SharedPreferences, call it here, e.g., activity.saveHistory();
         }
     }
 
