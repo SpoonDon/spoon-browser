@@ -118,6 +118,46 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
     String secureAutofillScript = "javascript:(function() {" +
         "  if (typeof spoonVaultMessage === 'undefined') return;" +
         "  " +
+        "  /* 1. THE NATIVE IMPERSONATOR: Defeats React/XenForo Ghost States */" +
+        "  function setNativeValue(element, value) {" +
+        "    try {" +
+        "      var valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;" +
+        "      var prototype = Object.getPrototypeOf(element);" +
+        "      var prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;" +
+        "      if (valueSetter && valueSetter !== prototypeValueSetter) prototypeValueSetter.call(element, value);" +
+        "      else valueSetter.call(element, value);" +
+        "      element.dispatchEvent(new Event('input', { bubbles: true }));" +
+        "      element.dispatchEvent(new Event('change', { bubbles: true }));" +
+        "    } catch(e) {" +
+        "      element.value = value;" +
+        "      element.dispatchEvent(new Event('input', { bubbles: true }));" +
+        "    }" +
+        "  }" +
+        "  " +
+        "  /* 2. THE GHOST HARVESTER: Caches text safely before Cloudflare intercepts */" +
+        "  var pendingUser = ''; var pendingPass = '';" +
+        "  document.addEventListener('input', function(e) {" +
+        "    if (e.target && e.target.tagName === 'INPUT') {" +
+        "      var t = (e.target.type || 'text').toLowerCase();" +
+        "      if (t === 'password') pendingPass = e.target.value;" +
+        "      else if (['text', 'email', 'tel'].indexOf(t) !== -1) pendingUser = e.target.value;" +
+        "    }" +
+        "  }, true);" +
+        "  " +
+        "  function commitSave() {" +
+        "    if (pendingUser && pendingPass) {" +
+        "      spoonVaultMessage.postMessage(JSON.stringify({action: 'SAVE_LOGIN', host: '', username: pendingUser, password: pendingPass}));" +
+        "    }" +
+        "  }" +
+        "  " +
+        "  document.addEventListener('click', function(e) {" +
+        "    var el = e.target;" +
+        "    if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button')) || el.closest('button')) commitSave();" +
+        "  }, true);" +
+        "  document.addEventListener('keydown', function(e) { if (e.key === 'Enter') commitSave(); }, true);" +
+        "  document.addEventListener('submit', function() { commitSave(); }, true);" +
+        "  " +
+        "  /* 3. THE STEALTH UI: Operates only on human interaction */" +
         "  spoonVaultMessage.onmessage = function(event) {" +
         "    try {" +
         "      var accounts = JSON.parse(event.data);" +
@@ -137,17 +177,31 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "        var item = document.createElement('div');" +
         "        item.style.cssText = 'padding:12px; border-bottom:1px solid #eee; color:#222; font-size:16px; cursor:pointer; background:#fff;';" +
         "        item.textContent = acc.username || 'Saved Password';" +
-        "        item.onmousedown = function(e) { e.preventDefault(); };" + 
+        "        item.onmousedown = function(e) { e.preventDefault(); };" +
         "        item.onclick = function() {" +
         "          document.querySelectorAll('input').forEach(function(i) {" +
         "            var t = (i.type || 'text').toLowerCase();" +
-        "            if (['text', 'email', 'tel'].indexOf(t) !== -1 && (!i.value || i === currentTarget)) i.value = acc.username;" +
-        "            else if (t === 'password' && (!i.value || i === currentTarget)) i.value = acc.password;" +
+        "            if (['text', 'email', 'tel'].indexOf(t) !== -1 && (!i.value || i === currentTarget)) {" +
+        "              setNativeValue(i, acc.username); pendingUser = acc.username;" +
+        "            } else if (t === 'password' && (!i.value || i === currentTarget)) {" +
+        "              setNativeValue(i, acc.password); pendingPass = acc.password;" +
+        "            }" +
         "          });" +
         "          dropdown.style.display = 'none';" +
         "        };" +
         "        dropdown.appendChild(item);" +
         "      });" +
+        "      " +
+        "      /* Single, delayed auto-fill to allow framework loading - No aggressive loops */" +
+        "      if (accounts.length === 1) {" +
+        "        setTimeout(function() {" +
+        "          document.querySelectorAll('input').forEach(function(i) {" +
+        "            var t = (i.type || 'text').toLowerCase();" +
+        "            if (t === 'password' && !i.value) { setNativeValue(i, accounts[0].password); pendingPass = accounts[0].password; }" +
+        "            else if (['text', 'email', 'tel'].indexOf(t) !== -1 && !i.value) { setNativeValue(i, accounts[0].username); pendingUser = accounts[0].username; }" +
+        "          });" +
+        "        }, 600);" +
+        "      }" +
         "      " +
         "      document.addEventListener('focusin', function(e) {" +
         "        var el = e.target;" +
@@ -173,30 +227,6 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "  };" +
         "  " +
         "  spoonVaultMessage.postMessage('FETCH_CREDENTIALS');" +
-        "  " +
-        "  function hookForms() {" +
-        "    try {" +
-        "      var forms = document.querySelectorAll('form');" +
-        "      forms.forEach(function(form) {" +
-        "        if (form.dataset.spoonHooked) return;" +
-        "        form.dataset.spoonHooked = 'true';" +
-        "        form.addEventListener('submit', function() {" +
-        "          var user = ''; var pass = '';" +
-        "          var inputs = form.querySelectorAll('input');" +
-        "          inputs.forEach(function(input) {" +
-        "            var type = (input.type || 'text').toLowerCase();" +
-        "            if (type === 'password') pass = input.value;" +
-        "            else if (['text', 'email', 'tel'].indexOf(type) !== -1) user = input.value;" +
-        "          });" +
-        "          if (user && pass) {" +
-        "            spoonVaultMessage.postMessage(JSON.stringify({action: 'SAVE_LOGIN', host: '', username: user, password: pass}));" +
-        "          }" +
-        "        });" +
-        "      });" +
-        "    } catch(e) {}" +
-        "  }" +
-        "  hookForms();" +
-        "  setTimeout(hookForms, 2000);" +
         "})();";
     view.evaluateJavascript(secureAutofillScript, null);
 }
