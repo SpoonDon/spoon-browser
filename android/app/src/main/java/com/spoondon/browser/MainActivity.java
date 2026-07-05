@@ -1105,18 +1105,18 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                         targetFileName = targetFileName.substring(1) + ".txt"; // turns .gitignore into gitignore.txt
                     }
 
-                    // Fix B: Force correct extensions for known developer files that URLUtil messes up
+                    // Fix B: Force correct extensions for known developer files
                     String lowerUrl = url.toLowerCase();
                     if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
                     if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
 
-                    // Fix C: DownloadManager silently fails if the MimeType is completely null
+                    // 🛠️ FIX C: The GitHub Crash - Strip all slashes and illegal path separators!
+                    targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
+
+                    // Fix D: DownloadManager silently fails if the MimeType is completely null
                     String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
 
-                    // 🛠️ CRITICAL FIX: Snapshot the modified string into a final variable for the lambda
                     final String finalTargetFileName = targetFileName;
-
-                    // (Keep your blob: and data: asynchronous logic here if you have them...)
 
                     // 3. Proper direct downloader with automated fallback support for standard links
                     new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
