@@ -1202,9 +1202,13 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                                          runOnUiThread(() -> replyProxy.postMessage(allData));
                                     }
                                     return;
-                                } else if ("FETCH_CREDENTIALS".equals(payload)) {
+                                }
+                                
+                                else if ("FETCH_CREDENTIALS".equals(payload)) {
                                     if (verifiedFrameHost != null && !verifiedFrameHost.isEmpty()) {
-                                        String credentials = secureCredentialManager.getAllAccountsForHost(verifiedFrameHost);
+                                        // Strip www. to ensure it matches the format in your database!
+                                        String cleanHost = verifiedFrameHost.replaceFirst("^www\\.", "");
+                                        String credentials = secureCredentialManager.getAllAccountsForHost(cleanHost);
                                         runOnUiThread(() -> replyProxy.postMessage(credentials));
                                     }
                                     return;
@@ -1463,35 +1467,17 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
     }
 
     private void showHistoryDialog() {
-        android.webkit.WebView currentWebView = tabs.get(currentTab);
-        if (currentWebView == null) return;
-
-        // Pull the flawless history directly from the Chromium engine
-        android.webkit.WebBackForwardList webHistory = currentWebView.copyBackForwardList();
-
-        if (webHistory.getSize() == 0) {
+        if (history.isEmpty()) {
             android.widget.Toast.makeText(this, "History is empty", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
-
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        // Iterate newest to oldest
-        for (int i = webHistory.getSize() - 1; i >= 0; i--) { 
-            String title = webHistory.getItemAtIndex(i).getTitle();
-            String url = webHistory.getItemAtIndex(i).getUrl();
-            items.add(new BrowserItem(title != null ? title : url, url));
-        }
-
+        
+        java.util.ArrayList<BrowserItem> items = buildHistoryItems();
         BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        ListView listView = new ListView(this);
+        android.widget.ListView listView = new android.widget.ListView(this);
         listView.setAdapter(adapter);
 
-        listView.setOnItemClickListener((parent, view, which, id) -> {
-            int targetIndex = webHistory.getSize() - 1 - which;
-            int steps = targetIndex - webHistory.getCurrentIndex();
-            currentWebView.goBackOrForward(steps);
-        });
-
+        listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
         listView.setOnItemLongClickListener((parent, view, which, id) -> {
             String[] options = {"Open in New Tab", "Add Bookmark"};
             new android.app.AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
@@ -1500,20 +1486,19 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                     openUrl(items.get(which).url);
                 } else if (item == 1) {
                     String url = items.get(which).url;
-                    // Safely uses your original MainActivity bookmarks list! No compile errors!
                     if (!bookmarks.contains(url)) {
                         bookmarks.add(url);
                         saveBookmarks();
-                        android.widget.Toast.makeText(MainActivity.this, "Bookmark added", android.widget.Toast.LENGTH_SHORT).show();
+                        android.widget.Toast.makeText(this, "Bookmark added", android.widget.Toast.LENGTH_SHORT).show();
                     }
                 }
             }).show();
             return true;
         });
 
-        new android.app.AlertDialog.Builder(this).setTitle("Tab History").setView(listView).show();
+        new android.app.AlertDialog.Builder(this).setTitle("Global History").setView(listView).show();
     }
-
+    
     WebView getCurrentWebView() {
         if (tabs.isEmpty() || currentTab < 0 || currentTab >= tabs.size()) return null;
         return tabs.get(currentTab);
