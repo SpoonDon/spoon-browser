@@ -2099,6 +2099,111 @@ case "Exit":
         } catch (Exception ignored) {}
     }
 
+    private void showVaultForCurrentSite() {
+        if (webView == null || webView.getUrl() == null) {
+            android.widget.Toast.makeText(this, "No valid page loaded", android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String currentUrl = webView.getUrl();
+        String host = android.net.Uri.parse(currentUrl).getHost();
+        if (host == null) return;
+        
+        // Strip www. so it perfectly matches your vault database
+        String cleanHost = host.toLowerCase().trim().replaceFirst("^www\\.", "");
+
+        // Ask the vault for this specific website's passwords
+        String accountsJson = secureCredentialManager.getAllAccountsForHost(cleanHost);
+        
+        if (accountsJson == null || accountsJson.equals("[]")) {
+            android.widget.Toast.makeText(this, "No saved passwords for " + cleanHost, android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        try {
+            org.json.JSONArray accountsArray = new org.json.JSONArray(accountsJson);
+            
+            // Build the Native UI Panel
+            android.app.Dialog dialog = new android.app.Dialog(this);
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+            
+            android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+            layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+            layout.setPadding(dp(16), dp(16), dp(16), dp(16));
+            
+            // Sleek dark background with rounded corners
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(android.graphics.Color.parseColor("#1F1F1F"));
+            bg.setCornerRadius(dp(12));
+            layout.setBackground(bg);
+
+            android.widget.TextView title = new android.widget.TextView(this);
+            title.setText("Vault: " + cleanHost);
+            title.setTextColor(android.graphics.Color.WHITE);
+            title.setTextSize(16);
+            title.setTypeface(null, android.graphics.Typeface.BOLD);
+            title.setPadding(0, 0, 0, dp(12));
+            layout.addView(title);
+
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+
+            for (int i = 0; i < accountsArray.length(); i++) {
+                org.json.JSONObject acc = accountsArray.getJSONObject(i);
+                String user = acc.optString("username", "");
+                String pass = acc.optString("password", "");
+
+                // Copy Username Button
+                android.widget.Button userBtn = new android.widget.Button(this);
+                userBtn.setText("Copy ID: " + user);
+                userBtn.setAllCaps(false);
+                userBtn.setTextColor(android.graphics.Color.WHITE);
+                userBtn.setBackgroundColor(android.graphics.Color.parseColor("#333333"));
+                userBtn.setOnClickListener(v -> {
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("username", user));
+                    android.widget.Toast.makeText(this, "ID Copied", android.widget.Toast.LENGTH_SHORT).show();
+                });
+                layout.addView(userBtn);
+
+                // Copy Password Button
+                android.widget.Button passBtn = new android.widget.Button(this);
+                passBtn.setText("Copy Password");
+                passBtn.setAllCaps(false);
+                passBtn.setTextColor(android.graphics.Color.WHITE);
+                passBtn.setBackgroundColor(android.graphics.Color.parseColor("#333333"));
+                android.widget.LinearLayout.LayoutParams btnParams = new android.widget.LinearLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+                btnParams.setMargins(0, dp(6), 0, dp(12));
+                passBtn.setLayoutParams(btnParams);
+                
+                passBtn.setOnClickListener(v -> {
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", pass));
+                    android.widget.Toast.makeText(this, "Password Copied", android.widget.Toast.LENGTH_SHORT).show();
+                    dialog.dismiss(); // Auto-close dialog after copying password so you can instantly paste
+                });
+                layout.addView(passBtn);
+            }
+
+            dialog.setContentView(layout);
+            
+            // Force the dialog to snap to the Top-Right of the screen, just like a menu!
+            android.view.Window window = dialog.getWindow();
+            if (window != null) {
+                window.setGravity(android.view.Gravity.TOP | android.view.Gravity.END);
+                android.view.WindowManager.LayoutParams params = window.getAttributes();
+                params.x = dp(10); // Margin from the right edge
+                params.y = dp(70); // Margin from the top edge (clears the address bar)
+                window.setAttributes(params);
+                window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND); // Don't darken the web page
+            }
+            
+            dialog.show();
+
+        } catch (Exception e) {
+            android.widget.Toast.makeText(this, "Vault error", android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void navigate() {
         String input = addressBar.getText().toString().trim();
         if (input.isEmpty()) return;
