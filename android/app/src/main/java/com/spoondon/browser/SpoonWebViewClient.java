@@ -116,33 +116,38 @@ public class SpoonWebViewClient extends WebViewClient {
 
 if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
     String secureAutofillScript = "javascript:(function() {" +
-        "  if (typeof spoonVaultMessage === 'undefined') return;" +
+        "  if (window.spoonVaultInjected) return;" +
+        "  window.spoonVaultInjected = true;" +
         "  " +
-        "  /* 1. THE NATIVE IMPERSONATOR: Defeats React/XenForo Ghost States */" +
-        "  function setNativeValue(element, value) {" +
+        "  /* THE BULLDOZER: Obliterates React/Vue/XenForo ghost states */" +
+        "  function setNativeValue(el, val) {" +
         "    try {" +
-        "      var valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;" +
-        "      var prototype = Object.getPrototypeOf(element);" +
-        "      var prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value').set;" +
-        "      if (valueSetter && valueSetter !== prototypeValueSetter) prototypeValueSetter.call(element, value);" +
-        "      else valueSetter.call(element, value);" +
-        "      element.dispatchEvent(new Event('input', { bubbles: true }));" +
-        "      element.dispatchEvent(new Event('change', { bubbles: true }));" +
-        "    } catch(e) {" +
-        "      element.value = value;" +
-        "      element.dispatchEvent(new Event('input', { bubbles: true }));" +
-        "    }" +
+        "      var prev = el.value;" +
+        "      el.value = val;" +
+        "      var tracker = el._valueTracker;" +
+        "      if (tracker) tracker.setValue(prev);" +
+        "      var desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');" +
+        "      if (desc && desc.set) desc.set.call(el, val);" +
+        "      el.dispatchEvent(new Event('keydown', { bubbles: true, cancelable: true }));" +
+        "      el.dispatchEvent(new Event('keypress', { bubbles: true, cancelable: true }));" +
+        "      el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));" +
+        "      el.dispatchEvent(new Event('keyup', { bubbles: true, cancelable: true }));" +
+        "      el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));" +
+        "      el.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));" +
+        "    } catch(e) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }" +
         "  }" +
         "  " +
-        "  /* 2. THE GHOST HARVESTER: Caches text safely before Cloudflare intercepts */" +
+        "  /* THE HARVESTER: Tracks text before Cloudflare intercepts */" +
         "  var pendingUser = ''; var pendingPass = '';" +
+        "  var currentTarget = null;" +
+        "  " +
         "  document.addEventListener('input', function(e) {" +
         "    if (e.target && e.target.tagName === 'INPUT') {" +
         "      var t = (e.target.type || 'text').toLowerCase();" +
         "      if (t === 'password') pendingPass = e.target.value;" +
         "      else if (['text', 'email', 'tel'].indexOf(t) !== -1) pendingUser = e.target.value;" +
         "    }" +
-        "  }, true);" +
+        "  }, true);" + 
         "  " +
         "  function commitSave() {" +
         "    if (pendingUser && pendingPass) {" +
@@ -152,12 +157,11 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "  " +
         "  document.addEventListener('click', function(e) {" +
         "    var el = e.target;" +
-        "    if (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button')) || el.closest('button')) commitSave();" +
+        "    if (el && (el.tagName === 'BUTTON' || (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button')) || el.closest('button'))) commitSave();" +
         "  }, true);" +
         "  document.addEventListener('keydown', function(e) { if (e.key === 'Enter') commitSave(); }, true);" +
         "  document.addEventListener('submit', function() { commitSave(); }, true);" +
         "  " +
-        "  /* 3. THE STEALTH UI: Operates only on human interaction */" +
         "  spoonVaultMessage.onmessage = function(event) {" +
         "    try {" +
         "      var accounts = JSON.parse(event.data);" +
@@ -167,62 +171,51 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
         "      if (!dropdown) {" +
         "        dropdown = document.createElement('div');" +
         "        dropdown.id = 'spoon-vault-dropdown';" +
-        "        dropdown.style.cssText = 'position:absolute; background:#fff; border:1px solid #ccc; border-radius:4px; box-shadow:0 4px 6px rgba(0,0,0,0.2); z-index:2147483647; display:none; max-height:150px; overflow-y:auto; min-width:200px; font-family:sans-serif;';" +
+        "        dropdown.style.cssText = 'position:absolute; background:#fff; border:1px solid #ccc; border-radius:4px; box-shadow:0 6px 12px rgba(0,0,0,0.3); z-index:2147483647; display:none; max-height:150px; overflow-y:auto; min-width:220px; font-family:sans-serif; margin-top:4px; padding:4px;';" +
         "        document.body.appendChild(dropdown);" +
         "      }" +
         "      dropdown.innerHTML = '';" +
-        "      var currentTarget = null;" +
         "      " +
         "      accounts.forEach(function(acc) {" +
         "        var item = document.createElement('div');" +
-        "        item.style.cssText = 'padding:12px; border-bottom:1px solid #eee; color:#222; font-size:16px; cursor:pointer; background:#fff;';" +
+        "        item.style.cssText = 'padding:12px; border-bottom:1px solid #eee; color:#000; font-size:16px; font-weight:bold; cursor:pointer; background:#fff; border-radius:4px;';" +
         "        item.textContent = acc.username || 'Saved Password';" +
-        "        item.onmousedown = function(e) { e.preventDefault(); };" +
-        "        item.onclick = function() {" +
-        "          document.querySelectorAll('input').forEach(function(i) {" +
-        "            var t = (i.type || 'text').toLowerCase();" +
-        "            if (['text', 'email', 'tel'].indexOf(t) !== -1 && (!i.value || i === currentTarget)) {" +
-        "              setNativeValue(i, acc.username); pendingUser = acc.username;" +
-        "            } else if (t === 'password' && (!i.value || i === currentTarget)) {" +
-        "              setNativeValue(i, acc.password); pendingPass = acc.password;" +
-        "            }" +
-        "          });" +
+        "        item.onmousedown = function(e) { e.preventDefault(); e.stopPropagation(); };" + // Stops box from losing focus before click
+        "        item.onclick = function(e) {" +
+        "          e.preventDefault(); e.stopPropagation();" +
+        "          if (currentTarget) {" +
+        "            var t = (currentTarget.type || 'text').toLowerCase();" +
+        "            if (t === 'password') { setNativeValue(currentTarget, acc.password); pendingPass = acc.password; }" +
+        "            else { setNativeValue(currentTarget, acc.username); pendingUser = acc.username; }" +
+        "          }" +
         "          dropdown.style.display = 'none';" +
         "        };" +
         "        dropdown.appendChild(item);" +
         "      });" +
         "      " +
-        "      /* Single, delayed auto-fill to allow framework loading - No aggressive loops */" +
-        "      if (accounts.length === 1) {" +
-        "        setTimeout(function() {" +
-        "          document.querySelectorAll('input').forEach(function(i) {" +
-        "            var t = (i.type || 'text').toLowerCase();" +
-        "            if (t === 'password' && !i.value) { setNativeValue(i, accounts[0].password); pendingPass = accounts[0].password; }" +
-        "            else if (['text', 'email', 'tel'].indexOf(t) !== -1 && !i.value) { setNativeValue(i, accounts[0].username); pendingUser = accounts[0].username; }" +
-        "          });" +
-        "        }, 600);" +
-        "      }" +
-        "      " +
-        "      document.addEventListener('focusin', function(e) {" +
+        "      /* Capture phase 'true' beats Google's event blocking */" +
+        "      document.addEventListener('focus', function(e) {" +
         "        var el = e.target;" +
         "        if (el && el.tagName === 'INPUT') {" +
         "          var t = (el.type || 'text').toLowerCase();" +
         "          if (['text', 'email', 'tel', 'password'].indexOf(t) !== -1) {" +
         "            currentTarget = el;" +
+        "            /* SPA Resurrect: If Google deleted the dropdown, put it back */" +
+        "            if (!document.body.contains(dropdown)) document.body.appendChild(dropdown);" + 
         "            var rect = el.getBoundingClientRect();" +
         "            dropdown.style.left = (rect.left + window.scrollX) + 'px';" +
-        "            dropdown.style.top = (rect.bottom + window.scrollY + 2) + 'px';" +
-        "            dropdown.style.width = Math.max(rect.width, 200) + 'px';" +
+        "            dropdown.style.top = (rect.bottom + window.scrollY) + 'px';" +
+        "            dropdown.style.width = Math.max(rect.width, 220) + 'px';" +
         "            dropdown.style.display = 'block';" +
         "          }" +
         "        }" +
-        "      });" +
+        "      }, true);" + 
         "      " +
-        "      document.addEventListener('click', function(e) {" +
-        "        if (e.target.tagName !== 'INPUT' && !dropdown.contains(e.target)) {" +
+        "      document.addEventListener('mousedown', function(e) {" +
+        "        if (dropdown && dropdown.style.display === 'block' && e.target !== currentTarget && !dropdown.contains(e.target)) {" +
         "          dropdown.style.display = 'none';" +
         "        }" +
-        "      });" +
+        "      }, true);" +
         "    } catch(e) {}" +
         "  };" +
         "  " +
