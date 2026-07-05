@@ -1100,25 +1100,28 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                 try {
                     String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
 
-                    // 🛠️ FIX A: Prevent Android from treating files like .gitignore as invisible system files
+                    // Fix A: Prevent Android from treating files like .gitignore as invisible system files
                     if (targetFileName.startsWith(".")) {
                         targetFileName = targetFileName.substring(1) + ".txt"; // turns .gitignore into gitignore.txt
                     }
 
-                    // 🛠️ FIX B: Force correct extensions for known developer files that URLUtil messes up
+                    // Fix B: Force correct extensions for known developer files that URLUtil messes up
                     String lowerUrl = url.toLowerCase();
                     if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
                     if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
 
-                    // 🛠️ FIX C: DownloadManager silently fails if the MimeType is completely null
+                    // Fix C: DownloadManager silently fails if the MimeType is completely null
                     String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
 
-                    // ... (Keep your blob: and data: checks here) ...
+                    // 🛠️ CRITICAL FIX: Snapshot the modified string into a final variable for the lambda
+                    final String finalTargetFileName = targetFileName;
+
+                    // (Keep your blob: and data: asynchronous logic here if you have them...)
 
                     // 3. Proper direct downloader with automated fallback support for standard links
                     new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                             .setTitle("Download File")
-                            .setMessage("Do you want to download " + targetFileName + "?")
+                            .setMessage("Do you want to download " + finalTargetFileName + "?")
                             .setPositiveButton("Download", (dialog, item) -> {
                                 try {
                                     android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
@@ -1127,12 +1130,12 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
                                     if (cookies != null) request.addRequestHeader("Cookie", cookies);
                                     if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
                                     
-                                    // Use our sanitized safeMimeType here to prevent crashes
                                     request.setMimeType(safeMimeType); 
                                     
-                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, targetFileName);
+                                    // USING THE FINAL VARIABLE HERE
+                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, finalTargetFileName);
                                     request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                                    request.setTitle(targetFileName);
+                                    request.setTitle(finalTargetFileName);
                                     
                                     android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                                     if (manager != null) {
