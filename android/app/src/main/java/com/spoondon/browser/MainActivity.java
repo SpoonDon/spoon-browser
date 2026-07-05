@@ -1755,21 +1755,29 @@ webView.setDownloadListener(new android.webkit.DownloadListener() {
             return; 
         }
 
-        // 1. Safely update your private history arrays
+        // 1. Normalize trailing slashes to prevent string-matching failures
+        String cleanUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+
         synchronized (this.history) {
-            this.history.remove(url);
-            this.history.add(url);
-        }
-        synchronized (this.pageTitles) {
-            if (title != null && !title.isEmpty()) {
-                this.pageTitles.put(url, title);
+            // 2. Sequential Duplicate Blocker
+            if (!this.history.isEmpty() && this.history.get(this.history.size() - 1).equals(cleanUrl)) {
+                // The user is already at this exact URL (caused by background pushState updates)
+                // Skip the database write entirely.
+            } else {
+                // Safely remove any older instances of this URL, then put it at the top
+                this.history.remove(cleanUrl);
+                this.history.add(cleanUrl);
             }
         }
         
-        // 2. Immediately save to disk using your new thread-safe method
+        synchronized (this.pageTitles) {
+            if (title != null && !title.isEmpty()) {
+                this.pageTitles.put(cleanUrl, title); // Ensure the map matches the cleaned URL
+            }
+        }
+        
         saveHistory();
 
-        // 3. INSTANT UI REFRESH: Tell your exact address bar adapter to update immediately
         runOnUiThread(() -> {
             if (addressBarAdapter != null) {
                 addressBarAdapter.notifyDataSetChanged();
