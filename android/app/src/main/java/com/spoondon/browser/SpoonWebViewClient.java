@@ -111,42 +111,55 @@ if (url != null && !url.startsWith("file://") && !url.equals("about:blank")) {
     String secureAutofillScript = "javascript:(function() {" +
         "  if (typeof spoonVaultMessage === 'undefined') return;" +
         "  " +
-        "  spoonVaultMessage.addEventListener('message', function(event) {" +
+        "  spoonVaultMessage.onmessage = function(event) {" +
         "    try {" +
         "      var accounts = JSON.parse(event.data);" +
-        "      if (accounts && accounts.length > 0) {" +
-        "        var dl = document.getElementById('spoon-vault-list');" +
-        "        if (!dl) { dl = document.createElement('datalist'); dl.id = 'spoon-vault-list'; document.body.appendChild(dl); }" +
-        "        dl.innerHTML = '';" +
-        "        accounts.forEach(function(acc) { " +
-        "           var opt = document.createElement('option'); " +
-        "           opt.value = acc.username; " +
-        "           dl.appendChild(opt); " +
-        "        });" +
-        "        var uInp = []; var pInp = [];" +
-        "        document.querySelectorAll('input').forEach(function(i) {" +
-        "          var t = (i.type || '').toLowerCase();" +
-        "          if (['text', 'email', 'tel'].indexOf(t) !== -1) { " +
-        "             i.setAttribute('list', 'spoon-vault-list'); " +
-        "             i.autocomplete = 'off'; " +
-        "             uInp.push(i); " +
-        "          } else if (t === 'password') {" +
-        "             pInp.push(i);" +
-        "          }" +
-        "        });" +
-        "        if (accounts.length === 1) {" +
-        "           uInp.forEach(function(i) { if(!i.value) i.value = accounts[0].username; });" +
-        "           pInp.forEach(function(i) { if(!i.value) i.value = accounts[0].password; });" +
-        "        }" +
-        "        uInp.forEach(function(ui) {" +
-        "          ui.addEventListener('input', function() {" +
-        "            var match = accounts.find(function(a) { return a.username === ui.value; });" +
-        "            if (match) pInp.forEach(function(pi) { pi.value = match.password; });" +
-        "          });" +
-        "        });" +
+        "      if (!accounts || accounts.length === 0) return;" +
+        "      " +
+        "      var uInp = []; var pInp = [];" +
+        "      document.querySelectorAll('input').forEach(function(i) {" +
+        "        var t = (i.type || '').toLowerCase();" +
+        "        if (['text', 'email', 'tel'].indexOf(t) !== -1) uInp.push(i);" +
+        "        else if (t === 'password') pInp.push(i);" +
+        "      });" +
+        "      " +
+        "      if (accounts.length === 1) {" +
+        "         uInp.forEach(function(i) { if(!i.value) i.value = accounts[0].username; });" +
+        "         pInp.forEach(function(i) { if(!i.value) i.value = accounts[0].password; });" +
         "      }" +
+        "      " +
+        "      var dropdown = document.createElement('div');" +
+        "      dropdown.style.cssText = 'position:absolute; background:#fff; border:1px solid #ccc; border-radius:4px; box-shadow:0 4px 6px rgba(0,0,0,0.2); z-index:999999; display:none; max-height:150px; overflow-y:auto; min-width:200px;';" +
+        "      document.body.appendChild(dropdown);" +
+        "      " +
+        "      accounts.forEach(function(acc) {" +
+        "         var item = document.createElement('div');" +
+        "         item.style.cssText = 'padding:12px; border-bottom:1px solid #eee; color:#222; font-family:sans-serif; font-size:16px; cursor:pointer; background:#fff;';" +
+        "         item.textContent = acc.username;" +
+        "         item.ontouchstart = function() { item.style.background = '#f0f0f0'; };" +
+        "         item.ontouchend = function() { item.style.background = '#fff'; };" +
+        "         item.onclick = function() {" +
+        "             uInp.forEach(function(i) { i.value = acc.username; });" +
+        "             pInp.forEach(function(i) { i.value = acc.password; });" +
+        "             dropdown.style.display = 'none';" +
+        "         };" +
+        "         dropdown.appendChild(item);" +
+        "      });" +
+        "      " +
+        "      uInp.forEach(function(ui) {" +
+        "         ui.addEventListener('focus', function() {" +
+        "             var rect = ui.getBoundingClientRect();" +
+        "             dropdown.style.left = (rect.left + window.scrollX) + 'px';" +
+        "             dropdown.style.top = (rect.bottom + window.scrollY + 2) + 'px';" +
+        "             dropdown.style.width = rect.width + 'px';" +
+        "             dropdown.style.display = 'block';" +
+        "         });" +
+        "         document.addEventListener('click', function(e) {" +
+        "             if (e.target !== ui && !dropdown.contains(e.target)) dropdown.style.display = 'none';" +
+        "         });" +
+        "      });" +
         "    } catch(e) {}" +
-        "  });" +
+        "  };" +
         "  " +
         "  spoonVaultMessage.postMessage('FETCH_CREDENTIALS');" +
         "  " +
