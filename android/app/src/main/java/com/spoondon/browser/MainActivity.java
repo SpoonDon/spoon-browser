@@ -2128,6 +2128,9 @@ case "Exit":
     }
 
     private void showVaultForCurrentSite() {
+        
+        android.webkit.WebView webView = getCurrentWebView();
+        
         if (webView == null || webView.getUrl() == null) {
             android.widget.Toast.makeText(this, "No valid page loaded", android.widget.Toast.LENGTH_SHORT).show();
             return;
