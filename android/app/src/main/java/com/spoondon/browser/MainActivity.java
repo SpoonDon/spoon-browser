@@ -1144,94 +1144,88 @@ exportCsvLauncher = registerForActivityResult(
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(new SpoonWebViewClient(this));
 
-        
-        // Initialize bridge references for javascript memory space blobs and base64 strings natively
         BlobDownloader downloaderBridge = new BlobDownloader(this);
         webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
- 
         webView.setDownloadListener(new android.webkit.DownloadListener() {
-    @Override
-    public boolean onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-        if (url == null) return;
-        
-        try {
-            String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+                if (url == null) return;
+                
+                try {
+                    String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
 
-            // Fix A: Prevent Android from treating files like .gitignore as invisible system files
-            if (targetFileName.startsWith(".")) {
-                targetFileName = targetFileName.substring(1) + ".txt"; 
-            }
+                    // Fix A: Prevent Android from treating files like .gitignore as invisible system files
+                    if (targetFileName.startsWith(".")) {
+                        targetFileName = targetFileName.substring(1) + ".txt"; 
+                    }
 
-            // Fix B: Force correct extensions for known developer files
-            String lowerUrl = url.toLowerCase();
-            if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
-            if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
+                    // Fix B: Force correct extensions for known developer files
+                    String lowerUrl = url.toLowerCase();
+                    if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
+                    if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
 
-            // 🛠️ FIX E: Intercept and correct misidentified PDF attachments
-            boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf")) ||
-                                    (url != null && url.toLowerCase().contains(".pdf")) ||
-                                    (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
+                    // Fix E: Intercept and correct misidentified PDF attachments
+                    boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf")) ||
+                                            (url != null && url.toLowerCase().contains(".pdf")) ||
+                                            (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
 
-            if (isActuallyPdf) {
-                if (targetFileName.endsWith(".bin")) {
-                    // Strip the .bin extension and swap with .pdf
-                    targetFileName = targetFileName.substring(0, targetFileName.length() - 4) + ".pdf";
-                } else if (!targetFileName.toLowerCase().endsWith(".pdf")) {
-                    // Append .pdf if it completely missing an extension
-                    targetFileName += ".pdf";
+                    if (isActuallyPdf) {
+                        if (targetFileName.endsWith(".bin")) {
+                            targetFileName = targetFileName.substring(0, targetFileName.length() - 4) + ".pdf";
+                        } else if (!targetFileName.toLowerCase().endsWith(".pdf")) {
+                            targetFileName += ".pdf";
+                        }
+                    }
+
+                    // Fix C: Strip all slashes and illegal path separators
+                    targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
+
+                    // Fix D: DownloadManager silently fails if the MimeType is completely null
+                    String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
+                    
+                    if (isActuallyPdf && safeMimeType.equals("application/octet-stream")) {
+                        safeMimeType = "application/pdf";
+                    }
+
+                    final String finalTargetFileName = targetFileName;
+                    final String finalSafeMimeType = safeMimeType;
+
+                    // 3. Proper direct downloader with automated fallback support for standard links
+                    new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                            .setTitle("Download File")
+                            .setMessage("Do you want to download " + finalTargetFileName + "?")
+                            .setPositiveButton("Download", (dialog, item) -> {
+                                try {
+                                    android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                                    
+                                    String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                                    if (cookies != null) request.addRequestHeader("Cookie", cookies);
+                                    if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
+                                    
+                                    request.setMimeType(finalSafeMimeType); 
+                                    
+                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, finalTargetFileName);
+                                    request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                                    request.setTitle(finalTargetFileName);
+                                    
+                                    android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                                    if (manager != null) {
+                                        manager.enqueue(request);
+                                        android.widget.Toast.makeText(MainActivity.this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
+                                    }
+                                } catch (Exception e) {
+                                    triggerExternalDownload(url, finalSafeMimeType);
+                                }
+                            })
+                            .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, finalSafeMimeType))
+                            .setNegativeButton("Cancel", null)
+                            .show();
+
+                } catch (Exception err) {
+                    android.widget.Toast.makeText(MainActivity.this, "Download manager initialization failed", android.widget.Toast.LENGTH_SHORT).show();
                 }
             }
-
-            // 🛠️ FIX C: The GitHub Crash - Strip all slashes and illegal path separators!
-            targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
-
-            // Fix D: DownloadManager silently fails if the MimeType is completely null
-            String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
-            
-            // Adjust the mimeType if we discovered this is a PDF to ensure proper system handling
-            if (isActuallyPdf && safeMimeType.equals("application/octet-stream")) {
-                safeMimeType = "application/pdf";
-            }
-
-            final String finalTargetFileName = targetFileName;
-            final String finalSafeMimeType = safeMimeType;
-
-            // 3. Proper direct downloader with automated fallback support for standard links
-            new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                    .setTitle("Download File")
-                    .setMessage("Do you want to download " + finalTargetFileName + "?")
-                    .setPositiveButton("Download", (dialog, item) -> {
-                        try {
-                            android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
-                            
-                            String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
-                            if (cookies != null) request.addRequestHeader("Cookie", cookies);
-                            if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
-                            
-                            request.setMimeType(finalSafeMimeType); 
-                            
-                            request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, finalTargetFileName);
-                            request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                            request.setTitle(finalTargetFileName);
-                            
-                            android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                            if (manager != null) {
-                                manager.enqueue(request);
-                                android.widget.Toast.makeText(MainActivity.this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
-                            }
-                        } catch (Exception e) {
-                            triggerExternalDownload(url, finalSafeMimeType);
-                        }
-                    })
-                    .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, finalSafeMimeType))
-                    .setNegativeButton("Cancel", null)
-                    .show();
-
-        } catch (Exception err) {
-            android.widget.Toast.makeText(MainActivity.this, "Download manager initialization failed", android.widget.Toast.LENGTH_SHORT).show();
-        }
-    }
-});
+        });
         
         // 🛠️ VAULT FIX: The Secure Local-Only Bridge
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
