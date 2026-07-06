@@ -546,11 +546,13 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     private void setupMenuButton() {
-    menuButton.setOnClickListener(v -> {
-        android.content.Context wrapper = new android.view.ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
-        android.widget.PopupMenu popup = new android.widget.PopupMenu(wrapper, menuButton, android.view.Gravity.END);
+        menuButton.setOnClickListener(v -> {
+            android.content.Context wrapper = new android.view.ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
+            android.widget.PopupMenu popup = new android.widget.PopupMenu(wrapper, menuButton, android.view.Gravity.END);
+            
             popup.getMenu().add("New Tab");
             popup.getMenu().add("Reload");
+            popup.getMenu().add("Downloads"); // 🛠️ ADDED: Right under Reload
             popup.getMenu().add("Bookmarks");
             popup.getMenu().add("Add Bookmark");
             popup.getMenu().add("History");
@@ -558,9 +560,9 @@ exportCsvLauncher = registerForActivityResult(
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
             popup.getMenu().add(isDesktopMode ? "Desktop Site [ON]" : "Desktop Site [OFF]");
-            popup.getMenu().add("About");
             popup.getMenu().add("Passwords");
-            popup.getMenu().add("🔑 Vault (Copy)"); // <--- WE ADDED THIS LINE HERE!
+            popup.getMenu().add("🔑 Vault (Copy)"); 
+            popup.getMenu().add("About"); // 🛠️ MOVED: Right above Exit
             popup.getMenu().add("Exit");
 
             popup.setOnMenuItemClickListener(item -> {
@@ -573,6 +575,18 @@ exportCsvLauncher = registerForActivityResult(
                     case "Reload":
                         if (getCurrentWebView() != null) getCurrentWebView().reload();
                         return true;
+                    
+                    // 🛠️ NEW LOGIC: Trigger Android's native Downloads folder
+                    case "Downloads":
+                        try {
+                            android.content.Intent intent = new android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
+                            intent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                        } catch (android.content.ActivityNotFoundException e) {
+                            android.widget.Toast.makeText(this, "No download manager found", android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                        return true;
+
                     case "Bookmarks":
                         showBookmarks();
                         return true;
@@ -599,9 +613,6 @@ exportCsvLauncher = registerForActivityResult(
                     case "Filter Lists":
                         showFilterListsDialog();
                         return true;
-                    case "About":
-                        showAbout();
-                        return true;
                     case "Desktop Site [OFF]":
                     case "Desktop Site [ON]":
                         toggleDesktopMode();
@@ -617,15 +628,16 @@ exportCsvLauncher = registerForActivityResult(
                                 } else if (which == 1) {
                                     passwordImportLauncher.launch("text/*");
                                 } else if (which == 2) {
-                                    // Trigger the modern safe file picker
                                     exportCsvLauncher.launch("spoon_passwords.csv");
                                 }
                             })
                             .show();
                         return true;
-                    // 🛠️ THE MAGIC HOOK: This triggers the new right-side panel
                     case "🔑 Vault (Copy)":
                         showVaultForCurrentSite();
+                        return true;
+                    case "About":
+                        showAbout();
                         return true;
                     case "Exit":
                         finishAndRemoveTask();
