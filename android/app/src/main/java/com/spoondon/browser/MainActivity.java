@@ -1111,6 +1111,10 @@ exportCsvLauncher = registerForActivityResult(
         // 🛠️ CLOUDFLARE FIX: Force DOM storage and strip the WebView Bot flag
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setJavaScriptEnabled(true);
+        // 🛠️ ASSET FIX: Allow local HTML to execute its JS and talk to the native bridge!
+        webView.getSettings().setAllowFileAccess(true);
+        webView.getSettings().setAllowFileAccessFromFileURLs(true);
+        webView.getSettings().setAllowUniversalAccessFromFileURLs(true);
         String currentUserAgent = webView.getSettings().getUserAgentString();
         if (currentUserAgent != null && currentUserAgent.contains("; wv")) {
             webView.getSettings().setUserAgentString(currentUserAgent.replace("; wv", ""));
