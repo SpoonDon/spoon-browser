@@ -1108,6 +1108,14 @@ exportCsvLauncher = registerForActivityResult(
         // Configure default native web settings
         configureWebSettings(webView.getSettings());
 
+        // 🛠️ CLOUDFLARE FIX: Force DOM storage and strip the WebView Bot flag
+        webView.getSettings().setDomStorageEnabled(true);
+        webView.getSettings().setJavaScriptEnabled(true);
+        String currentUserAgent = webView.getSettings().getUserAgentString();
+        if (currentUserAgent != null && currentUserAgent.contains("; wv")) {
+            webView.getSettings().setUserAgentString(currentUserAgent.replace("; wv", ""));
+        }
+
         // Native Anti-Tracking: Managed third-party block state with a fallback path for enterprise forums
         android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
@@ -1187,7 +1195,28 @@ exportCsvLauncher = registerForActivityResult(
                 }
             }
         });
-        
+                
+        // 🛠️ VAULT FIX: The Secure Local-Only Bridge
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            // "file://*" means this bridge ONLY exists for local HTML files (like your vault.html)
+            java.util.Set<String> allowedOrigins = java.util.Collections.singleton("file://*");
+            
+            androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
+                (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
+                    try {
+                        String msg = message.getData();
+                        if ("FETCH_CREDENTIALS".equals(msg)) {
+                            // 🛠️ EXACT MATCH TO YOUR SecureCredentialManager!
+                            String allAccounts = secureCredentialManager.getAllCredentialsAsJson(); 
+                            replyProxy.postMessage(allAccounts != null ? allAccounts : "[]");
+                        }
+                    } catch (Exception e) {
+                        replyProxy.postMessage("[]");
+                    }
+                }
+            );
+        }
+                
         return webView;
     }
     
