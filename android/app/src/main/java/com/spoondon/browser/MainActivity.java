@@ -664,74 +664,87 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     private void showFindInPageDialog() {
-    android.webkit.WebView webView = getCurrentWebView();
-    if (webView == null) return;
+        android.webkit.WebView webView = getCurrentWebView();
+        if (webView == null) return;
 
-    // Create a container layout programmatically
-    android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
-    layout.setOrientation(android.widget.LinearLayout.VERTICAL);
-    layout.setPadding(45, 30, 45, 10);
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(45, 30, 45, 10);
 
-    // Input field for search query
-    android.widget.EditText input = new android.widget.EditText(this);
-    input.setHint("Search text on page...");
-    input.setSingleLine(true);
-    layout.addView(input);
+        // 🛠️ UI UPGRADE 1: Create a modern, rounded, semi-transparent background
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setCornerRadius(32); // Smooth rounded corners
+        shape.setColor(android.graphics.Color.parseColor("#EB121212")); // 92% opaque dark gray (Hex EB)
+        layout.setBackground(shape);
 
-    // TextView to display match count (e.g., "1 of 5")
-    android.widget.TextView countText = new android.widget.TextView(this);
-    countText.setPadding(10, 15, 10, 15);
-    countText.setText("0 matches");
-    layout.addView(countText);
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setHint("Search text on page...");
+        input.setSingleLine(true);
+        input.setTextColor(android.graphics.Color.WHITE);
+        input.setHintTextColor(android.graphics.Color.parseColor("#888888"));
+        layout.addView(input);
 
-    // Register a listener to update the match count UI dynamically
-    webView.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
-        if (numberOfMatches == 0) {
-            countText.setText("No matches found");
-        } else {
-            // activeMatchOrdinal is 0-indexed, convert to 1-indexed for users
-            countText.setText((activeMatchOrdinal + 1) + " of " + numberOfMatches);
+        android.widget.TextView countText = new android.widget.TextView(this);
+        countText.setPadding(10, 15, 10, 15);
+        countText.setText("0 matches");
+        countText.setTextColor(android.graphics.Color.LTGRAY);
+        layout.addView(countText);
+
+        webView.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
+            if (numberOfMatches == 0) {
+                countText.setText("No matches found");
+            } else {
+                countText.setText((activeMatchOrdinal + 1) + " of " + numberOfMatches);
+            }
+        });
+
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                webView.findAllAsync(s.toString());
+            }
+
+            @Override
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setView(layout)
+                .setPositiveButton("Next", null) 
+                .setNeutralButton("Prev", null)    
+                .setNegativeButton("Close", (d, which) -> {
+                    webView.clearMatches(); 
+                    webView.setFindListener(null);
+                })
+                .setCancelable(false)
+                .create();
+
+        dialog.show();
+
+        // 🛠️ UI UPGRADE 2: Transform the dialog into a Top-Bar Overlay
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            // 1. Remove the black dimming effect over the website
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            
+            // 2. Snap the search box to the absolute top of the screen
+            window.setGravity(android.view.Gravity.TOP);
+            
+            // 3. Make the system dialog window invisible so our rounded custom layout shows perfectly
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+            
+            // 4. Add a slight margin at the top so it doesn't clip into the status bar
+            android.view.WindowManager.LayoutParams params = window.getAttributes();
+            params.y = 40; // 40 pixels from the top
+            window.setAttributes(params);
         }
-    });
 
-    // Real-time search as the user types
-    input.addTextChangedListener(new android.text.TextWatcher() {
-        @Override
-        public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-        @Override
-        public void onTextChanged(CharSequence s, int start, int before, int count) {
-            webView.findAllAsync(s.toString());
-        }
-
-        @Override
-        public void afterTextChanged(android.text.Editable s) {}
-    });
-
-    // Build a persistent dialog window
-    android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Find in Page")
-            .setView(layout)
-            .setPositiveButton("Next", null) // Overridden below to prevent auto-closing
-            .setNeutralButton("Prev", null)    // Overridden below to prevent auto-closing
-            .setNegativeButton("Close", (d, which) -> {
-                webView.clearMatches(); // Remove text highlights on close
-                webView.setFindListener(null);
-            })
-            .setCancelable(false)
-            .create();
-
-    dialog.show();
-
-    // Prevent buttons from closing the dialog so the user can iterate through matches
-    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-        webView.findNext(true); // Go forward
-    });
-
-    dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-        webView.findNext(false); // Go backward
-    });
-}
+        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> webView.findNext(true));
+        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> webView.findNext(false));
+    }
     
     private void setupToolbarListeners() {
         // Feature Removed: Disabled long press behavior entirely
