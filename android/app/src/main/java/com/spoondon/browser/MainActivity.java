@@ -552,7 +552,8 @@ exportCsvLauncher = registerForActivityResult(
             
             popup.getMenu().add("New Tab");
             popup.getMenu().add("Reload");
-            popup.getMenu().add("Downloads"); // 🛠️ ADDED: Right under Reload
+            popup.getMenu().add("Downloads");
+            popup.getMenu().add("Find in Page");
             popup.getMenu().add("Bookmarks");
             popup.getMenu().add("Add Bookmark");
             popup.getMenu().add("History");
@@ -562,7 +563,7 @@ exportCsvLauncher = registerForActivityResult(
             popup.getMenu().add(isDesktopMode ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("Passwords");
             popup.getMenu().add("🔑 Vault (Copy)"); 
-            popup.getMenu().add("About"); // 🛠️ MOVED: Right above Exit
+            popup.getMenu().add("About");
             popup.getMenu().add("Exit");
 
             popup.setOnMenuItemClickListener(item -> {
@@ -575,8 +576,7 @@ exportCsvLauncher = registerForActivityResult(
                     case "Reload":
                         if (getCurrentWebView() != null) getCurrentWebView().reload();
                         return true;
-                    
-                    // 🛠️ NEW LOGIC: Trigger Android's native Downloads folder
+                                        
                     case "Downloads":
                         try {
                             android.content.Intent intent = new android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
@@ -587,9 +587,14 @@ exportCsvLauncher = registerForActivityResult(
                         }
                         return true;
 
+                    case "Find in Page":
+                        showFindInPageDialog();
+                        return true;
+
                     case "Bookmarks":
                         showBookmarks();
                         return true;
+                        
                     case "Add Bookmark":
                         android.webkit.WebView wv = getCurrentWebView();
                         String url = wv != null ? wv.getUrl() : null;
@@ -599,24 +604,30 @@ exportCsvLauncher = registerForActivityResult(
                             android.widget.Toast.makeText(this, "Bookmark saved", android.widget.Toast.LENGTH_SHORT).show();
                         }
                         return true;
+                        
                     case "History":
                         showHistoryDialog();
                         return true;
+                        
                     case "Clear History":
                         history.clear();
                         saveHistory();
                         return true;
+                        
                     case "Clear Cache":
                         if (getCurrentWebView() != null) getCurrentWebView().clearCache(true);
                         android.widget.Toast.makeText(this, "Cache cleared", android.widget.Toast.LENGTH_SHORT).show();
                         return true;
+                        
                     case "Filter Lists":
                         showFilterListsDialog();
                         return true;
+                        
                     case "Desktop Site [OFF]":
                     case "Desktop Site [ON]":
                         toggleDesktopMode();
-                        return true;    
+                        return true;
+                        
                     case "Passwords":
                         String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
                         new android.app.AlertDialog.Builder(this)
@@ -633,12 +644,15 @@ exportCsvLauncher = registerForActivityResult(
                             })
                             .show();
                         return true;
+                        
                     case "🔑 Vault (Copy)":
                         showVaultForCurrentSite();
                         return true;
+                        
                     case "About":
                         showAbout();
                         return true;
+                        
                     case "Exit":
                         finishAndRemoveTask();
                         return true;
@@ -648,6 +662,76 @@ exportCsvLauncher = registerForActivityResult(
             popup.show();
         });
     }
+
+    private void showFindInPageDialog() {
+    android.webkit.WebView webView = getCurrentWebView();
+    if (webView == null) return;
+
+    // Create a container layout programmatically
+    android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+    layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+    layout.setPadding(45, 30, 45, 10);
+
+    // Input field for search query
+    android.widget.EditText input = new android.widget.EditText(this);
+    input.setHint("Search text on page...");
+    input.setSingleLine(true);
+    layout.addView(input);
+
+    // TextView to display match count (e.g., "1 of 5")
+    android.widget.TextView countText = new android.widget.TextView(this);
+    countText.setPadding(10, 15, 10, 15);
+    countText.setText("0 matches");
+    layout.addView(countText);
+
+    // Register a listener to update the match count UI dynamically
+    webView.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
+        if (numberOfMatches == 0) {
+            countText.setText("No matches found");
+        } else {
+            // activeMatchOrdinal is 0-indexed, convert to 1-indexed for users
+            countText.setText((activeMatchOrdinal + 1) + " of " + numberOfMatches);
+        }
+    });
+
+    // Real-time search as the user types
+    input.addTextChangedListener(new android.text.TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+        @Override
+        public void onTextChanged(CharSequence s, int start, int before, int count) {
+            webView.findAllAsync(s.toString());
+        }
+
+        @Override
+        public void afterTextChanged(android.text.Editable s) {}
+    });
+
+    // Build a persistent dialog window
+    android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Find in Page")
+            .setView(layout)
+            .setPositiveButton("Next", null) // Overridden below to prevent auto-closing
+            .setNeutralButton("Prev", null)    // Overridden below to prevent auto-closing
+            .setNegativeButton("Close", (d, which) -> {
+                webView.clearMatches(); // Remove text highlights on close
+                webView.setFindListener(null);
+            })
+            .setCancelable(false)
+            .create();
+
+    dialog.show();
+
+    // Prevent buttons from closing the dialog so the user can iterate through matches
+    dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        webView.findNext(true); // Go forward
+    });
+
+    dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+        webView.findNext(false); // Go backward
+    });
+}
     
     private void setupToolbarListeners() {
         // Feature Removed: Disabled long press behavior entirely
