@@ -100,8 +100,10 @@ public class SpoonWebViewClient extends WebViewClient {
     public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
         super.doUpdateVisitedHistory(view, url, isReload);
         
-        // Pass the data cleanly to MainActivity! No private access errors!
-        activity.recordPageVisit(url, view.getTitle());
+        // 🛠️ THE FIX: Ignore Cloudflare's invisible challenge redirects!
+        if (url != null && !url.contains("cdn-cgi/challenge")) {
+            activity.recordPageVisit(url, view.getTitle());
+        }
     }
 
     @Override
