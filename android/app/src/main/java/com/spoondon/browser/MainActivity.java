@@ -78,7 +78,7 @@ import java.util.Collections;
 
 public class MainActivity extends AppCompatActivity {
     SecureCredentialManager secureCredentialManager;
-
+    private android.view.View findInPageBar = null;
     private static final String PREFS_NAME = "spoon_browser";
     private static final String KEY_BOOKMARKS = "bookmarks";
     private static final String KEY_HISTORY = "history";
@@ -667,83 +667,106 @@ exportCsvLauncher = registerForActivityResult(
         android.webkit.WebView webView = getCurrentWebView();
         if (webView == null) return;
 
-        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
-        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
-        layout.setPadding(45, 30, 45, 10);
+        android.view.ViewGroup rootLayout = findViewById(android.R.id.content);
 
-        // 🛠️ UI UPGRADE 1: Create a modern, rounded, semi-transparent background
+        // Prevent opening multiple bars if clicked twice
+        if (findInPageBar != null) rootLayout.removeView(findInPageBar);
+
+        // Build a horizontal container
+        android.widget.LinearLayout barLayout = new android.widget.LinearLayout(this);
+        barLayout.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        barLayout.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        barLayout.setPadding(20, 10, 20, 10);
+        barLayout.setElevation(10f); // Give it a shadow
+
+        // Modern floating glass look
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
-        shape.setCornerRadius(32); // Smooth rounded corners
-        shape.setColor(android.graphics.Color.parseColor("#EB121212")); // 92% opaque dark gray (Hex EB)
-        layout.setBackground(shape);
+        shape.setCornerRadius(24);
+        shape.setColor(android.graphics.Color.parseColor("#F5121212")); // Solid dark theme
+        shape.setStroke(2, android.graphics.Color.parseColor("#333333"));
+        barLayout.setBackground(shape);
 
+        // 1. Search Input
         android.widget.EditText input = new android.widget.EditText(this);
-        input.setHint("Search text on page...");
+        input.setHint("Find...");
         input.setSingleLine(true);
         input.setTextColor(android.graphics.Color.WHITE);
-        input.setHintTextColor(android.graphics.Color.parseColor("#888888"));
-        layout.addView(input);
+        input.setHintTextColor(android.graphics.Color.GRAY);
+        input.setBackground(null); // Remove default underline
+        android.widget.LinearLayout.LayoutParams inputParams = new android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        barLayout.addView(input, inputParams);
 
+        // 2. Match Counter
         android.widget.TextView countText = new android.widget.TextView(this);
-        countText.setPadding(10, 15, 10, 15);
-        countText.setText("0 matches");
+        countText.setText("0/0");
         countText.setTextColor(android.graphics.Color.LTGRAY);
-        layout.addView(countText);
+        countText.setPadding(15, 0, 15, 0);
+        barLayout.addView(countText);
+
+        // 3. Up/Down/Close Buttons
+        android.widget.Button prevBtn = new android.widget.Button(this);
+        prevBtn.setText("∧");
+        prevBtn.setTextColor(android.graphics.Color.WHITE);
+        prevBtn.setBackground(null);
+        
+        android.widget.Button nextBtn = new android.widget.Button(this);
+        nextBtn.setText("∨");
+        nextBtn.setTextColor(android.graphics.Color.WHITE);
+        nextBtn.setBackground(null);
+
+        android.widget.Button closeBtn = new android.widget.Button(this);
+        closeBtn.setText("X");
+        closeBtn.setTextColor(android.graphics.Color.parseColor("#FF5555")); // Red close button
+        closeBtn.setBackground(null);
+
+        barLayout.addView(prevBtn);
+        barLayout.addView(nextBtn);
+        barLayout.addView(closeBtn);
+
+        // --- Functionality ---
 
         webView.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
-            if (numberOfMatches == 0) {
-                countText.setText("No matches found");
-            } else {
-                countText.setText((activeMatchOrdinal + 1) + " of " + numberOfMatches);
-            }
+            countText.setText(numberOfMatches == 0 ? "0/0" : (activeMatchOrdinal + 1) + "/" + numberOfMatches);
         });
+
+        // The Debouncer (prevents stuttering while typing)
+        final android.os.Handler searchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        final Runnable[] searchRunnable = new Runnable[1];
 
         input.addTextChangedListener(new android.text.TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                webView.findAllAsync(s.toString());
+                if (searchRunnable[0] != null) searchHandler.removeCallbacks(searchRunnable[0]);
+                searchRunnable[0] = () -> webView.findAllAsync(s.toString());
+                searchHandler.postDelayed(searchRunnable[0], 300); // 300ms wait
             }
-
             @Override
             public void afterTextChanged(android.text.Editable s) {}
         });
 
-        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
-                .setView(layout)
-                .setPositiveButton("Next", null) 
-                .setNeutralButton("Prev", null)    
-                .setNegativeButton("Close", (d, which) -> {
-                    webView.clearMatches(); 
-                    webView.setFindListener(null);
-                })
-                .setCancelable(false)
-                .create();
+        prevBtn.setOnClickListener(v -> webView.findNext(false));
+        nextBtn.setOnClickListener(v -> webView.findNext(true));
+        closeBtn.setOnClickListener(v -> {
+            webView.clearMatches();
+            rootLayout.removeView(barLayout);
+            findInPageBar = null;
+        });
 
-        dialog.show();
-
-        // 🛠️ UI UPGRADE 2: Transform the dialog into a Top-Bar Overlay
-        android.view.Window window = dialog.getWindow();
-        if (window != null) {
-            // 1. Remove the black dimming effect over the website
-            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            
-            // 2. Snap the search box to the absolute top of the screen
-            window.setGravity(android.view.Gravity.TOP);
-            
-            // 3. Make the system dialog window invisible so our rounded custom layout shows perfectly
-            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
-            
-            // 4. Add a slight margin at the top so it doesn't clip into the status bar
-            android.view.WindowManager.LayoutParams params = window.getAttributes();
-            params.y = 40; // 40 pixels from the top
-            window.setAttributes(params);
-        }
-
-        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> webView.findNext(true));
-        dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> webView.findNext(false));
+        // Inject the bar at the absolute top of the screen
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, 
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        params.gravity = android.view.Gravity.TOP;
+        params.setMargins(20, 40, 20, 0); // Margins so it floats nicely
+        
+        rootLayout.addView(barLayout, params);
+        findInPageBar = barLayout;
+        
+        // Auto-focus the input
+        input.requestFocus();
     }
     
     private void setupToolbarListeners() {
@@ -1213,6 +1236,22 @@ exportCsvLauncher = registerForActivityResult(
         WebView webView = new WebView(this);
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
+
+        // 1. Force Hardware Rendering. This forces the GPU to handle scrolling instead of the CPU.
+webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+
+// 2. Offscreen Pre-Rasterizing. (MASSIVE for low-end devices). 
+// This forces the WebView to draw pixels right below the visible screen BEFORE you scroll to them.
+if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+    webView.getSettings().setOffscreenPreRaster(true);
+}
+
+// 3. Cache Mode. Aggressively use cached resources when available to save CPU cycles.
+webView.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+
+// 4. Disable heavy, unnecessary rendering tasks
+webView.getSettings().setLoadsImagesAutomatically(true);
+webView.getSettings().setBlockNetworkImage(false);
 
         // Configure default native web settings
         configureWebSettings(webView.getSettings());
