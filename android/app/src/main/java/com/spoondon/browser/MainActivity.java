@@ -1198,12 +1198,19 @@ exportCsvLauncher = registerForActivityResult(
                 
         // 🛠️ VAULT FIX: The Secure Local-Only Bridge
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            // "file://*" means this bridge ONLY exists for local HTML files (like your vault.html)
-            java.util.Set<String> allowedOrigins = java.util.Collections.singleton("file://*");
+            // Use universal wildcard "*" to satisfy Chromium's strict origin parser
+            java.util.Set<String> allowedOrigins = java.util.Collections.singleton("*");
             
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
                     try {
+                        // 🔒 HARDCORE SECURITY LOCK: Double-check the URL manually!
+                        // Only allow the bridge to work if the active tab is EXACTLY your local vault page.
+                        String currentUrl = view.getUrl();
+                        if (currentUrl == null || !currentUrl.startsWith("file:///android_asset/vault.html")) {
+                            return; // Not on the vault page? Immediately block and ignore!
+                        }
+
                         String msg = message.getData();
                         if ("FETCH_CREDENTIALS".equals(msg)) {
                             // 🛠️ EXACT MATCH TO YOUR SecureCredentialManager!
