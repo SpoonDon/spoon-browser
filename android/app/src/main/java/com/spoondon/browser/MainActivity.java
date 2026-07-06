@@ -682,7 +682,7 @@ exportCsvLauncher = registerForActivityResult(
         // Modern floating glass look
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setCornerRadius(24);
-        shape.setColor(android.graphics.Color.parseColor("#F5121212")); // Solid dark theme
+        shape.setColor(android.graphics.Color.parseColor("#B3121212"));
         shape.setStroke(2, android.graphics.Color.parseColor("#333333"));
         barLayout.setBackground(shape);
 
