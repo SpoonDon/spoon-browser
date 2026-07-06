@@ -38,11 +38,29 @@ public class BlobDownloader {
             // Decode payload
             byte[] fileBytes = Base64.decode(base64Data, Base64.DEFAULT);
 
+            // 🛠️ AUDIT FIX: Catch and repair mislabeled PDF blobs/base64 streams
+            String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
+            String cleanFileName = fileName;
+
+            boolean isActuallyPdf = safeMimeType.equalsIgnoreCase("application/pdf") || 
+                                    cleanFileName.toLowerCase().contains(".pdf");
+
+            if (isActuallyPdf) {
+                if (safeMimeType.equals("application/octet-stream")) {
+                    safeMimeType = "application/pdf";
+                }
+                if (cleanFileName.endsWith(".bin")) {
+                    cleanFileName = cleanFileName.substring(0, cleanFileName.length() - 4) + ".pdf";
+                } else if (!cleanFileName.toLowerCase().endsWith(".pdf")) {
+                    cleanFileName += ".pdf";
+                }
+            }
+
             // Modern Android (API 29+) Scoped Storage Pipeline
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues values = new ContentValues();
-                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType != null ? mimeType : "application/octet-stream");
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, cleanFileName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, safeMimeType);
                 values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
 
                 Uri uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
@@ -60,15 +78,16 @@ public class BlobDownloader {
                 File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 if (!downloadDir.exists()) downloadDir.mkdirs();
                 
-                File targetFile = new File(downloadDir, fileName);
+                File targetFile = new File(downloadDir, cleanFileName);
                 try (FileOutputStream fos = new FileOutputStream(targetFile)) {
                     fos.write(fileBytes);
                     fos.flush();
                 }
             }
 
+            final String finalFileName = cleanFileName;
             mainHandler.post(() ->
-                    Toast.makeText(context, "Download complete: " + fileName, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Download complete: " + finalFileName, Toast.LENGTH_LONG).show()
             );
 
         } catch (OutOfMemoryError e) {
