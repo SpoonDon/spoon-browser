@@ -3,6 +3,8 @@ name: Android Build
 on:
   push:
     branches: [ main, feature/media-and-passwords, feature/ui-overhaul ]
+    tags:
+      - 'v*'
 
   workflow_dispatch:
 
