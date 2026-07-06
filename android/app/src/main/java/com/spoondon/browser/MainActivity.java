@@ -1208,21 +1208,35 @@ exportCsvLauncher = registerForActivityResult(
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
                     try {
-                        // 🔒 HARDCORE SECURITY LOCK: Double-check the URL manually!
-                        // Only allow the bridge to work if the active tab is EXACTLY your local vault page.
+                        // 🔒 HARDCORE SECURITY LOCK
                         String currentUrl = view.getUrl();
                         if (currentUrl == null || !currentUrl.startsWith("file:///android_asset/vault.html")) {
-                            return; // Not on the vault page? Immediately block and ignore!
+                            return; 
                         }
 
                         String msg = message.getData();
-                        if ("FETCH_CREDENTIALS".equals(msg)) {
-                            // 🛠️ EXACT MATCH TO YOUR SecureCredentialManager!
+
+                        // 1. MATCH THE EXACT JAVASCRIPT FETCH COMMAND
+                        if ("FETCH_ALL_VAULT_DATA".equals(msg)) {
                             String allAccounts = secureCredentialManager.getAllCredentialsAsJson(); 
                             replyProxy.postMessage(allAccounts != null ? allAccounts : "[]");
+                        } 
+                        // 2. HANDLE SAVE AND DELETE COMMANDS FROM THE HTML UI
+                        else if (msg != null && msg.startsWith("{")) {
+                            org.json.JSONObject obj = new org.json.JSONObject(msg);
+                            String action = obj.optString("action");
+                            String host = obj.optString("host");
+                            String user = obj.optString("username");
+                            
+                            if ("SAVE_LOGIN".equals(action)) {
+                                String pass = obj.optString("password");
+                                secureCredentialManager.saveCredentials(host, user, pass);
+                            } else if ("DELETE_LOGIN".equals(action)) {
+                                secureCredentialManager.deleteCredentials(host, user);
+                            }
                         }
                     } catch (Exception e) {
-                        replyProxy.postMessage("[]");
+                        // Silently ignore parse errors
                     }
                 }
             );
