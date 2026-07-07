@@ -1418,6 +1418,9 @@ webView.getSettings().setBlockNetworkImage(false);
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
 
+        // Attach the autosave bridge directly to this new tab's WebView
+        webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
+
         // Force full hardware GPU pipeline rendering
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
         }
@@ -2593,4 +2596,31 @@ private void triggerExternalDownload(String url, String mimeType) {
         return p[s.length()];
     }
 
-}
+    public class PasswordAutosaveBridge {
+        @android.webkit.JavascriptInterface
+        public void saveCredentials(String username, String password) {
+            if (username == null || username.isEmpty() || password == null || password.isEmpty()) return;
+            
+            runOnUiThread(() -> {
+                if (secureCredentialManager != null) {
+                    // Get the current URL to save it to the right domain
+                    String currentUrl = "";
+                    if (currentTab >= 0 && currentTab < tabs.size()) {
+                        android.webkit.WebView activeWebView = tabs.get(currentTab);
+                        if (activeWebView != null && activeWebView.getUrl() != null) {
+                            currentUrl = activeWebView.getUrl();
+                        }
+                    }
+                    
+                    if (!currentUrl.isEmpty()) {
+                        String host = android.net.Uri.parse(currentUrl).getHost();
+                        // Trigger the secure save!
+                        secureCredentialManager.saveCredentials(host, username, password);
+                        android.widget.Toast.makeText(MainActivity.this, "Password Autosaved for: " + host, android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                }
+            });
+        }
+    }
+
+} 
