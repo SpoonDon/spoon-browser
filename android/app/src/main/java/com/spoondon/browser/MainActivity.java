@@ -390,25 +390,6 @@ exportCsvLauncher = registerForActivityResult(
 
 
     private void loadSavedData() {
-        String savedHistory = prefs.getString(KEY_HISTORY, "");
-        if (!savedHistory.isEmpty()) {
-            for (String item : savedHistory.split("\\n")) {
-                history.add(item);
-                while (history.size() > MAX_HISTORY) {
-                    history.remove(0);
-                }
-            }
-        }
-
-        String savedBookmarks = prefs.getString(KEY_BOOKMARKS, "");
-        if (!savedBookmarks.isEmpty()) {
-            for (String bookmark : savedBookmarks.split("\\n")) {
-                if (!bookmarks.contains(bookmark)) {
-                    bookmarks.add(bookmark);
-                }
-            }
-        }
-
         String savedFilterLists = prefs.getString(KEY_FILTER_LISTS, "");
         if (!savedFilterLists.isEmpty()) {
             for (String filter : savedFilterLists.split("\\n")) {
@@ -425,15 +406,6 @@ exportCsvLauncher = registerForActivityResult(
             }
         }
 
-        String savedPageTitles = prefs.getString(KEY_PAGE_TITLES, "");
-        if (!savedPageTitles.isEmpty()) {
-            for (String item : savedPageTitles.split("\\n")) {
-                String[] parts = item.split("\\|", 2);
-                if (parts.length == 2) {
-                    pageTitles.put(parts[0], parts[1]);
-                }
-            }
-        }
         rebuildBlockedDomains();
     }
 
@@ -611,11 +583,9 @@ exportCsvLauncher = registerForActivityResult(
                         
                     case "Add Bookmark":
                         android.webkit.WebView wv = getCurrentWebView();
-                        String url = wv != null ? wv.getUrl() : null;
-                        if (url != null && !url.isEmpty() && !bookmarks.contains(url)) {
-                            bookmarks.add(url);
-                            saveBookmarks();
-                            android.widget.Toast.makeText(this, "Bookmark saved", android.widget.Toast.LENGTH_SHORT).show();
+                        if (wv != null && wv.getUrl() != null && dbHelper != null) {
+                            dbHelper.addBookmark(wv.getUrl(), wv.getTitle());
+                            android.widget.Toast.makeText(MainActivity.this, "Bookmark saved", android.widget.Toast.LENGTH_SHORT).show();
                         }
                         return true;
                         
@@ -624,8 +594,8 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
                         
                     case "Clear History":
-                        history.clear();
-                        saveHistory();
+                        if (dbHelper != null) dbHelper.clearHistory();
+                        android.widget.Toast.makeText(MainActivity.this, "History cleared", android.widget.Toast.LENGTH_SHORT).show();
                         return true;
                         
                     case "Clear Cache":
@@ -1494,12 +1464,6 @@ webView.getSettings().setBlockNetworkImage(false);
 
         WebView webView = tabs.get(index);
         String url = webView.getUrl();
-        if (url != null) {
-            synchronized (pageTitles) {
-                pageTitles.remove(url);
-            }
-            savePageTitles();
-        }
 
         if (browserContainer != null) {
             browserContainer.removeView(webView);
@@ -1536,15 +1500,14 @@ webView.getSettings().setBlockNetworkImage(false);
 
     private ArrayList<BrowserItem> buildTabItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
-        synchronized (pageTitles) {
-            for (WebView webView : tabs) {
-                String url = webView.getUrl();
-                String title = url != null ? pageTitles.get(url) : null;
-                if (title == null || title.isEmpty()) {
-                    title = (url == null || url.isEmpty()) ? "New Tab" : url;
-                }
-                items.add(new BrowserItem(title, url));
+        for (WebView webView : tabs) {
+            if (webView == null) continue;
+            String url = webView.getUrl();
+            String title = webView.getTitle();
+            if (title == null || title.isEmpty()) {
+                title = (url == null || url.isEmpty() || url.equals("about:blank")) ? "New Tab" : url;
             }
+            items.add(new BrowserItem(title, url));
         }
         return items;
     }
@@ -1615,28 +1578,7 @@ webView.getSettings().setBlockNetworkImage(false);
         dialog.show();
     }
 
-    private ArrayList<BrowserItem> buildHistoryItems() {
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        synchronized (pageTitles) {
-            for (int i = 0; i < history.size(); i++) {
-                String url = history.get(history.size() - 1 - i);
-                String title = pageTitles.get(url);
-                items.add(new BrowserItem(title != null && !title.isEmpty() ? title : url, url));
-            }
-        }
-        return items;
-    }
-
-    private ArrayList<BrowserItem> buildBookmarkItems() {
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        synchronized (pageTitles) {
-            for (String url : bookmarks) {
-                String title = pageTitles.get(url);
-                items.add(new BrowserItem(title != null && !title.isEmpty() ? title : url, url));
-            }
-        }
-        return items;
-    }
+    // Deleted old buildHistoryItems and buildBookmarkItems
 
     private void showHistoryDialog() {
         if (dbHelper == null) return;
@@ -1696,25 +1638,8 @@ webView.getSettings().setBlockNetworkImage(false);
         }
     }
 
-    private void saveBookmarks() {
-        backgroundExecutor.execute(() -> {
-            prefs.edit().putString(KEY_BOOKMARKS, TextUtils.join("\n", bookmarks)).apply();
-        });
-    }
-
     public void saveHistory() {
-        // 1. Snapshot the array immediately on the Main Thread to avoid thread crashes
-        final java.util.ArrayList<String> historyCopy;
-        synchronized (history) {
-            historyCopy = new java.util.ArrayList<>(history);
-        }
-
-        // 2. Safely write the isolated copy to disk in the background
-        backgroundExecutor.execute(() -> {
-            try {
-                prefs.edit().putString(KEY_HISTORY, android.text.TextUtils.join("\n", historyCopy)).apply();
-            } catch (Exception ignored) {}
-        });
+        // Neutered legacy saveHistory - SQLite handles this now!
     }
     
     static class ContentFilterEngine {
@@ -2047,15 +1972,7 @@ webView.getSettings().setBlockNetworkImage(false);
         prefs.edit().putInt(KEY_CURRENT_TAB, currentTab).apply();
     }
 
-    private void savePageTitles() {
-        StringBuilder builder = new StringBuilder();
-        synchronized (pageTitles) {
-            for (String url : pageTitles.keySet()) {
-                builder.append(url).append("|").append(pageTitles.get(url)).append("\n");
-            }
-        }
-        prefs.edit().putString(KEY_PAGE_TITLES, builder.toString()).apply();
-    }
+    // Deleted savePageTitles
 
     private void showFilterListsDialog() {
         EditText input = new EditText(this);
@@ -2188,8 +2105,8 @@ webView.getSettings().setBlockNetworkImage(false);
                     .setTitle("Spoon Browser")
                     .setMessage("Version: " + getAppVersion() + "\n"
                             + "Engine: WebView " + webViewVer + "\n\n"
-                            + "Tabs: " + tabs.size() + "\nBookmarks: " + bookmarks.size()
-                            + "\nHistory: " + history.size() + "\nBlocked Rules: " + filterEngine.blockPatterns.size()
+                            + "Tabs: " + tabs.size() + "\nBookmarks & History: DB Active"
+                            + "\nBlocked Rules: " + filterEngine.blockPatterns.size()
                             + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
                     .setPositiveButton("OK", null)
                     .show();
