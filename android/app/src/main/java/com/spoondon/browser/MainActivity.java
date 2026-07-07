@@ -1643,12 +1643,22 @@ webView.getSettings().setBlockNetworkImage(false);
     }
 
     private void showHistoryDialog() {
-        if (history.isEmpty()) {
+        if (dbHelper == null) return;
+        
+        java.util.List<String[]> historyData = dbHelper.getAllHistory();
+        
+        if (historyData.isEmpty()) {
             android.widget.Toast.makeText(this, "History is empty", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
-        
-        java.util.ArrayList<BrowserItem> items = buildHistoryItems();
+
+        java.util.ArrayList<BrowserItem> items = new java.util.ArrayList<>();
+        for (String[] entry : historyData) {
+            String url = entry[0];
+            String title = entry[1];
+            items.add(new BrowserItem(title != null && !title.isEmpty() ? title : url, url));
+        }
+
         BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
         android.widget.ListView listView = new android.widget.ListView(this);
         listView.setAdapter(adapter);
@@ -1662,11 +1672,8 @@ webView.getSettings().setBlockNetworkImage(false);
                     openUrl(items.get(which).url);
                 } else if (item == 1) {
                     String url = items.get(which).url;
-                    if (!bookmarks.contains(url)) {
-                        bookmarks.add(url);
-                        saveBookmarks();
-                        android.widget.Toast.makeText(this, "Bookmark added", android.widget.Toast.LENGTH_SHORT).show();
-                    }
+                    dbHelper.addBookmark(url, items.get(which).title);
+                    android.widget.Toast.makeText(MainActivity.this, "Bookmark added", android.widget.Toast.LENGTH_SHORT).show();
                 }
             }).show();
             return true;
@@ -2219,34 +2226,42 @@ webView.getSettings().setBlockNetworkImage(false);
     }
 
     private void showBookmarks() {
-        if (bookmarks.isEmpty()) {
-            Toast.makeText(this, "No bookmarks saved", Toast.LENGTH_SHORT).show();
+        if (dbHelper == null) return;
+        
+        java.util.List<String> bookmarkUrls = dbHelper.getAllBookmarksUrls();
+        
+        if (bookmarkUrls.isEmpty()) {
+            android.widget.Toast.makeText(this, "No bookmarks saved", android.widget.Toast.LENGTH_SHORT).show();
             return;
         }
 
-        ArrayList<BrowserItem> items = buildBookmarkItems();
+        java.util.ArrayList<BrowserItem> items = new java.util.ArrayList<>();
+        for (String url : bookmarkUrls) {
+            items.add(new BrowserItem(url, url)); 
+        }
+
         BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        ListView listView = new ListView(this);
+        android.widget.ListView listView = new android.widget.ListView(this);
         listView.setAdapter(adapter);
 
         listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
         listView.setOnItemLongClickListener((parent, view, which, id) -> {
             String[] options = {"Open", "Open in New Tab", "Remove Bookmark"};
-            new AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
+            new android.app.AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
                 if (item == 0) {
                     openUrl(items.get(which).url);
                 } else if (item == 1) {
                     createNewTab();
                     openUrl(items.get(which).url);
                 } else if (item == 2) {
-                    bookmarks.remove(items.get(which).url);
-                    saveBookmarks();
+                    dbHelper.removeBookmark(items.get(which).url);
+                    android.widget.Toast.makeText(MainActivity.this, "Bookmark removed", android.widget.Toast.LENGTH_SHORT).show();
                 }
             }).show();
             return true;
         });
 
-        new AlertDialog.Builder(this).setTitle("Bookmarks").setView(listView).show();
+        new android.app.AlertDialog.Builder(this).setTitle("Bookmarks").setView(listView).show();
     }
 
     private void showHome() {
