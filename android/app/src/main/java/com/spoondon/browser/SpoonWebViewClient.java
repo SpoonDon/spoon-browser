@@ -133,7 +133,7 @@ public class SpoonWebViewClient extends WebViewClient {
     public void onPageFinished(android.webkit.WebView view, String url) {
         super.onPageFinished(view, url);
 
-        // 1. Inject Cosmetic AdBlock Filters
+        // 1. Inject Cosmetic AdBlock Filters (Your existing code)
         view.evaluateJavascript(activity.filterEngine.compileCosmeticJavascript(), null);
         java.util.List<String> cssBatches = activity.filterEngine.getCosmeticStyleBatches(url);
         for (String cssChunk : cssBatches) {
@@ -145,7 +145,18 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
         
-        // Notice how clean this is now! No more autofill script headaches here.
+        // 2. NEW: Inject Password Autosave Listener
+        String script = "javascript:(function() {" +
+            "document.addEventListener('submit', function(e) {" +
+                "var passBox = e.target.querySelector('input[type=password]');" +
+                "var userBox = e.target.querySelector('input[type=text], input[type=email], input[name=username], input[name=login]');" +
+                "if (passBox && passBox.value && userBox && userBox.value) {" +
+                    "SpoonVault.saveCredentials(userBox.value, passBox.value);" +
+                "}" +
+            "});" +
+        "})();";
+        
+        view.evaluateJavascript(script, null);
     }
     
 }
