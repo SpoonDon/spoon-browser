@@ -86,13 +86,36 @@ public class SpoonWebViewClient extends WebViewClient {
     }
   
     @Override
-    public void onPageStarted(WebView view, String url, Bitmap favicon) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            CookieManager.getInstance().flush();
+    public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
+        super.onPageStarted(view, url, favicon);
+
+        // 1. Your existing Cookie flush logic
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            android.webkit.CookieManager.getInstance().flush();
         }
 
+        // 2. Your existing Address Bar UI update
         if (view == activity.getCurrentWebView() && activity.addressBar != null) {
             activity.addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
+        }
+
+        // 3. NEW: The Domain-Specific Desktop Mode Engine
+        if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
+            String host = android.net.Uri.parse(url).getHost();
+            if (host != null) {
+                // Read the saved domain list
+                android.content.SharedPreferences prefs = activity.getSharedPreferences("browser_prefs", android.content.Context.MODE_PRIVATE);
+                java.util.Set<String> desktopSites = prefs.getStringSet("desktop_sites", new java.util.HashSet<>());
+
+                // Apply the correct mode automatically
+                if (desktopSites.contains(host)) {
+                    view.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+                    view.getSettings().setLoadWithOverviewMode(true);
+                    view.getSettings().setUseWideViewPort(true);
+                } else {
+                    view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+                }
+            }
         }
     }
 
