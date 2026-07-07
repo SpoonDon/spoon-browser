@@ -136,12 +136,18 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
+    public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
         super.doUpdateVisitedHistory(view, url, isReload);
-        
-        // 🛠️ THE FIX: Ignore Cloudflare's invisible challenge redirects!
+
+        // 🛠 THE FIX: Ignore Cloudflare's invisible challenge redirects!
         if (url != null && !url.contains("cdn-cgi/challenge")) {
+            // 1. Keep the old array system working to prevent crashes
             activity.recordPageVisit(url, view.getTitle());
+            
+            // 2. Secretly feed the new SQLite database in the background
+            if (!isReload && activity.dbHelper != null) {
+                activity.dbHelper.addHistory(url, view.getTitle());
+            }
         }
     }
 
