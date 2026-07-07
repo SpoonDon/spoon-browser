@@ -560,7 +560,23 @@ exportCsvLauncher = registerForActivityResult(
             popup.getMenu().add("Clear History");
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
-            popup.getMenu().add(isDesktopMode ? "Desktop Site [ON]" : "Desktop Site [OFF]");
+            // --- REPLACE the old isDesktopMode line with this block ---
+            String currentHost = "";
+            if (currentTab >= 0 && currentTab < tabs.size()) {
+                android.webkit.WebView activeWebView = tabs.get(currentTab);
+                if (activeWebView != null && activeWebView.getUrl() != null) {
+                    currentHost = android.net.Uri.parse(activeWebView.getUrl()).getHost();
+                }
+            }
+            
+            boolean isCurrentSiteDesktop = false;
+            if (currentHost != null && !currentHost.isEmpty()) {
+                isCurrentSiteDesktop = getSharedPreferences("browser_prefs", MODE_PRIVATE)
+                    .getStringSet("desktop_sites", new java.util.HashSet<>()).contains(currentHost);
+            }
+            
+            // Add the dynamic menu item
+            popup.getMenu().add(isCurrentSiteDesktop ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("Passwords");
             popup.getMenu().add("🔑 Vault (Copy)"); 
             popup.getMenu().add("About");
@@ -1147,7 +1163,7 @@ exportCsvLauncher = registerForActivityResult(
         );
     }
     
-    private void configureWebSettings(WebSettings settings) {
+    private void configureWebSettings(android.webkit.WebSettings settings) {
         if (settings == null) return;
 
         // 1. Core Web & Javascript Capabilities
@@ -1159,7 +1175,7 @@ exportCsvLauncher = registerForActivityResult(
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setSaveFormData(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
 
         // 3. File & Local Storage Access Configuration
         settings.setAllowFileAccess(true);
@@ -1169,7 +1185,7 @@ exportCsvLauncher = registerForActivityResult(
 
         // 4. Layout & UI Controls Optimization
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
-            settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+            settings.setLayoutAlgorithm(android.webkit.WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
         }
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
@@ -1183,7 +1199,7 @@ exportCsvLauncher = registerForActivityResult(
 
         // 6. Cross-Origin Contexts & Mixed Security Handshakes
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true); 
@@ -1193,27 +1209,18 @@ exportCsvLauncher = registerForActivityResult(
         try {
             android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
             cm.setAcceptCookie(true);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                // VERY IMPORTANT for Cloudflare cross-site verification
+                cm.setAcceptThirdPartyCookies(getCurrentWebView(), true); 
+            }
         } catch (Exception ignored) {}
     
-     // 8. User-Agent Profile Engine Matrix
-     boolean forceDesktop = false;
-     try {
-         if (prefs != null) {
-             forceDesktop = prefs.getBoolean("isDesktopMode", false);
-         }
-     } catch (Exception e) {
-         forceDesktop = false;
-     }
-
-        if (forceDesktop) {
-            settings.setUserAgentString(DESKTOP_UA);
-            settings.setUseWideViewPort(true);
-            settings.setLoadWithOverviewMode(true);
-        } else {
-            settings.setUserAgentString(MOBILE_UA);
-            settings.setUseWideViewPort(false);
-            settings.setLoadWithOverviewMode(false);
-        }
+        // 8. Base User-Agent Profile
+        // We now set the default to Mobile. The smart engine in SpoonWebViewClient 
+        // will automatically switch this to Desktop ONLY if the specific website demands it.
+        settings.setUserAgentString(MOBILE_UA);
+        settings.setUseWideViewPort(false);
+        settings.setLoadWithOverviewMode(false);
     }
     
     private View.OnLongClickListener createImageLongClickListener(WebView webView) {
@@ -2508,21 +2515,43 @@ private void triggerExternalDownload(String url, String mimeType) {
     }
     
  private void toggleDesktopMode() {
-     isDesktopMode = !isDesktopMode;
-
-     // Save the new state permanently so it survives app restarts
-     if (prefs != null) {
-         prefs.edit().putBoolean("isDesktopMode", isDesktopMode).apply();
-     }
+    if (currentTab < 0 || currentTab >= tabs.size()) return;
     
-        if (currentTab >= 0 && currentTab < tabs.size()) {
-            WebView activeWebView = tabs.get(currentTab);
-            if (activeWebView != null) {
-                configureWebSettings(activeWebView.getSettings());
-                activeWebView.reload();
-            }
-        }
+    android.webkit.WebView activeWebView = tabs.get(currentTab);
+    if (activeWebView == null || activeWebView.getUrl() == null) return;
+
+    // 1. Get the specific domain (e.g., "reddit.com") of the current tab
+    String host = android.net.Uri.parse(activeWebView.getUrl()).getHost();
+    if (host == null) return;
+
+    // 2. Fetch the list of domains the user wants in Desktop Mode
+    java.util.Set<String> desktopSites = new java.util.HashSet<>(
+        prefs.getStringSet("desktop_sites", new java.util.HashSet<>())
+    );
+
+    // 3. Toggle this specific domain ON or OFF
+    if (desktopSites.contains(host)) {
+        desktopSites.remove(host); // Turn OFF Desktop Mode
+        android.widget.Toast.makeText(this, "Mobile mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
+    } else {
+        desktopSites.add(host);    // Turn ON Desktop Mode
+        android.widget.Toast.makeText(this, "Desktop mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
     }
+
+    // 4. Save the updated list permanently
+    prefs.edit().putStringSet("desktop_sites", desktopSites).apply();
+    
+    // 5. Apply the correct User-Agent instantly and reload
+    if (desktopSites.contains(host)) {
+        activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        activeWebView.getSettings().setLoadWithOverviewMode(true);
+        activeWebView.getSettings().setUseWideViewPort(true);
+    } else {
+        activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+    }
+    
+    activeWebView.reload();
+}
 
 // Phishing & Typosquatting Detection Engine
     private boolean isPhishingRisk(String host) {
