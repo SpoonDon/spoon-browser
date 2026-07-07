@@ -17,8 +17,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SpoonWebViewClient extends WebViewClient {
-
     private final MainActivity activity;
+    private String lastRecordedHistoryUrl = "";
 
     public SpoonWebViewClient(MainActivity activity) {
         this.activity = activity;
@@ -140,13 +140,16 @@ public class SpoonWebViewClient extends WebViewClient {
         super.doUpdateVisitedHistory(view, url, isReload);
 
         // 🛠 THE FIX: Ignore Cloudflare's invisible challenge redirects!
-        if (url != null && !url.contains("cdn-cgi/challenge")) {
-            // 1. Keep the old array system working to prevent crashes
-            activity.recordPageVisit(url, view.getTitle());
+        if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
+            // Normalize trailing slashes so domain.com and domain.com/ are treated identically
+            String cleanUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
             
-            // 2. Secretly feed the new SQLite database in the background
-            if (!isReload && activity.dbHelper != null) {
-                activity.dbHelper.addHistory(url, view.getTitle());
+            activity.recordPageVisit(cleanUrl, view.getTitle());
+            
+            // 🚀 The Duplicate Blocker: Only write to DB if the URL is different from the last one
+            if (activity.dbHelper != null && !cleanUrl.equals(lastRecordedHistoryUrl)) {
+                activity.dbHelper.addHistory(cleanUrl, view.getTitle());
+                lastRecordedHistoryUrl = cleanUrl; // Remember this so we don't save it 5 more times!
             }
         }
     }
