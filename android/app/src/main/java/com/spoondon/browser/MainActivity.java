@@ -78,6 +78,7 @@ import java.util.Collections;
 
 public class MainActivity extends AppCompatActivity {
     SecureCredentialManager secureCredentialManager;
+    public BrowserDatabaseHelper dbHelper;
     private android.view.View findInPageBar = null;
     private static final String PREFS_NAME = "spoon_browser";
     private static final String KEY_BOOKMARKS = "bookmarks";
@@ -157,7 +158,8 @@ exportCsvLauncher = registerForActivityResult(
         }
 
         secureCredentialManager = new SecureCredentialManager(this);
- 
+        dbHelper = new BrowserDatabaseHelper(this);
+
         passwordImportLauncher = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
             uri -> {
