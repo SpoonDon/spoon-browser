@@ -183,10 +183,12 @@ public class SecureCredentialManager {
 
     public synchronized void deleteCredentials(String host, String username) {
         if (!isReady || host == null || username == null) return;
+        
+        // 🛠️ THE FIX: Replaced .apply() with .commit() for synchronous, immediate deletion
         encryptedPrefs.edit()
             .remove(host + "_" + username + "_pass")
             .remove(host + "_" + username + "_user")
-            .apply();
+            .commit(); 
     }
 
     public synchronized void clearCredentials(String host) {
