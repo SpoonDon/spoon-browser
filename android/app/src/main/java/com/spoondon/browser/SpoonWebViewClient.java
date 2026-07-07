@@ -38,26 +38,34 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        Uri url = request.getUrl();
-        if (url == null) return false;
-        String urlString = url.toString();
+    public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            android.net.Uri url = request.getUrl();
+            if (url == null) return false;
+            String urlString = url.toString();
 
-        // 1. Let the WebView load standard web pages natively
-        if (urlString.startsWith("http://") || urlString.startsWith("https://")) {
-            return false; 
-        }
-
-        // 2. Route EVERYTHING else (intent://, mailto:, tel:, market://, magnet:) to the Android OS
-        try {
-            Intent intent = Intent.parseUri(urlString, Intent.URI_INTENT_SCHEME);
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                view.getContext().startActivity(intent);
-                return true;
+            // 1. Enforce HTTPS upgrades for raw HTTP endpoints
+            if (urlString.startsWith("http://") && !urlString.contains("localhost") && !urlString.contains("10.0.2.2")) {
+                String secureUrl = urlString.replace("http://", "https://");
+                view.loadUrl(secureUrl);
+                return true; // Cancel the unencrypted request, we just kicked off the secure one
             }
-        } catch (Exception e) {
-            Toast.makeText(view.getContext(), "No app found to handle this link", Toast.LENGTH_SHORT).show();
+
+            if (urlString.startsWith("https://")) {
+                return false; // Load native HTTPS requests normally
+            }
+
+            // 2. Route EVERYTHING else (intent://, mailto:, tel:, market://, magnet:) to the Android OS
+            try {
+                android.content.Intent intent = android.content.Intent.parseUri(urlString, android.content.Intent.URI_INTENT_SCHEME);
+                if (intent != null) {
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    view.getContext().startActivity(intent);
+                    return true;
+                }
+            } catch (Exception e) {
+                android.widget.Toast.makeText(view.getContext(), "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show();
+            }
         }
         return true; 
     }
@@ -65,22 +73,30 @@ public class SpoonWebViewClient extends WebViewClient {
     // Legacy support for older Android versions
     @SuppressWarnings("deprecation")
     @Override
-    public boolean shouldOverrideUrlLoading(WebView view, String urlString) {
+    public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
         if (urlString == null) return false;
         
-        if (urlString.startsWith("http://") || urlString.startsWith("https://")) {
+        // 1. Enforce HTTPS upgrades for raw HTTP endpoints
+        if (urlString.startsWith("http://") && !urlString.contains("localhost") && !urlString.contains("10.0.2.2")) {
+            String secureUrl = urlString.replace("http://", "https://");
+            view.loadUrl(secureUrl);
+            return true;
+        }
+
+        if (urlString.startsWith("https://")) {
             return false;
         }
         
+        // 2. Route EVERYTHING else out
         try {
-            Intent intent = Intent.parseUri(urlString, Intent.URI_INTENT_SCHEME);
+            android.content.Intent intent = android.content.Intent.parseUri(urlString, android.content.Intent.URI_INTENT_SCHEME);
             if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
                 view.getContext().startActivity(intent);
                 return true;
             }
         } catch (Exception e) {
-             Toast.makeText(view.getContext(), "No app found to handle this link", Toast.LENGTH_SHORT).show();
+             android.widget.Toast.makeText(view.getContext(), "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show();
         }
         return true;
     }
