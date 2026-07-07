@@ -203,115 +203,74 @@ public class SecureCredentialManager {
 
     public synchronized boolean importFromCSVStream(java.io.InputStream inputStream) {
         if (!isReady || inputStream == null) return false;
-        java.io.BufferedReader reader = null;
-        try {
-            reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream, java.nio.charset.StandardCharsets.UTF_8));
+
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream, java.nio.charset.StandardCharsets.UTF_8))) {
+
+            String headerLine = reader.readLine();
+            if (headerLine == null) return false;
+
+            // 1. Map columns dynamically based on the header
+            String[] headers = headerLine.toLowerCase().replace("\"", "").split(",");
             int urlIndex = -1, usernameIndex = -1, passwordIndex = -1;
-            boolean isHeader = true;
 
-            java.util.List<String> tokens = new java.util.ArrayList<>();
-            StringBuilder sb = new StringBuilder();
-            boolean inQuotes = false;
-            int ch;
+            for (int i = 0; i < headers.length; i++) {
+                String h = headers[i].trim();
+                // Broader matching to support Chrome, Bitwarden, Firefox, etc.
+                if (h.equals("url") || h.equals("login_uri") || h.equals("website") || h.contains("url")) urlIndex = i;
+                else if (h.equals("username") || h.equals("login_username") || h.equals("email") || h.contains("user")) usernameIndex = i;
+                else if (h.equals("password") || h.equals("login_password") || h.contains("pass")) passwordIndex = i;
+            }
 
-            // Open a single batch editor for massive performance gains during bulk imports
+            if (urlIndex == -1 || usernameIndex == -1 || passwordIndex == -1) {
+                return false; // Invalid CSV format
+            }
+
             android.content.SharedPreferences.Editor editor = encryptedPrefs.edit();
-
-            while ((ch = reader.read()) != -1) {
-                char c = (char) ch;
-                if (c == '"') {
-                    if (inQuotes) {
-                        reader.mark(1);
-                        int nextCh = reader.read();
-                        if (nextCh == '"') {
-                            sb.append('"');
-                        } else {
-                            inQuotes = false;
-                            if (nextCh != -1) reader.reset();
-                        }
-                    } else {
-                        inQuotes = true;
-                    }
-                } else if (c == ',' && !inQuotes) {
-                    tokens.add(sb.toString().trim());
-                    sb.setLength(0);
-                } else if ((c == '\n' || c == '\r') && !inQuotes) {
-                    if (c == '\r') {
-                        reader.mark(1);
-                        int nextCh = reader.read();
-                        if (nextCh != '\n' && nextCh != -1) reader.reset();
-                    }
-                    tokens.add(sb.toString().trim());
-                    sb.setLength(0);
-
-                    if (!tokens.isEmpty() && !(tokens.size() == 1 && tokens.get(0).isEmpty())) {
-                        if (isHeader) {
-                            for (int i = 0; i < tokens.size(); i++) {
-                                String h = tokens.get(i).toLowerCase();
-                                if (h.contains("url")) urlIndex = i;
-                                else if (h.contains("username") || h.contains("user")) usernameIndex = i;
-                                else if (h.contains("password") || h.contains("pass")) passwordIndex = i;
-                            }
-                            isHeader = false;
-                            if (urlIndex == -1 || usernameIndex == -1 || passwordIndex == -1) return false;
-                        } else {
-                            if (tokens.size() > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
-                                String host = tokens.get(urlIndex);
-                                String username = tokens.get(usernameIndex);
-                                String password = tokens.get(passwordIndex);
-
-                                if (!host.isEmpty()) {
-                                    if (host.contains("://")) host = host.substring(host.indexOf("://") + 3);
-                                    if (host.contains("/")) host = host.split("/")[0];
-                                    host = host.toLowerCase().trim();
-                                    
-                                    if (username != null && !username.trim().isEmpty()) {
-                                        String cleanUser = username.trim();
-                                        editor.putString(host + "_" + cleanUser + "_user", cleanUser);
-                                        editor.putString(host + "_" + cleanUser + "_pass", password != null ? password : "");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    tokens.clear();
-                } else {
-                    sb.append(c);
-                }
-            }
+            String line;
             
-            // Catch the final line if the CSV doesn't end with a newline character
-            if (sb.length() > 0 || !tokens.isEmpty()) {
-                tokens.add(sb.toString().trim());
-                if (!isHeader && tokens.size() > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
-                    String host = tokens.get(urlIndex);
-                    String username = tokens.get(usernameIndex);
-                    String password = tokens.get(passwordIndex);
+            // 2. The Magic Regex: Splits by commas ONLY if they are outside of quotation marks
+            String csvRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
-                    if (!host.isEmpty()) {
-                        if (host.contains("://")) host = host.substring(host.indexOf("://") + 3);
-                        if (host.contains("/")) host = host.split("/")[0];
-                        host = host.toLowerCase().trim();
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+
+                String[] columns = line.split(csvRegex, -1);
+                
+                try {
+                    // Ensure the row actually has enough columns to avoid IndexOutOfBounds
+                    if (columns.length > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
                         
-                        if (username != null && !username.trim().isEmpty()) {
-                            String cleanUser = username.trim();
-                            editor.putString(host + "_" + cleanUser + "_user", cleanUser);
-                            editor.putString(host + "_" + cleanUser + "_pass", password != null ? password : "");
+                        // Extract and strip bounding quotation marks ONLY (replaceAll("^\"|\"$", ""))
+                        // This preserves intentional quotes inside the password!
+                        String host = columns[urlIndex].replaceAll("^\"|\"$", "").trim();
+                        String username = columns[usernameIndex].replaceAll("^\"|\"$", "").trim();
+                        
+                        // NEVER trim passwords, they might intentionally start/end with spaces!
+                        // Unescape double quotes ("") back to single quotes (")
+                        String password = columns[passwordIndex].replaceAll("^\"|\"$", "").replace("\"\"", "\"");
+
+                        if (!host.isEmpty() && !username.isEmpty()) {
+                            // Clean host URL down to the base domain
+                            if (host.contains("://")) host = host.substring(host.indexOf("://") + 3);
+                            if (host.contains("/")) host = host.split("/")[0];
+                            host = host.toLowerCase().trim();
+
+                            editor.putString(host + "_" + username + "_user", username);
+                            editor.putString(host + "_" + username + "_pass", password);
                         }
                     }
+                } catch (Exception e) {
+                    // Silently skip malformed rows so the rest of the file continues to import
                 }
             }
-            
+
             // Commit all imported passwords natively to the hardware keystore in one action
             editor.apply();
             return true;
-        } catch (java.io.IOException e) {
+
+        } catch (Exception e) {
             e.printStackTrace();
             return false;
-        } finally {
-            if (reader != null) {
-                try { reader.close(); } catch (java.io.IOException ignored) {}
-            }
         }
     }
 }
