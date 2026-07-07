@@ -2515,43 +2515,42 @@ private void triggerExternalDownload(String url, String mimeType) {
     }
     
  private void toggleDesktopMode() {
-    if (currentTab < 0 || currentTab >= tabs.size()) return;
-    
-    android.webkit.WebView activeWebView = tabs.get(currentTab);
-    if (activeWebView == null || activeWebView.getUrl() == null) return;
+        if (currentTab < 0 || currentTab >= tabs.size()) return;
+        
+        android.webkit.WebView activeWebView = tabs.get(currentTab);
+        if (activeWebView == null || activeWebView.getUrl() == null) return;
 
-    // 1. Get the specific domain (e.g., "reddit.com") of the current tab
-    String host = android.net.Uri.parse(activeWebView.getUrl()).getHost();
-    if (host == null) return;
+        String host = android.net.Uri.parse(activeWebView.getUrl()).getHost();
+        if (host == null) return;
 
-    // 2. Fetch the list of domains the user wants in Desktop Mode
-    java.util.Set<String> desktopSites = new java.util.HashSet<>(
-        prefs.getStringSet("desktop_sites", new java.util.HashSet<>())
-    );
+        // 🛠️ THE FIX: Explicitly target the "browser_prefs" database
+        android.content.SharedPreferences syncPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        
+        java.util.Set<String> desktopSites = new java.util.HashSet<>(
+            syncPrefs.getStringSet("desktop_sites", new java.util.HashSet<>())
+        );
 
-    // 3. Toggle this specific domain ON or OFF
-    if (desktopSites.contains(host)) {
-        desktopSites.remove(host); // Turn OFF Desktop Mode
-        android.widget.Toast.makeText(this, "Mobile mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
-    } else {
-        desktopSites.add(host);    // Turn ON Desktop Mode
-        android.widget.Toast.makeText(this, "Desktop mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
+        if (desktopSites.contains(host)) {
+            desktopSites.remove(host); 
+            android.widget.Toast.makeText(this, "Mobile mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
+        } else {
+            desktopSites.add(host);
+            android.widget.Toast.makeText(this, "Desktop mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
+        }
+
+        // 🛠️ Save to the correct database
+        syncPrefs.edit().putStringSet("desktop_sites", desktopSites).apply();
+        
+        if (desktopSites.contains(host)) {
+            activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+            activeWebView.getSettings().setLoadWithOverviewMode(true);
+            activeWebView.getSettings().setUseWideViewPort(true);
+        } else {
+            activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+        }
+        
+        activeWebView.reload();
     }
-
-    // 4. Save the updated list permanently
-    prefs.edit().putStringSet("desktop_sites", desktopSites).apply();
-    
-    // 5. Apply the correct User-Agent instantly and reload
-    if (desktopSites.contains(host)) {
-        activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-        activeWebView.getSettings().setLoadWithOverviewMode(true);
-        activeWebView.getSettings().setUseWideViewPort(true);
-    } else {
-        activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
-    }
-    
-    activeWebView.reload();
-}
 
 // Phishing & Typosquatting Detection Engine
     private boolean isPhishingRisk(String host) {
