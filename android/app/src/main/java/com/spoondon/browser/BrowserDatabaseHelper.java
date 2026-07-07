@@ -86,6 +86,28 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         db.close();
     }
 
+    public void removeBookmark(String url) {
+        if (url == null || url.isEmpty()) return;
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.delete(TABLE_BOOKMARKS, COLUMN_URL + " = ?", new String[]{url});
+        db.close();
+    }
+
+    public List<String[]> getAllHistory() {
+        List<String[]> historyList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_HISTORY + " ORDER BY id DESC LIMIT 500", null);
+
+        if (cursor.moveToFirst()) {
+            do {
+                historyList.add(new String[]{cursor.getString(0), cursor.getString(1)});
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return historyList;
+    }
+
     public List<String> getAllBookmarksUrls() {
         List<String> bookmarkUrls = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
