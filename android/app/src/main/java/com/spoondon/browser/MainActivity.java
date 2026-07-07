@@ -107,14 +107,10 @@ public class MainActivity extends AppCompatActivity {
     WebChromeClient.CustomViewCallback customViewCallback;
     private ValueCallback<Uri[]> fileChooserCallback;
     private ActivityResultLauncher<String> filePickerLauncher;
-    private ActivityResultLauncher<String> passwordImportLauncher;
-    
+    private ActivityResultLauncher<String> passwordImportLauncher;    
     private androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher;
-    private final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);
-    private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<String> bookmarks = new CopyOnWriteArrayList<>();
-    private final CopyOnWriteArrayList<String> history = new CopyOnWriteArrayList<>();
-    private final java.util.concurrent.ConcurrentHashMap<String, String> pageTitles = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);    
+    private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();    
     private SharedPreferences prefs;
     private int currentTab = 0;
     private boolean suppressSuggestions = false;
@@ -1926,33 +1922,8 @@ webView.getSettings().setBlockNetworkImage(false);
     private final java.util.concurrent.atomic.AtomicBoolean isFilterUpdating = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public void recordPageVisit(String url, String title) {
-        if (url == null || url.startsWith("data:") || url.equals("about:blank") || url.startsWith("file://")) {
-            return; 
-        }
-
-        // 1. Normalize trailing slashes to prevent string-matching failures
-        String cleanUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-
-        synchronized (this.history) {
-            // 2. Sequential Duplicate Blocker
-            if (!this.history.isEmpty() && this.history.get(this.history.size() - 1).equals(cleanUrl)) {
-                // The user is already at this exact URL (caused by background pushState updates)
-                // Skip the database write entirely.
-            } else {
-                // Safely remove any older instances of this URL, then put it at the top
-                this.history.remove(cleanUrl);
-                this.history.add(cleanUrl);
-            }
-        }
-        
-        synchronized (this.pageTitles) {
-            if (title != null && !title.isEmpty()) {
-                this.pageTitles.put(cleanUrl, title); // Ensure the map matches the cleaned URL
-            }
-        }
-        
-        saveHistory();
-
+        // 🚀 SAFELY NEUTERED!
+        // The background database engine in SpoonWebViewClient handles all writing now.
         runOnUiThread(() -> {
             if (addressBarAdapter != null) {
                 addressBarAdapter.notifyDataSetChanged();
@@ -2327,29 +2298,35 @@ webView.getSettings().setBlockNetworkImage(false);
         }
 
         String lower = query.toLowerCase();
-        HashSet<String> seen = new HashSet<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
         int count = 0;
 
-        for (int i = history.size() - 1; i >= 0 && count < 5; i--) {
-            String url = history.get(i);
-            if (url == null) continue;
+        if (dbHelper != null) {
+            // 🚀 Search directly through the SQLite history
+            java.util.List<String[]> recentHistory = dbHelper.getAllHistory();
+            for (String[] entry : recentHistory) {
+                if (count >= 5) break;
+                
+                String url = entry[0];
+                if (url == null) continue;
 
-            String host = null;
-            try {
-                host = Uri.parse(url).getHost();
-                if (host != null && host.startsWith("www.")) {
-                    host = host.substring(4);
-                }
-            } catch (Exception ignored) {}
+                String host = null;
+                try {
+                    host = android.net.Uri.parse(url).getHost();
+                    if (host != null && host.startsWith("www.")) {
+                        host = host.substring(4);
+                    }
+                } catch (Exception ignored) {}
 
-            boolean matchesUrl = url.toLowerCase().contains(lower);
-            boolean matchesHost = host != null && host.toLowerCase().contains(lower);
+                boolean matchesUrl = url.toLowerCase().contains(lower);
+                boolean matchesHost = host != null && host.toLowerCase().contains(lower);
 
-            if (!matchesUrl && !matchesHost) continue;
-            if (!seen.add(url)) continue;
+                if (!matchesUrl && !matchesHost) continue;
+                if (!seen.add(url)) continue;
 
-            addressBarAdapter.add(url);
-            count++;
+                addressBarAdapter.add(url);
+                count++;
+            }
         }
 
         addressBarAdapter.notifyDataSetChanged();
