@@ -109,7 +109,7 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> filePickerLauncher;
     private ActivityResultLauncher<String> passwordImportLauncher;    
     private androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher;
-    private final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);    
+    public final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);    
     private final CopyOnWriteArrayList<WebView> tabs = new CopyOnWriteArrayList<>();    
     private SharedPreferences prefs;
     private int currentTab = 0;
