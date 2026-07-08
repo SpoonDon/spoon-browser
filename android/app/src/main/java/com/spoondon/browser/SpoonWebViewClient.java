@@ -139,15 +139,18 @@ public class SpoonWebViewClient extends WebViewClient {
     public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
         super.doUpdateVisitedHistory(view, url, isReload);
 
-        // 🛠 THE FIX: Ignore Cloudflare's invisible challenge redirects!
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
-            // Normalize trailing slashes to prevent duplicates
+            // 1. Normalize trailing slashes
             String cleanUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
 
-            // 🚀 The Duplicate Blocker: Only write to DB if the URL is different from the very last one
-            if (activity.dbHelper != null && !cleanUrl.equals(lastRecordedHistoryUrl)) {
+            // 2. Strip prefixes to stop HTTP -> HTTPS double entries
+            String currentBase = cleanUrl.replaceFirst("^(http[s]?://(www\\.)?|www\\.)", "");
+            String lastBase = lastRecordedHistoryUrl.replaceFirst("^(http[s]?://(www\\.)?|www\\.)", "");
+
+            // 3. Only write to DB if the core URL is actually different
+            if (activity.dbHelper != null && !currentBase.equals(lastBase)) {
                 activity.dbHelper.addHistory(cleanUrl, view.getTitle());
-                lastRecordedHistoryUrl = cleanUrl; // Remember this so we don't save it 5 more times!
+                lastRecordedHistoryUrl = cleanUrl; 
             }
         }
     }
