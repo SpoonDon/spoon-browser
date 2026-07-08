@@ -12,7 +12,8 @@ import java.util.List;
 public class BrowserDatabaseHelper extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "SpoonBrowser.db";
-    private static final int DATABASE_VERSION = 1;
+    // Incremented version to 2 to trigger the tabs table creation
+    private static final int DATABASE_VERSION = 2;
 
     // History Table
     private static final String TABLE_HISTORY = "history";
@@ -23,6 +24,10 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
 
     // Bookmarks Table
     private static final String TABLE_BOOKMARKS = "bookmarks";
+    
+    // Tabs Table
+    private static final String TABLE_TABS = "tabs";
+    private static final String COLUMN_TAB_ORDER = "tab_order";
 
     public BrowserDatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -41,16 +46,30 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                 COLUMN_URL + " TEXT NOT NULL UNIQUE, " +
                 COLUMN_TITLE + " TEXT, " +
                 COLUMN_TIMESTAMP + " DATETIME DEFAULT CURRENT_TIMESTAMP)";
+                
+        String createTabsTable = "CREATE TABLE " + TABLE_TABS + " (" +
+                COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                COLUMN_TAB_ORDER + " INTEGER NOT NULL, " +
+                COLUMN_URL + " TEXT NOT NULL, " +
+                COLUMN_TITLE + " TEXT)";
 
         db.execSQL(createHistoryTable);
         db.execSQL(createBookmarksTable);
+        db.execSQL(createTabsTable);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_HISTORY);
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_BOOKMARKS);
-        onCreate(db);
+        if (oldVersion < 2) {
+            // Upgrade from V1 to V2: Just add the new Tabs table. 
+            // DO NOT drop history or bookmarks!
+            String createTabsTable = "CREATE TABLE IF NOT EXISTS " + TABLE_TABS + " (" +
+                    COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    COLUMN_TAB_ORDER + " INTEGER NOT NULL, " +
+                    COLUMN_URL + " TEXT NOT NULL, " +
+                    COLUMN_TITLE + " TEXT)";
+            db.execSQL(createTabsTable);
+        }
     }
 
     // --- HISTORY METHODS ---
@@ -141,5 +160,44 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         cursor.close();
         db.close();
         return count;
+    }
+
+    // --- TABS METHODS ---
+    public void saveAllTabs(List<String[]> tabsData) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        db.beginTransaction();
+        try {
+            // Wipe the old state completely
+            db.delete(TABLE_TABS, null, null);
+            
+            // Insert the new exact order
+            for (int i = 0; i < tabsData.size(); i++) {
+                String[] tab = tabsData.get(i);
+                ContentValues values = new ContentValues();
+                values.put(COLUMN_TAB_ORDER, i);
+                values.put(COLUMN_URL, tab[0]);
+                values.put(COLUMN_TITLE, tab[1]);
+                db.insert(TABLE_TABS, null, values);
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+            db.close();
+        }
+    }
+
+    public List<String[]> getAllTabs() {
+        List<String[]> tabsList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_TABS + " ORDER BY " + COLUMN_TAB_ORDER + " ASC", null);
+
+        if (cursor.moveToFirst()) {
+            do {
+                tabsList.add(new String[]{cursor.getString(0), cursor.getString(1)});
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return tabsList;
     }
 }
