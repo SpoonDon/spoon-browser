@@ -31,14 +31,10 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
 
     public BrowserDatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
-    }
-
-    @Override
-    public void onConfigure(SQLiteDatabase db) {
-        super.onConfigure(db);
-        // Enable WAL mode to prevent SQLiteDatabaseLockedException during concurrent read/writes
+        
+        // Enable WAL mode directly on the Helper to prevent SQLiteDatabaseLockedException
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
-            db.setWriteAheadLoggingEnabled(true);
+            setWriteAheadLoggingEnabled(true);
         }
     }
 
