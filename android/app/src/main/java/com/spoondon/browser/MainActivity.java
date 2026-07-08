@@ -412,15 +412,19 @@ exportCsvLauncher = registerForActivityResult(
         if (dbHelper != null) {
             java.util.List<String[]> savedTabs = dbHelper.getAllTabs();
             if (savedTabs != null && !savedTabs.isEmpty()) {
+                isRestoringTabs = true; // Pause saving to prevent DB conflicts while building
                 for (String[] tabData : savedTabs) {
                     createNewTab(); // Automatically handles layout, UI, and arrays
                     WebView restoredView = tabs.get(tabs.size() - 1);
                     String url = tabData[0];
-                    // Start loading the page in the background
-                    if (url != null && !url.equals("about:blank") && !url.isEmpty()) {
+                    
+                    // Allow about:blank to load so the Spoon Browser logo renders!
+                    if (url != null && !url.isEmpty()) {
                         restoredView.loadUrl(url);
                     }
                 }
+                isRestoringTabs = false;
+                saveTabsState(); // Save the final restored state
             } else {
                 createNewTab(); // Boot fresh if no saved tabs exist
             }
@@ -1430,12 +1434,20 @@ webView.getSettings().setBlockNetworkImage(false);
         }
         
         switchToTab(currentTab);
+
+        // BUG FIX: Ensure new tabs instantly trigger the Spoon Browser Start Page
+        if (!isRestoringTabs) {
+            webView.loadUrl("about:blank");
+        }
+
         saveTabsState(); // Trigger background save when a new tab opens
     }
 
+    public boolean isRestoringTabs = false;
+
     // NEW METHOD: Snapshot and save tabs in the background
     public void saveTabsState() {
-        if (dbHelper == null) return;
+        if (dbHelper == null || isRestoringTabs) return;
         
         // 1. Snapshot the current tabs on the main thread to avoid UI thread crashes
         java.util.List<String[]> tabsSnapshot = new java.util.ArrayList<>();
