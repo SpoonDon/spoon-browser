@@ -34,6 +34,15 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
     }
 
     @Override
+    public void onConfigure(SQLiteDatabase db) {
+        super.onConfigure(db);
+        // Enable WAL mode to prevent SQLiteDatabaseLockedException during concurrent read/writes
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            db.setWriteAheadLoggingEnabled(true);
+        }
+    }
+
+    @Override
     public void onCreate(SQLiteDatabase db) {
         String createHistoryTable = "CREATE TABLE " + TABLE_HISTORY + " (" +
                 COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
