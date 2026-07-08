@@ -1001,7 +1001,8 @@ exportCsvLauncher = registerForActivityResult(
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (suppressSuggestions) return;
-                updateAddressBarSuggestions(s.toString());
+                // Trim the query to prevent searching for empty space
+                updateAddressBarSuggestions(s.toString().trim());
             }
             @Override public void afterTextChanged(android.text.Editable s) {}
             // Explicitly declared android.text.Editable signature package target to avoid any lookup failures
