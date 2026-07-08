@@ -141,15 +141,13 @@ public class SpoonWebViewClient extends WebViewClient {
 
         // 🛠 THE FIX: Ignore Cloudflare's invisible challenge redirects!
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
-            // Normalize trailing slashes so domain.com and domain.com/ are treated identically
+            // Normalize trailing slashes to prevent duplicates
             String cleanUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
-            
-            activity.recordPageVisit(cleanUrl, view.getTitle());
-            
-            // 🚀 The Duplicate Blocker: Only write to DB if the URL is different from the last one
-            if (activity.dbHelper != null && !cleanUrl.equals(lastRecordedHistoryUrl)) {
+
+            // 🚀 ONLY write to the new SQLite database. 
+            // We no longer call activity.recordPageVisit to stop the duplicate entries.
+            if (activity.dbHelper != null) {
                 activity.dbHelper.addHistory(cleanUrl, view.getTitle());
-                lastRecordedHistoryUrl = cleanUrl; // Remember this so we don't save it 5 more times!
             }
         }
     }
