@@ -176,6 +176,11 @@ public class SpoonWebViewClient extends WebViewClient {
                     lastRecordedHistoryTime = currentTime;
                 }
             }
+            
+            // BUG FIX: Update the Tabs DB whenever the user actually navigates to a new page!
+            if (activity != null) {
+                activity.saveTabsState();
+            }
         }
     }
 
