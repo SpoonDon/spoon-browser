@@ -666,6 +666,20 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
                         
                     case "Exit":
+                        clearSessionOnExit = true;
+                        
+                        // BUG FIX: Force the SQLite wipe synchronously before Android kills the app!
+                        if (dbHelper != null) {
+                            try {
+                                dbHelper.saveAllTabs(new java.util.ArrayList<>());
+                            } catch (Exception ignored) {}
+                        }
+                        
+                        // Clear the legacy shared preference arrays just to be absolutely safe
+                        if (prefs != null) {
+                            prefs.edit().remove("open_tabs").remove("current_tab").apply();
+                        }
+                        
                         finishAndRemoveTask();
                         return true;
                 }
@@ -1521,10 +1535,16 @@ webView.getSettings().setBlockNetworkImage(false);
     private void closeTab(int index) {
         if (tabs.size() == 1) {
             clearSessionOnExit = true;
-            // Wipe the SQLite tab memory so it starts fresh next time
+            
+            // BUG FIX: Force the wipe on the Main Thread!
+            // If we use the background executor here, Android kills the app before the thread finishes.
             if (dbHelper != null) {
-                backgroundExecutor.execute(() -> dbHelper.saveAllTabs(new java.util.ArrayList<>()));
+                try {
+                    dbHelper.saveAllTabs(new java.util.ArrayList<>());
+                } catch (Exception ignored) {}
             }
+            
+            prefs.edit().remove("open_tabs").remove("current_tab").apply(); // Clear legacy arrays just in case
             finishAndRemoveTask();
             return;
         }
