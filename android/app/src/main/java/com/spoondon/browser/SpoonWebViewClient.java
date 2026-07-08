@@ -162,7 +162,16 @@ public class SpoonWebViewClient extends WebViewClient {
                 // Block if it's the same base page doing an automated redirect/append within 1.5 seconds.
                 // Otherwise, save the clean URL to the database.
                 if (!(isSameCorePage && isRapidFire)) {
-                    activity.dbHelper.addHistory(url, view.getTitle());
+                    final String finalUrl = url;
+                    final String finalTitle = view.getTitle();
+                    
+                    // Shift the database write to the background queue to prevent locking
+                    activity.backgroundExecutor.execute(() -> {
+                        try {
+                            activity.dbHelper.addHistory(finalUrl, finalTitle);
+                        } catch (Exception ignored) {}
+                    });
+                    
                     lastRecordedHistoryUrl = url;
                     lastRecordedHistoryTime = currentTime;
                 }
