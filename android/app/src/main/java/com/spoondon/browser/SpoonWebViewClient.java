@@ -19,6 +19,7 @@ import java.util.List;
 public class SpoonWebViewClient extends WebViewClient {
     private final MainActivity activity;
     private String lastRecordedHistoryUrl = "";
+    private long lastRecordedHistoryTime = 0;
 
     public SpoonWebViewClient(MainActivity activity) {
         this.activity = activity;
@@ -140,17 +141,31 @@ public class SpoonWebViewClient extends WebViewClient {
         super.doUpdateVisitedHistory(view, url, isReload);
 
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
-            // 1. Normalize trailing slashes
-            String cleanUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+            long currentTime = System.currentTimeMillis();
 
-            // 2. Strip prefixes to stop HTTP -> HTTPS double entries
-            String currentBase = cleanUrl.replaceFirst("^(http[s]?://(www\\.)?|www\\.)", "");
-            String lastBase = lastRecordedHistoryUrl.replaceFirst("^(http[s]?://(www\\.)?|www\\.)", "");
+            // 1. Parse URLs securely using Android's native engine
+            android.net.Uri currentUri = android.net.Uri.parse(url);
+            android.net.Uri lastUri = android.net.Uri.parse(lastRecordedHistoryUrl);
 
-            // 3. Only write to DB if the core URL is actually different
-            if (activity.dbHelper != null && !currentBase.equals(lastBase)) {
-                activity.dbHelper.addHistory(cleanUrl, view.getTitle());
-                lastRecordedHistoryUrl = cleanUrl; 
+            // 2. Extract ONLY the Host (domain) and Path (folder), stripping www. and ignoring http/https
+            String currentHost = currentUri.getHost() != null ? currentUri.getHost().replaceFirst("^www\\.", "") : "";
+            String currentPath = currentUri.getPath() != null ? currentUri.getPath() : "";
+
+            String lastHost = lastUri.getHost() != null ? lastUri.getHost().replaceFirst("^www\\.", "") : "";
+            String lastPath = lastUri.getPath() != null ? lastUri.getPath() : "";
+
+            // 3. Logic Engine: Is it the exact same core page loaded rapidly?
+            boolean isSameCorePage = currentHost.equals(lastHost) && currentPath.equals(lastPath);
+            boolean isRapidFire = (currentTime - lastRecordedHistoryTime) < 1500;
+
+            if (activity.dbHelper != null) {
+                // Block if it's the same base page doing an automated redirect/append within 1.5 seconds.
+                // Otherwise, save the clean URL to the database.
+                if (!(isSameCorePage && isRapidFire)) {
+                    activity.dbHelper.addHistory(url, view.getTitle());
+                    lastRecordedHistoryUrl = url;
+                    lastRecordedHistoryTime = currentTime;
+                }
             }
         }
     }
