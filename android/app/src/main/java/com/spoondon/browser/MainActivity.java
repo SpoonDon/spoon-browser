@@ -418,8 +418,10 @@ exportCsvLauncher = registerForActivityResult(
                     WebView restoredView = tabs.get(tabs.size() - 1);
                     String url = tabData[0];
                     
-                    // Allow about:blank to load so the Spoon Browser logo renders!
-                    if (url != null && !url.isEmpty()) {
+                    // BUG FIX: Route Home Pages to your native UI, and standard URLs to the WebView
+                    if (url == null || url.isEmpty() || url.equals("about:blank") || url.startsWith("data:text/html")) {
+                        showHome();
+                    } else {
                         restoredView.loadUrl(url);
                     }
                 }
@@ -427,9 +429,11 @@ exportCsvLauncher = registerForActivityResult(
                 saveTabsState(); // Save the final restored state
             } else {
                 createNewTab(); // Boot fresh if no saved tabs exist
+                showHome();
             }
         } else {
             createNewTab();
+            showHome();
         }
     }
 
@@ -1434,12 +1438,6 @@ webView.getSettings().setBlockNetworkImage(false);
         }
         
         switchToTab(currentTab);
-
-        // BUG FIX: Ensure new tabs instantly trigger the Spoon Browser Start Page
-        if (!isRestoringTabs) {
-            webView.loadUrl("about:blank");
-        }
-
         saveTabsState(); // Trigger background save when a new tab opens
     }
 
@@ -1455,6 +1453,13 @@ webView.getSettings().setBlockNetworkImage(false);
             if (wv != null) {
                 String url = wv.getUrl();
                 String title = wv.getTitle();
+                
+                // BUG FIX: Clean up the ugly Base64 Home Page string for the Tab Manager & DB
+                if (url != null && (url.startsWith("data:text/html") || url.equals("about:blank"))) {
+                    url = "about:blank";
+                    title = "New Tab";
+                }
+                
                 tabsSnapshot.add(new String[]{
                     url != null ? url : "about:blank",
                     title != null ? title : "New Tab"
