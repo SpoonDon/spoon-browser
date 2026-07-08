@@ -407,6 +407,26 @@ exportCsvLauncher = registerForActivityResult(
         }
 
         rebuildBlockedDomains();
+
+        // Restore Tabs from SQLite on Startup
+        if (dbHelper != null) {
+            java.util.List<String[]> savedTabs = dbHelper.getAllTabs();
+            if (savedTabs != null && !savedTabs.isEmpty()) {
+                for (String[] tabData : savedTabs) {
+                    createNewTab(); // Automatically handles layout, UI, and arrays
+                    WebView restoredView = tabs.get(tabs.size() - 1);
+                    String url = tabData[0];
+                    // Start loading the page in the background
+                    if (url != null && !url.equals("about:blank") && !url.isEmpty()) {
+                        restoredView.loadUrl(url);
+                    }
+                }
+            } else {
+                createNewTab(); // Boot fresh if no saved tabs exist
+            }
+        } else {
+            createNewTab();
+        }
     }
 
     private void setupBackButtonHandler() {
@@ -1410,6 +1430,32 @@ webView.getSettings().setBlockNetworkImage(false);
         }
         
         switchToTab(currentTab);
+        saveTabsState(); // Trigger background save when a new tab opens
+    }
+
+    // NEW METHOD: Snapshot and save tabs in the background
+    public void saveTabsState() {
+        if (dbHelper == null) return;
+        
+        // 1. Snapshot the current tabs on the main thread to avoid UI thread crashes
+        java.util.List<String[]> tabsSnapshot = new java.util.ArrayList<>();
+        for (WebView wv : tabs) {
+            if (wv != null) {
+                String url = wv.getUrl();
+                String title = wv.getTitle();
+                tabsSnapshot.add(new String[]{
+                    url != null ? url : "about:blank",
+                    title != null ? title : "New Tab"
+                });
+            }
+        }
+        
+        // 2. Save to SQLite securely in the background
+        backgroundExecutor.execute(() -> {
+            try {
+                dbHelper.saveAllTabs(tabsSnapshot);
+            } catch (Exception ignored) {}
+        });
     }
 
     private void switchToTab(int index) {
@@ -1458,7 +1504,10 @@ webView.getSettings().setBlockNetworkImage(false);
     private void closeTab(int index) {
         if (tabs.size() == 1) {
             clearSessionOnExit = true;
-            prefs.edit().remove(KEY_OPEN_TABS).remove(KEY_CURRENT_TAB).apply();
+            // Wipe the SQLite tab memory so it starts fresh next time
+            if (dbHelper != null) {
+                backgroundExecutor.execute(() -> dbHelper.saveAllTabs(new java.util.ArrayList<>()));
+            }
             finishAndRemoveTask();
             return;
         }
@@ -1486,7 +1535,8 @@ webView.getSettings().setBlockNetworkImage(false);
         webView.destroy();
         webView = null;
 
-        saveOpenTabs();
+        saveTabsState(); // Replaced legacy saveOpenTabs with SQLite engine
+        
         if (currentTab >= tabs.size()) {
             currentTab = tabs.size() - 1;
         }
