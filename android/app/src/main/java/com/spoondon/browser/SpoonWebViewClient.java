@@ -28,9 +28,15 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public android.webkit.WebResourceResponse shouldInterceptRequest(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            
+            // PROTECTION LAYER: Never block the main website HTML, only block background assets
+            if (request.isForMainFrame()) {
+                return super.shouldInterceptRequest(view, request);
+            }
+
             String url = request.getUrl().toString();
             
-            // Instantly kill the connection if the new engine flags it
+            // Instantly kill the connection if the engine flags it
             if (AdBlockEngine.shouldBlock(url)) {
                 return new android.webkit.WebResourceResponse(
                     "text/plain", 
