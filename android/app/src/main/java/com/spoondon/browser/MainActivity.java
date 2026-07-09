@@ -2034,10 +2034,10 @@ webView.getSettings().setBlockNetworkImage(false);
                 .setTitle("Spoon Browser")
                 .setMessage("Version: " + getAppVersion() + "\n"
                         + "Engine: WebView " + webViewVer + "\n\n"
-                        + "Tabs: " + tabs.size() 
-                        + "\nBookmarks: " + (dbHelper != null ? dbHelper.getBookmarkCount() : 0)
-                        + "\nHistory: " + (dbHelper != null ? dbHelper.getHistoryCount() : 0)
-                        + "\nBlocked Domains: " + AdBlockEngine.getBlocklistSize()
+                        + "Tabs Open: " + tabs.size() 
+                        + "\nBookmarks Saved: " + (dbHelper != null ? dbHelper.getBookmarkCount() : 0)
+                        + "\nHistory Items: " + (dbHelper != null ? dbHelper.getHistoryCount() : 0)
+                        + "\nAdblock Rules Loaded: " + AdBlockEngine.getBlocklistSize()
                         + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
                 .setPositiveButton("OK", null)
                 .show();
