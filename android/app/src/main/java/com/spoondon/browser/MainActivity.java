@@ -1227,55 +1227,49 @@ exportCsvLauncher = registerForActivityResult(
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
 
-        // 1. Force Hardware Rendering. This forces the GPU to handle scrolling instead of the CPU.
-webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
 
-// 2. Offscreen Pre-Rasterizing. (MASSIVE for low-end devices). 
-// This forces the WebView to draw pixels right below the visible screen BEFORE you scroll to them.
-if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-    webView.getSettings().setOffscreenPreRaster(true);
-}
+        android.webkit.WebSettings webSettings = webView.getSettings();
 
-// 3. Cache Mode. Aggressively use cached resources when available to save CPU cycles.
-webView.getSettings().setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            webSettings.setOffscreenPreRaster(true);
+        }
 
-// 4. Disable heavy, unnecessary rendering tasks
-webView.getSettings().setLoadsImagesAutomatically(true);
-webView.getSettings().setBlockNetworkImage(false);
+        webSettings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+        webSettings.setLoadsImagesAutomatically(true);
+        webSettings.setBlockNetworkImage(false);
 
-        // Configure default native web settings
-        configureWebSettings(webView.getSettings());
+        configureWebSettings(webSettings);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            webView.getSettings().setSafeBrowsingEnabled(false);
+            webSettings.setSafeBrowsingEnabled(true);
         }
 
-        // CLOUDFLARE FIX: Force DOM storage and strip the WebView Bot flag
-        webView.getSettings().setDomStorageEnabled(true);
-        webView.getSettings().setJavaScriptEnabled(true);
-        // ASSET FIX: Allow local HTML to execute its JS and talk to the native bridge!
-        webView.getSettings().setAllowFileAccess(true);
-        webView.getSettings().setAllowFileAccessFromFileURLs(true);
-        webView.getSettings().setAllowUniversalAccessFromFileURLs(true);
-        String currentUserAgent = webView.getSettings().getUserAgentString();
+        webSettings.setDomStorageEnabled(true);
+        webSettings.setDatabaseEnabled(true);
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
+
+        String currentUserAgent = webSettings.getUserAgentString();
         if (currentUserAgent != null && currentUserAgent.contains("; wv")) {
-            webView.getSettings().setUserAgentString(currentUserAgent.replace("; wv", ""));
+            webSettings.setUserAgentString(currentUserAgent.replace("; wv", ""));
         }
 
-        // Native Anti-Tracking: Managed third-party block state with a fallback path for enterprise forums
         android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            // Change to true if a specific site demands cross-domain handshake keys to authenticate
-            cookieManager.setAcceptThirdPartyCookies(webView, true); 
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
         }
-        
+
         webView.setWebChromeClient(new SpoonWebChromeClient(this));
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(new SpoonWebViewClient(this));
 
         BlobDownloader downloaderBridge = new BlobDownloader(this);
         webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
+        
         webView.setDownloadListener(new android.webkit.DownloadListener() {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
@@ -1284,19 +1278,16 @@ webView.getSettings().setBlockNetworkImage(false);
                 try {
                     String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
 
-                    // Fix A: Prevent Android from treating files like .gitignore as invisible system files
                     if (targetFileName.startsWith(".")) {
-                        targetFileName = targetFileName.substring(1) + ".txt"; 
+                        targetFileName = targetFileName.substring(1) + ".txt";
                     }
 
-                    // Fix B: Force correct extensions for known developer files
                     String lowerUrl = url.toLowerCase();
                     if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
                     if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
 
-                    // Fix E: Intercept and correct misidentified PDF attachments
                     boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf")) ||
-                                            (url != null && url.toLowerCase().contains(".pdf")) ||
+                                            (url.toLowerCase().contains(".pdf")) ||
                                             (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
 
                     if (isActuallyPdf) {
@@ -1307,10 +1298,8 @@ webView.getSettings().setBlockNetworkImage(false);
                         }
                     }
 
-                    // Fix C: Strip all slashes and illegal path separators
                     targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
 
-                    // Fix D: DownloadManager silently fails if the MimeType is completely null
                     String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
                     
                     if (isActuallyPdf && safeMimeType.equals("application/octet-stream")) {
@@ -1320,7 +1309,6 @@ webView.getSettings().setBlockNetworkImage(false);
                     final String finalTargetFileName = targetFileName;
                     final String finalSafeMimeType = safeMimeType;
 
-                    // 3. Proper direct downloader with automated fallback support for standard links
                     new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                             .setTitle("Download File")
                             .setMessage("Do you want to download " + finalTargetFileName + "?")
@@ -1332,7 +1320,7 @@ webView.getSettings().setBlockNetworkImage(false);
                                     if (cookies != null) request.addRequestHeader("Cookie", cookies);
                                     if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
                                     
-                                    request.setMimeType(finalSafeMimeType); 
+                                    request.setMimeType(finalSafeMimeType);
                                     
                                     request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, finalTargetFileName);
                                     request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
@@ -1357,29 +1345,23 @@ webView.getSettings().setBlockNetworkImage(false);
             }
         });
         
-        // 🛠️ VAULT FIX: The Secure Local-Only Bridge
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            // Use universal wildcard "*" to satisfy Chromium's strict origin parser
             java.util.Set<String> allowedOrigins = java.util.Collections.singleton("*");
             
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
                     try {
-                        // 🔒 HARDCORE SECURITY LOCK
                         String currentUrl = view.getUrl();
                         if (currentUrl == null || !currentUrl.startsWith("file:///android_asset/vault.html")) {
-                            return; 
+                            return;
                         }
 
                         String msg = message.getData();
 
-                        // 1. MATCH THE EXACT JAVASCRIPT FETCH COMMAND
                         if ("FETCH_ALL_VAULT_DATA".equals(msg)) {
-                            String allAccounts = secureCredentialManager.getAllCredentialsAsJson(); 
+                            String allAccounts = secureCredentialManager.getAllCredentialsAsJson();
                             replyProxy.postMessage(allAccounts != null ? allAccounts : "[]");
-                        } 
-                        // 2. HANDLE SAVE AND DELETE COMMANDS FROM THE HTML UI
-                        else if (msg != null && msg.startsWith("{")) {
+                        } else if (msg != null && msg.startsWith("{")) {
                             org.json.JSONObject obj = new org.json.JSONObject(msg);
                             String action = obj.optString("action");
                             String host = obj.optString("host");
@@ -1393,7 +1375,6 @@ webView.getSettings().setBlockNetworkImage(false);
                             }
                         }
                     } catch (Exception e) {
-                        // Silently ignore parse errors
                     }
                 }
             );
