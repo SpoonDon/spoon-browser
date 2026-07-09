@@ -232,21 +232,25 @@ exportCsvLauncher = registerForActivityResult(
     }
     
     private void handleIncomingIntent(Intent intent) {
-        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+        if (intent == null) return;
+
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
-            createNewTab(); 
+            // If the browser is fresh, reuse the initial tab. Otherwise, create a new one.
+            if (tabs.isEmpty()) {
+                createNewTab();
+            }
+            
             if (addressBar != null) {
                 addressBar.setText(urlToLoad);
             }
             openUrl(urlToLoad);
-            setIntent(new Intent()); 
-        } else if (intent != null && intent.getAction() != null) {
-            // Only spawn a fresh home tab if the browser engine has no open tabs running
-            if (tabs == null || tabs.isEmpty()) {
-                createNewTab();
-                showHome();
-            }
+            
+            // Clear intent so it does not trigger on app restart
+            setIntent(new Intent());
+            
+        } else if (intent.getAction() != null) {
             setIntent(new Intent());
         }
     }
@@ -405,30 +409,24 @@ exportCsvLauncher = registerForActivityResult(
                 refreshFilterLists();
             }
         }
-
         rebuildBlockedDomains();
-
-        // Restore Tabs from SQLite on Startup
+        // Restore tabs from SQLite
         if (dbHelper != null) {
             java.util.List<String[]> savedTabs = dbHelper.getAllTabs();
             if (savedTabs != null && !savedTabs.isEmpty()) {
-                isRestoringTabs = true; // Pause saving to prevent DB conflicts while building
                 for (String[] tabData : savedTabs) {
-                    createNewTab(); // Automatically handles layout, UI, and arrays
+                    createNewTab();
                     WebView restoredView = tabs.get(tabs.size() - 1);
                     String url = tabData[0];
                     
-                    // BUG FIX: Route Home Pages to your native UI, and standard URLs to the WebView
                     if (url == null || url.isEmpty() || url.equals("about:blank") || url.startsWith("data:text/html")) {
                         showHome();
                     } else {
                         restoredView.loadUrl(url);
                     }
                 }
-                isRestoringTabs = false;
-                saveTabsState(); // Save the final restored state
             } else {
-                createNewTab(); // Boot fresh if no saved tabs exist
+                createNewTab();
                 showHome();
             }
         } else {
@@ -666,7 +664,12 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
                         
                     case "Exit":
-                        clearSessionOnExit = true;
+                        clearSessionOnExit = true;        
+                        if (dbHelper != null) {          
+                            dbHelper.saveAllTabs(new java.util.ArrayList<>());
+                        }                        
+                        finishAndRemoveTask();
+                        return true;
                         
                         // BUG FIX: Force the SQLite wipe synchronously before Android kills the app!
                         if (dbHelper != null) {
@@ -1535,20 +1538,13 @@ webView.getSettings().setBlockNetworkImage(false);
     private void closeTab(int index) {
         if (tabs.size() == 1) {
             clearSessionOnExit = true;
-            
-            // BUG FIX: Force the wipe on the Main Thread!
-            // If we use the background executor here, Android kills the app before the thread finishes.
             if (dbHelper != null) {
-                try {
-                    dbHelper.saveAllTabs(new java.util.ArrayList<>());
-                } catch (Exception ignored) {}
+                dbHelper.saveAllTabs(new java.util.ArrayList<>());
             }
-            
-            prefs.edit().remove("open_tabs").remove("current_tab").apply(); // Clear legacy arrays just in case
             finishAndRemoveTask();
             return;
         }
-
+    
         WebView webView = tabs.get(index);
         String url = webView.getUrl();
 
