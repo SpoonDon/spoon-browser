@@ -410,29 +410,9 @@ exportCsvLauncher = registerForActivityResult(
             }
         }
         rebuildBlockedDomains();
-        // Restore tabs from SQLite
-        if (dbHelper != null) {
-            java.util.List<String[]> savedTabs = dbHelper.getAllTabs();
-            if (savedTabs != null && !savedTabs.isEmpty()) {
-                for (String[] tabData : savedTabs) {
-                    createNewTab();
-                    WebView restoredView = tabs.get(tabs.size() - 1);
-                    String url = tabData[0];
-                    
-                    if (url == null || url.isEmpty() || url.equals("about:blank") || url.startsWith("data:text/html")) {
-                        showHome();
-                    } else {
-                        restoredView.loadUrl(url);
-                    }
-                }
-            } else {
-                createNewTab();
-                showHome();
-            }
-        } else {
-            createNewTab();
-            showHome();
-        }
+        // Boot fresh every time
+        createNewTab();
+        showHome();
     }
 
     private void setupBackButtonHandler() {
@@ -666,14 +646,6 @@ exportCsvLauncher = registerForActivityResult(
                     case "Exit":
                         clearSessionOnExit = true;        
                         
-                        // Force the SQLite wipe synchronously before Android kills the app
-                        if (dbHelper != null) {          
-                            try {
-                                dbHelper.saveAllTabs(new java.util.ArrayList<>());
-                            } catch (Exception ignored) {}
-                        }                        
-                        
-                        // Clear the legacy shared preference arrays just to be absolutely safe
                         if (prefs != null) {
                             prefs.edit().remove("open_tabs").remove("current_tab").apply();
                         }
@@ -1450,41 +1422,6 @@ webView.getSettings().setBlockNetworkImage(false);
         }
         
         switchToTab(currentTab);
-        saveTabsState(); // Trigger background save when a new tab opens
-    }
-
-    public boolean isRestoringTabs = false;
-
-    // NEW METHOD: Snapshot and save tabs in the background
-    public void saveTabsState() {
-        if (dbHelper == null || isRestoringTabs) return;
-        
-        // 1. Snapshot the current tabs on the main thread to avoid UI thread crashes
-        java.util.List<String[]> tabsSnapshot = new java.util.ArrayList<>();
-        for (WebView wv : tabs) {
-            if (wv != null) {
-                String url = wv.getUrl();
-                String title = wv.getTitle();
-                
-                // BUG FIX: Clean up the ugly Base64 Home Page string for the Tab Manager & DB
-                if (url != null && (url.startsWith("data:text/html") || url.equals("about:blank"))) {
-                    url = "about:blank";
-                    title = "New Tab";
-                }
-                
-                tabsSnapshot.add(new String[]{
-                    url != null ? url : "about:blank",
-                    title != null ? title : "New Tab"
-                });
-            }
-        }
-        
-        // 2. Save to SQLite securely in the background
-        backgroundExecutor.execute(() -> {
-            try {
-                dbHelper.saveAllTabs(tabsSnapshot);
-            } catch (Exception ignored) {}
-        });
     }
 
     private void switchToTab(int index) {
@@ -1533,8 +1470,8 @@ webView.getSettings().setBlockNetworkImage(false);
     private void closeTab(int index) {
         if (tabs.size() == 1) {
             clearSessionOnExit = true;
-            if (dbHelper != null) {
-                dbHelper.saveAllTabs(new java.util.ArrayList<>());
+            if (prefs != null) {
+                prefs.edit().remove("open_tabs").remove("current_tab").apply();
             }
             finishAndRemoveTask();
             return;
@@ -1562,8 +1499,6 @@ webView.getSettings().setBlockNetworkImage(false);
         // Final explicit teardown to signal Chromium to release its native layer RAM immediately
         webView.destroy();
         webView = null;
-
-        saveTabsState(); // Replaced legacy saveOpenTabs with SQLite engine
         
         if (currentTab >= tabs.size()) {
             currentTab = tabs.size() - 1;
