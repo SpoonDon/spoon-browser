@@ -137,4 +137,9 @@ public class AdBlockEngine {
             isUpdating.set(false);
         });
     }
+
+    // 4. Expose the count for the About Menu UI
+    public static int getBlocklistSize() {
+        return blockedDomains != null ? blockedDomains.size() : 0;
+    }
 }
