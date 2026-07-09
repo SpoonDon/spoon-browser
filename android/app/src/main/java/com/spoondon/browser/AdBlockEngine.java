@@ -58,11 +58,18 @@ public class AdBlockEngine {
             if (host == null) return false;
             
             host = host.toLowerCase();
+            
+            // Check exact match (e.g., "ads.google.com")
             if (blockedDomains.contains(host)) return true;
             
+            // Safe Parent Domain Check: Only strip subdomains if there are multiple parts.
+            // This prevents stripping "google.com" down to "com" and causing network failure.
             int firstDot = host.indexOf('.');
-            if (firstDot > 0 && firstDot < host.length() - 1) {
-                if (blockedDomains.contains(host.substring(firstDot + 1))) return true;
+            int lastDot = host.lastIndexOf('.');
+            
+            if (firstDot > 0 && firstDot != lastDot) {
+                String parentDomain = host.substring(firstDot + 1);
+                if (blockedDomains.contains(parentDomain)) return true;
             }
         } catch (Exception ignored) {}
         
@@ -115,17 +122,17 @@ public class AdBlockEngine {
                         while ((line = reader.readLine()) != null) {
                             line = line.trim().toLowerCase();
                             
-                            // 1. Skip comments and cosmetic CSS rules (##)
+                            // 1. Skip comments, blank lines, and cosmetic CSS hiding rules (##)
                             if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.contains("##")) {
                                 continue;
                             }
 
-                            // 2. EASYLIST PARSER: Convert "||ads.com^" to "ads.com"
+                            // 2. EasyList Normalizer: Convert "||ads.com^" syntax to a raw domain
                             if (line.startsWith("||")) {
                                 line = line.substring(2);
                             }
                             
-                            // 3. Strip trailing modifiers, paths, or Adblock flags
+                            // 3. Strip trailing parameters, paths, or network flags cleanly
                             int cutIndex = -1;
                             for (int i = 0; i < line.length(); i++) {
                                 char c = line.charAt(i);
@@ -138,7 +145,7 @@ public class AdBlockEngine {
                                 line = line.substring(0, cutIndex);
                             }
 
-                            // 4. Add the pure, clean domain to the lock-free engine
+                            // 4. Verification: Only pass verified domain strings to the RAM set
                             if (!line.isEmpty() && line.contains(".")) {
                                 newEngineSet.add(line);
                             }
