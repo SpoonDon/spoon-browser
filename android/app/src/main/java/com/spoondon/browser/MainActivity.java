@@ -665,18 +665,13 @@ exportCsvLauncher = registerForActivityResult(
                         
                     case "Exit":
                         clearSessionOnExit = true;        
-                        if (dbHelper != null) {          
-                            dbHelper.saveAllTabs(new java.util.ArrayList<>());
-                        }                        
-                        finishAndRemoveTask();
-                        return true;
                         
-                        // BUG FIX: Force the SQLite wipe synchronously before Android kills the app!
-                        if (dbHelper != null) {
+                        // Force the SQLite wipe synchronously before Android kills the app
+                        if (dbHelper != null) {          
                             try {
                                 dbHelper.saveAllTabs(new java.util.ArrayList<>());
                             } catch (Exception ignored) {}
-                        }
+                        }                        
                         
                         // Clear the legacy shared preference arrays just to be absolutely safe
                         if (prefs != null) {
