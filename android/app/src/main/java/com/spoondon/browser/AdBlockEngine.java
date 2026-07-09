@@ -17,6 +17,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AdBlockEngine {
     private static volatile HashSet<String> blockedDomains = new HashSet<>();
+    private static volatile HashSet<String> domainRules = new HashSet<>();
+    private static volatile java.util.ArrayList<String> pathRules = new java.util.ArrayList<>();
+    private static volatile HashSet<String> whitelistedDomains = new HashSet<>();
+    private static volatile boolean isEngineEnabled = true;
     private static final AtomicBoolean isUpdating = new AtomicBoolean(false);
     
     private static final String PREFS_NAME = "SpoonAdBlockPrefs";
@@ -48,9 +52,9 @@ public class AdBlockEngine {
         blockedDomains = initialSet;
     }
 
-    // 2. The O(1) Lock-Free Network Interceptor
+    // 2. The Modern Lightning Interceptor (Hybrid Domain & Path Matcher)
     public static boolean shouldBlock(String url) {
-        if (url == null || blockedDomains.isEmpty()) return false;
+        if (!isEngineEnabled || url == null) return false;
         
         try {
             Uri uri = Uri.parse(url);
@@ -59,23 +63,34 @@ public class AdBlockEngine {
             
             host = host.toLowerCase();
             
-            // Check exact match (e.g., "ads.google.com")
-            if (blockedDomains.contains(host)) return true;
+            // 1. Whitelist Check
+            if (whitelistedDomains.contains(host)) return false;
             
-            // Safe Parent Domain Check: Only strip subdomains if there are multiple parts.
-            // This prevents stripping "google.com" down to "com" and causing network failure.
+            // 2. Exact Domain Check (Lightning Fast)
+            if (domainRules.contains(host)) return true;
+            
+            // 3. Parent Domain Check (e.g., strips "ads.google.com" to "google.com")
             int firstDot = host.indexOf('.');
             int lastDot = host.lastIndexOf('.');
-            
             if (firstDot > 0 && firstDot != lastDot) {
                 String parentDomain = host.substring(firstDot + 1);
-                if (blockedDomains.contains(parentDomain)) return true;
+                if (whitelistedDomains.contains(parentDomain)) return false;
+                if (domainRules.contains(parentDomain)) return true;
             }
+            
+            // 4. Complex EasyList Path Check (Lightning Browser Fallback)
+            String lowerUrl = url.toLowerCase();
+            for (int i = 0; i < pathRules.size(); i++) {
+                if (lowerUrl.contains(pathRules.get(i))) {
+                    return true;
+                }
+            }
+            
         } catch (Exception ignored) {}
         
         return false;
     }
-
+    
     // 3. Handles both Manual Updates (from save) and 24-Hour Auto-Updates
     public static void checkAndRefreshFilters(Context context, ExecutorService executor, List<String> filterLists, boolean forceRefresh) {
         if (filterLists == null || filterLists.isEmpty()) return;
@@ -96,7 +111,10 @@ public class AdBlockEngine {
 
         executor.execute(() -> {
             boolean allDownloadsSucceeded = true;
-            HashSet<String> newEngineSet = new HashSet<>();
+            
+            // 1. Create temporary holding lists
+            HashSet<String> newDomainRules = new HashSet<>();
+            java.util.ArrayList<String> newPathRules = new java.util.ArrayList<>();
 
             for (String filterUrl : filterLists) {
                 String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
@@ -104,7 +122,6 @@ public class AdBlockEngine {
                 
                 try {
                     InputStream inputStream;
-                    // If forced refresh, download fresh file. Otherwise, use local if it exists.
                     if (!forceRefresh && localFile.exists()) {
                         inputStream = new FileInputStream(localFile);
                     } else {
@@ -112,42 +129,33 @@ public class AdBlockEngine {
                         conn.setConnectTimeout(5000);
                         conn.setReadTimeout(5000);
                         inputStream = conn.getInputStream();
-                        
-                        // Cache the downloaded file locally for offline boots
-                        // (You can optionally write code to save the stream to localFile here)
                     }
 
+                    // 2. The Parser
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                         String line;
                         while ((line = reader.readLine()) != null) {
                             line = line.trim().toLowerCase();
                             
-                            // 1. Skip comments, blank lines, and cosmetic CSS hiding rules (##)
-                            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.contains("##")) {
+                            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || 
+                                line.contains("##") || line.startsWith("@@")) {
                                 continue;
                             }
 
-                            // 2. EasyList Normalizer: Convert "||ads.com^" syntax to a raw domain
-                            if (line.startsWith("||")) {
-                                line = line.substring(2);
-                            }
+                            if (line.startsWith("||")) line = line.substring(2);
                             
-                            // 3. Strip trailing parameters, paths, or network flags cleanly
-                            int cutIndex = -1;
-                            for (int i = 0; i < line.length(); i++) {
-                                char c = line.charAt(i);
-                                if (c == '^' || c == '$' || c == '/' || c == ':') {
-                                    cutIndex = i;
-                                    break;
-                                }
-                            }
-                            if (cutIndex != -1) {
-                                line = line.substring(0, cutIndex);
-                            }
+                            int flagIndex = line.indexOf('^');
+                            if (flagIndex != -1) line = line.substring(0, flagIndex);
+                            
+                            flagIndex = line.indexOf('$');
+                            if (flagIndex != -1) line = line.substring(0, flagIndex);
 
-                            // 4. Verification: Only pass verified domain strings to the RAM set
-                            if (!line.isEmpty() && line.contains(".")) {
-                                newEngineSet.add(line);
+                            if (line.isEmpty()) continue;
+
+                            if (line.contains("/") || line.contains("*") || line.contains("?")) {
+                                newPathRules.add(line);
+                            } else {
+                                newDomainRules.add(line);
                             }
                         }
                     }
@@ -156,12 +164,13 @@ public class AdBlockEngine {
                 }
             }
 
-            // Blazing fast Volatile Pointer Swap
-            if (!newEngineSet.isEmpty()) {
-                blockedDomains = newEngineSet;
+            // 3. The Atomic Pointer Swap
+            // This takes the temporary lists we just built and instantly makes them live
+            if (!newDomainRules.isEmpty() || !newPathRules.isEmpty()) {
+                domainRules = newDomainRules;
+                pathRules = newPathRules;
             }
 
-            // Advance the 24-hour rolling schedule if downloads succeeded
             if (allDownloadsSucceeded) {
                 prefs.edit().putLong(KEY_REFRESH_TIME, System.currentTimeMillis()).apply();
             }
@@ -170,8 +179,7 @@ public class AdBlockEngine {
         });
     }
 
-    // 4. Expose the count for the About Menu UI
     public static int getBlocklistSize() {
-        return blockedDomains != null ? blockedDomains.size() : 0;
+        return (domainRules != null ? domainRules.size() : 0) + (pathRules != null ? pathRules.size() : 0);
     }
 }
