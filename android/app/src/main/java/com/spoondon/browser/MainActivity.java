@@ -1244,10 +1244,14 @@ webView.getSettings().setBlockNetworkImage(false);
         // Configure default native web settings
         configureWebSettings(webView.getSettings());
 
-        // 🛠️ CLOUDFLARE FIX: Force DOM storage and strip the WebView Bot flag
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            webView.getSettings().setSafeBrowsingEnabled(false);
+        }
+
+        // CLOUDFLARE FIX: Force DOM storage and strip the WebView Bot flag
         webView.getSettings().setDomStorageEnabled(true);
         webView.getSettings().setJavaScriptEnabled(true);
-        // 🛠️ ASSET FIX: Allow local HTML to execute its JS and talk to the native bridge!
+        // ASSET FIX: Allow local HTML to execute its JS and talk to the native bridge!
         webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().setAllowFileAccessFromFileURLs(true);
         webView.getSettings().setAllowUniversalAccessFromFileURLs(true);
@@ -1404,6 +1408,7 @@ webView.getSettings().setBlockNetworkImage(false);
 
         // Force full hardware GPU pipeline rendering
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
         webView.setDrawingCacheEnabled(false);
 
