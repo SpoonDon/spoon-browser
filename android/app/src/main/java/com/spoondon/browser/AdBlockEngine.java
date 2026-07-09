@@ -10,6 +10,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -17,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AdBlockEngine {
     private static volatile HashSet<String> blockedDomains = new HashSet<>();
+    private static volatile HashMap<String, ArrayList<String>> scopedPathRules = new HashMap<>();
     private static volatile HashSet<String> whitelistedDomains = new HashSet<>();
     private static volatile boolean isEngineEnabled = true;
     
@@ -40,36 +43,25 @@ public class AdBlockEngine {
         whitelistedDomains = whiteSet;
 
         if (filterLists == null || filterLists.isEmpty()) return;
-        HashSet<String> initialSet = new HashSet<>();
+        HashSet<String> initialDomains = new HashSet<>();
+        HashMap<String, ArrayList<String>> initialPaths = new HashMap<>();
+
         for (String filterUrl : filterLists) {
             String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
             File localFile = new File(context.getFilesDir(), filename);
             if (localFile.exists()) {
                 try (InputStream is = new FileInputStream(localFile);
                      BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        line = line.trim().toLowerCase();
-                        if (line.startsWith("||")) {
-                            line = line.substring(2);
-                            int cutIndex = line.indexOf('^');
-                            if (cutIndex != -1) line = line.substring(0, cutIndex);
-                            cutIndex = line.indexOf('/');
-                            if (cutIndex != -1) line = line.substring(0, cutIndex);
-                            
-                            if (!line.isEmpty() && line.contains(".") && !line.contains("*")) {
-                                initialSet.add(line);
-                            }
-                        }
-                    }
+                    parseFilterLines(reader, initialDomains, initialPaths);
                 } catch (Exception ignored) {}
             }
         }
-        blockedDomains = initialSet;
+        blockedDomains = initialDomains;
+        scopedPathRules = initialPaths;
     }
 
     public static boolean shouldBlock(String url) {
-        if (!isEngineEnabled || url == null || blockedDomains.isEmpty()) return false;
+        if (!isEngineEnabled || url == null) return false;
         
         try {
             Uri uri = Uri.parse(url);
@@ -79,17 +71,51 @@ public class AdBlockEngine {
             host = host.toLowerCase();
             
             if (whitelistedDomains.contains(host)) return false;
+            
+            // 1. Check Full Domain Block
             if (blockedDomains.contains(host)) return true;
             
+            // 2. Check Parent Domain Block
             int firstDot = host.indexOf('.');
             int lastDot = host.lastIndexOf('.');
+            String parentDomain = null;
             if (firstDot > 0 && firstDot != lastDot) {
-                String parentDomain = host.substring(firstDot + 1);
+                parentDomain = host.substring(firstDot + 1);
                 if (whitelistedDomains.contains(parentDomain)) return false;
                 if (blockedDomains.contains(parentDomain)) return true;
             }
+            
+            // 3. High-Performance Scoped Path Evaluation
+            String pathAndQuery = uri.getPath();
+            if (pathAndQuery == null) pathAndQuery = "";
+            if (uri.getQuery() != null) {
+                pathAndQuery += "?" + uri.getQuery();
+            }
+            pathAndQuery = pathAndQuery.toLowerCase();
+
+            if (!pathAndQuery.isEmpty()) {
+                // Check specific host rules
+                if (checkPathMatch(host, pathAndQuery)) return true;
+                
+                // Check parent domain host rules if applicable
+                if (parentDomain != null && checkPathMatch(parentDomain, pathAndQuery)) return true;
+            }
+            
         } catch (Exception ignored) {}
         
+        return false;
+    }
+
+    private static boolean checkPathMatch(String hostKey, String targetPath) {
+        ArrayList<String> rules = scopedPathRules.get(hostKey);
+        if (rules != null) {
+            for (int i = 0; i < rules.size(); i++) {
+                String rule = rules.get(i);
+                if (rule.equals("/") || targetPath.contains(rule)) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
@@ -101,7 +127,8 @@ public class AdBlockEngine {
         
         executor.execute(() -> {
             boolean allDownloadsSucceeded = true;
-            HashSet<String> newEngineSet = new HashSet<>();
+            HashSet<String> newDomains = new HashSet<>();
+            HashMap<String, ArrayList<String>> newPaths = new HashMap<>();
 
             for (String filterUrl : filterLists) {
                 String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
@@ -119,37 +146,16 @@ public class AdBlockEngine {
                     }
 
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim().toLowerCase();
-                            
-                            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || 
-                                line.contains("##") || line.startsWith("@@")) {
-                                continue;
-                            }
-
-                            if (line.startsWith("||")) {
-                                line = line.substring(2);
-                                
-                                int cutIndex = line.indexOf('^');
-                                if (cutIndex != -1) line = line.substring(0, cutIndex);
-                                
-                                cutIndex = line.indexOf('/');
-                                if (cutIndex != -1) line = line.substring(0, cutIndex);
-
-                                if (!line.isEmpty() && line.contains(".") && !line.contains("*")) {
-                                    newEngineSet.add(line);
-                                }
-                            }
-                        }
+                        parseFilterLines(reader, newDomains, newPaths);
                     }
                 } catch (Exception e) {
                     allDownloadsSucceeded = false;
                 }
             }
 
-            if (!newEngineSet.isEmpty()) {
-                blockedDomains = newEngineSet;
+            if (!newDomains.isEmpty() || !newPaths.isEmpty()) {
+                blockedDomains = newDomains;
+                scopedPathRules = newPaths;
             }
 
             if (allDownloadsSucceeded) {
@@ -160,7 +166,54 @@ public class AdBlockEngine {
         });
     }
 
+    private static void parseFilterLines(BufferedReader reader, HashSet<String> domainSet, HashMap<String, ArrayList<String>> pathMap) throws Exception {
+        String line;
+        while ((line = reader.readLine()) != null) {
+            line = line.trim().toLowerCase();
+            
+            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || 
+                line.contains("##") || line.startsWith("@@")) {
+                continue;
+            }
+
+            if (line.startsWith("||")) {
+                line = line.substring(2);
+                
+                int cutIndex = line.indexOf('^');
+                if (cutIndex != -1) line = line.substring(0, cutIndex);
+                
+                cutIndex = line.indexOf('$');
+                if (cutIndex != -1) line = line.substring(0, cutIndex);
+
+                if (line.isEmpty()) continue;
+
+                int slashIndex = line.indexOf('/');
+                if (slashIndex != -1) {
+                    String host = line.substring(0, slashIndex).trim();
+                    String pathRule = line.substring(slashIndex).trim();
+                    
+                    if (!host.isEmpty() && !pathRule.isEmpty() && host.contains(".") && !host.contains("*")) {
+                        if (!pathMap.containsKey(host)) {
+                            pathMap.put(host, new ArrayList<>());
+                        }
+                        pathMap.get(host).add(pathRule);
+                    }
+                } else {
+                    if (line.contains(".") && !line.contains("*")) {
+                        domainSet.add(line);
+                    }
+                }
+            }
+        }
+    }
+
     public static int getBlocklistSize() {
-        return blockedDomains != null ? blockedDomains.size() : 0;
+        int totalRules = (blockedDomains != null ? blockedDomains.size() : 0);
+        if (scopedPathRules != null) {
+            for (ArrayList<String> list : scopedPathRules.values()) {
+                totalRules += list.size();
+            }
+        }
+        return totalRules;
     }
 }
