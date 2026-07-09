@@ -155,6 +155,8 @@ exportCsvLauncher = registerForActivityResult(
 
         secureCredentialManager = new SecureCredentialManager(this);
         dbHelper = new BrowserDatabaseHelper(this);
+        AdBlockEngine.init(this, filterLists);
+        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
 
         passwordImportLauncher = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
@@ -1875,100 +1877,10 @@ webView.getSettings().setBlockNetworkImage(false);
         });
     }
     
-    private void refreshFilterLists() {
-        // Concurrency Guard: Drop duplicate network requests if a sync is already running
-        if (!isFilterUpdating.compareAndSet(false, true)) {
-            return; 
-        }
-
-        backgroundExecutor.execute(() -> {
-            boolean allDownloadsSucceeded = true;
-            ContentFilterEngine newEngine = new ContentFilterEngine();
-            
-            // process custom user filters exclusively
-            if (filterLists != null && !filterLists.isEmpty()) {
-                for (String filterUrl : filterLists) {
-                    try {
-                        String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
-                        java.io.File localFile = new java.io.File(getFilesDir(), filename);
-                        java.io.InputStream inputStream;
-
-                        boolean isNetworkFetch = !localFile.exists();
-
-                        if (!isNetworkFetch) {
-                            inputStream = new java.io.FileInputStream(localFile);
-                        } else {
-                            java.net.URLConnection conn = new java.net.URL(filterUrl).openConnection();
-                            conn.setConnectTimeout(5000);
-                            conn.setReadTimeout(5000);
-                            inputStream = conn.getInputStream();
-                        }
-
-                        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(inputStream))) {
-                            String line;
-                            while ((line = reader.readLine()) != null) {
-                                line = line.trim();
-                                if (line.isEmpty() || line.startsWith("!")) continue;
-                                newEngine.addRule(line);
-                            }
-                        }
-                    } catch (Exception e) {
-                        android.util.Log.e("SpoonBlocker", "Filter load failed: " + filterUrl);
-                        allDownloadsSucceeded = false; // Trigger offline protection path
-                    }
-                }
-            }
-
-            // Atomic memory-space swap
-            synchronized (filterEngine) {
-                filterEngine.clear();
-                filterEngine.blockDomains.addAll(newEngine.blockDomains);
-                filterEngine.whitelistDomains.addAll(newEngine.whitelistDomains);
-                filterEngine.blockPatterns.addAll(newEngine.blockPatterns);
-                filterEngine.whitelistPatterns.addAll(newEngine.whitelistPatterns);
-                filterEngine.globalCosmeticSelectors.addAll(newEngine.globalCosmeticSelectors);
-
-                for (java.util.Map.Entry<String, java.util.Set<String>> entry : newEngine.siteCosmeticSelectors.entrySet()) {
-                    filterEngine.siteCosmeticSelectors.computeIfAbsent(entry.getKey(), k -> new java.util.concurrent.ConcurrentHashMap<>().newKeySet()).addAll(entry.getValue());
-                }
-            }
-
-            // Rolling Timer Reset: Only advance the 24-hour auto schedule if downloads actually succeed 
-            // or if the list is completely empty. Prevents offline lockouts.
-            if (allDownloadsSucceeded || filterLists.isEmpty()) {
-                prefs.edit().putLong(KEY_FILTER_REFRESH_TIME, System.currentTimeMillis()).apply();
-            }
-
-            isFilterUpdating.set(false);
-        });
-    }
-    
-    private void checkAndAutoUpdateFilters() {
-        long lastRefresh = prefs.getLong(KEY_FILTER_REFRESH_TIME, 0);
-        long currentTime = System.currentTimeMillis();
-        long twentyFourHours = 24 * 60 * 60 * 1000L; // 86,400,000 ms
-
-        // Fire the compiler automatically only when the 24-hour rolling delta has expired
-        if (currentTime - lastRefresh >= twentyFourHours) {
-            refreshFilterLists();
-        }
-    }
-
-    private void rebuildBlockedDomains() {
-        refreshFilterLists();
-    }
-
-    private boolean isBlockedDomain(String host) {
-        if (host == null) return false;
-        synchronized (filterEngine) {
-            return filterEngine.shouldBlock("http://" + host);
-        }
-    }
-
     private void saveFilterLists() {
         prefs.edit().putString(KEY_FILTER_LISTS, TextUtils.join("\n", filterLists)).apply();
-        rebuildBlockedDomains();
 
+        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
     }
 
     private void saveOpenTabs() {
