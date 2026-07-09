@@ -2024,25 +2024,23 @@ webView.getSettings().setBlockNetworkImage(false);
     }
 
     private void showAbout() {
-        synchronized (filterEngine) {
-
-            String webViewVer = "Unknown";
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                android.content.pm.PackageInfo pi = android.webkit.WebView.getCurrentWebViewPackage();
-                if (pi != null) webViewVer = pi.versionName;
-            }
-
-            new AlertDialog.Builder(this)
-                    .setTitle("Spoon Browser")
-                    .setMessage("Version: " + getAppVersion() + "\n"
-                            + "Engine: WebView " + webViewVer + "\n\n"+ "Tabs: " + tabs.size() 
-                            + "\nBookmarks: " + (dbHelper != null ? dbHelper.getBookmarkCount() : 0)
-                            + "\nHistory: " + (dbHelper != null ? dbHelper.getHistoryCount() : 0)
-                            + "\nBlocked Rules: " + filterEngine.blockPatterns.size()
-                            + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
-                    .setPositiveButton("OK", null)
-                    .show();
+        String webViewVer = "Unknown";
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            android.content.pm.PackageInfo pi = android.webkit.WebView.getCurrentWebViewPackage();
+            if (pi != null) webViewVer = pi.versionName;
         }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Spoon Browser")
+                .setMessage("Version: " + getAppVersion() + "\n"
+                        + "Engine: WebView " + webViewVer + "\n\n"
+                        + "Tabs: " + tabs.size() 
+                        + "\nBookmarks: " + (dbHelper != null ? dbHelper.getBookmarkCount() : 0)
+                        + "\nHistory: " + (dbHelper != null ? dbHelper.getHistoryCount() : 0)
+                        + "\nBlocked Domains: " + AdBlockEngine.getBlocklistSize()
+                        + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void showBookmarks() {
