@@ -211,7 +211,7 @@ exportCsvLauncher = registerForActivityResult(
 
         loadSavedData();
 
-        checkAndAutoUpdateFilters();
+        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
     }
 
     @Override
@@ -408,10 +408,10 @@ exportCsvLauncher = registerForActivityResult(
         if (!filterLists.isEmpty()) {
             long lastRefresh = prefs.getLong(KEY_FILTER_REFRESH_TIME, 0);
             if (System.currentTimeMillis() - lastRefresh > 24L * 60 * 60 * 1000) {
-                refreshFilterLists();
+                AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
             }
         }
-        rebuildBlockedDomains();
+        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
         // Boot fresh every time
         createNewTab();
         showHome();
@@ -1915,7 +1915,7 @@ webView.getSettings().setBlockNetworkImage(false);
                     String url = input.getText().toString().trim();
                     if (!url.isEmpty() && !filterLists.contains(url)) {
                         filterLists.add(url);
-                        refreshFilterLists();
+                        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
                         saveFilterLists();
                     }
                 })
@@ -1935,14 +1935,14 @@ webView.getSettings().setBlockNetworkImage(false);
                         String url = "https://easylist.to/easylist/easylist.txt";
                         if (!filterLists.contains(url)) {
                             filterLists.add(url);
-                            refreshFilterLists();
+                            AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
                             saveFilterLists();
                         }
                     } else if (which == 2) {
                         String url = "https://easylist.to/easylist/easyprivacy.txt";
                         if (!filterLists.contains(url)) {
                             filterLists.add(url);
-                            refreshFilterLists();
+                            AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
                             saveFilterLists();
                         }
                     } else if (which == 3) {
