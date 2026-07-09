@@ -114,7 +114,32 @@ public class AdBlockEngine {
                         String line;
                         while ((line = reader.readLine()) != null) {
                             line = line.trim().toLowerCase();
-                            if (!line.isEmpty() && !line.startsWith("!") && !line.startsWith("#")) {
+                            
+                            // 1. Skip comments and cosmetic CSS rules (##)
+                            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.contains("##")) {
+                                continue;
+                            }
+
+                            // 2. EASYLIST PARSER: Convert "||ads.com^" to "ads.com"
+                            if (line.startsWith("||")) {
+                                line = line.substring(2);
+                            }
+                            
+                            // 3. Strip trailing modifiers, paths, or Adblock flags
+                            int cutIndex = -1;
+                            for (int i = 0; i < line.length(); i++) {
+                                char c = line.charAt(i);
+                                if (c == '^' || c == '$' || c == '/' || c == ':') {
+                                    cutIndex = i;
+                                    break;
+                                }
+                            }
+                            if (cutIndex != -1) {
+                                line = line.substring(0, cutIndex);
+                            }
+
+                            // 4. Add the pure, clean domain to the lock-free engine
+                            if (!line.isEmpty() && line.contains(".")) {
                                 newEngineSet.add(line);
                             }
                         }
