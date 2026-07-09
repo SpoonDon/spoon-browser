@@ -26,18 +26,22 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-        Uri url = request.getUrl();
-        if (url != null) {
-            String urlString = url.toString();
-            // Removed synchronized lock: filterEngine is inherently thread-safe
-            if (activity.filterEngine.shouldBlock(urlString)) {
-                return new WebResourceResponse("text/plain", "utf-8", new ByteArrayInputStream(new byte[0]));
+    public android.webkit.WebResourceResponse shouldInterceptRequest(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            String url = request.getUrl().toString();
+            
+            // Instantly kill the connection if the new engine flags it
+            if (AdBlockEngine.shouldBlock(url)) {
+                return new android.webkit.WebResourceResponse(
+                    "text/plain", 
+                    "UTF-8", 
+                    new java.io.ByteArrayInputStream(new byte[0])
+                );
             }
         }
         return super.shouldInterceptRequest(view, request);
     }
-
+    
     @Override
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
