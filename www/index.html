@@ -69,13 +69,19 @@
       return input;
     }
 
-    return "https://duckduckgo.com/?q=" + encodeURIComponent(input);
+    // Use URL API for proper query parameter encoding
+    const searchUrl = new URL("https://duckduckgo.com/");
+    searchUrl.searchParams.set("q", input);
+    return searchUrl.toString();
   }
 
   function go() {
     const url = resolve(document.getElementById("url").value);
 
-    if (!url) return;
+    if (!url) {
+      document.getElementById("status").innerText = "Error: Invalid input";
+      return;
+    }
 
     historyStack = historyStack.slice(0, index + 1);
     historyStack.push(url);
