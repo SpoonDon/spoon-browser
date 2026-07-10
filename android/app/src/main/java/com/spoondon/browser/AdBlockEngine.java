@@ -16,6 +16,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class AdBlockEngine {
     private static volatile HashSet<String> blockedDomains = new HashSet<>();
@@ -28,6 +30,16 @@ public class AdBlockEngine {
     private static final String KEY_ENABLED = "adblock_enabled";
     private static final String KEY_WHITELIST = "adblock_whitelist";
     private static final String KEY_REFRESH_TIME = "filter_refresh_time";
+
+    // QUICK WIN: small LRU cache for decisions to avoid re-parsing the same URL repeatedly.
+    // Keeps recent decisions (allow/block) for identical URLs and reduces CPU work on busy pages.
+    private static final int DECISION_CACHE_MAX = 2000;
+    private static final LinkedHashMap<String, Boolean> decisionCache = new LinkedHashMap<String, Boolean>(DECISION_CACHE_MAX, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+            return size() > DECISION_CACHE_MAX;
+        }
+    };
 
     public static void init(Context context, List<String> filterLists) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -58,52 +70,82 @@ public class AdBlockEngine {
         }
         blockedDomains = initialDomains;
         scopedPathRules = initialPaths;
+
+        // clear decision cache on init to avoid using stale decisions from previous runs
+        synchronized (decisionCache) {
+            decisionCache.clear();
+        }
     }
 
     public static boolean shouldBlock(String url) {
         if (!isEngineEnabled || url == null) return false;
-        
+
+        String key = url.toLowerCase();
+        synchronized (decisionCache) {
+            Boolean cached = decisionCache.get(key);
+            if (cached != null) return cached;
+        }
+
+        boolean blocked = false;
+
         try {
             Uri uri = Uri.parse(url);
             String host = uri.getHost();
-            if (host == null) return false;
-            
-            host = host.toLowerCase();
-            
-            if (whitelistedDomains.contains(host)) return false;
-            
-            // 1. Check Full Domain Block
-            if (blockedDomains.contains(host)) return true;
-            
-            // 2. Check Parent Domain Block
-            int firstDot = host.indexOf('.');
-            int lastDot = host.lastIndexOf('.');
-            String parentDomain = null;
-            if (firstDot > 0 && firstDot != lastDot) {
-                parentDomain = host.substring(firstDot + 1);
-                if (whitelistedDomains.contains(parentDomain)) return false;
-                if (blockedDomains.contains(parentDomain)) return true;
-            }
-            
-            // 3. High-Performance Scoped Path Evaluation
-            String pathAndQuery = uri.getPath();
-            if (pathAndQuery == null) pathAndQuery = "";
-            if (uri.getQuery() != null) {
-                pathAndQuery += "?" + uri.getQuery();
-            }
-            pathAndQuery = pathAndQuery.toLowerCase();
+            if (host == null) {
+                blocked = false;
+            } else {
+                host = host.toLowerCase();
 
-            if (!pathAndQuery.isEmpty()) {
-                // Check specific host rules
-                if (checkPathMatch(host, pathAndQuery)) return true;
-                
-                // Check parent domain host rules if applicable
-                if (parentDomain != null && checkPathMatch(parentDomain, pathAndQuery)) return true;
+                if (whitelistedDomains.contains(host)) {
+                    blocked = false;
+                } else if (blockedDomains.contains(host)) {
+                    blocked = true;
+                } else {
+                    // 2. Check Parent Domain Block
+                    int firstDot = host.indexOf('.');
+                    int lastDot = host.lastIndexOf('.');
+                    String parentDomain = null;
+                    if (firstDot > 0 && firstDot != lastDot) {
+                        parentDomain = host.substring(firstDot + 1);
+                        if (whitelistedDomains.contains(parentDomain)) {
+                            blocked = false;
+                        } else if (blockedDomains.contains(parentDomain)) {
+                            blocked = true;
+                        }
+                    }
+
+                    // 3. High-Performance Scoped Path Evaluation
+                    if (!blocked) {
+                        String pathAndQuery = uri.getPath();
+                        if (pathAndQuery == null) pathAndQuery = "";
+                        if (uri.getQuery() != null) {
+                            pathAndQuery += "?" + uri.getQuery();
+                        }
+                        pathAndQuery = pathAndQuery.toLowerCase();
+
+                        if (!pathAndQuery.isEmpty()) {
+                            // Check specific host rules
+                            if (checkPathMatch(host, pathAndQuery)) {
+                                blocked = true;
+                            }
+
+                            // Check parent domain host rules if applicable
+                            if (!blocked && parentDomain != null && checkPathMatch(parentDomain, pathAndQuery)) {
+                                blocked = true;
+                            }
+                        }
+                    }
+                }
             }
-            
-        } catch (Exception ignored) {}
-        
-        return false;
+        } catch (Exception ignored) {
+            blocked = false;
+        }
+
+        synchronized (decisionCache) {
+            decisionCache.put(key, blocked);
+        }
+
+        return blocked;
     }
 
     private static boolean checkPathMatch(String hostKey, String targetPath) {
@@ -156,6 +198,11 @@ public class AdBlockEngine {
             if (!newDomains.isEmpty() || !newPaths.isEmpty()) {
                 blockedDomains = newDomains;
                 scopedPathRules = newPaths;
+
+                // clear cache when rules change so we don't rely on stale decisions
+                synchronized (decisionCache) {
+                    decisionCache.clear();
+                }
             }
 
             if (allDownloadsSucceeded) {
