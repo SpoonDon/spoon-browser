@@ -3,6 +3,7 @@ package com.spoondon.browser;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.util.LruCache;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -16,8 +17,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public class AdBlockEngine {
     private static volatile HashSet<String> blockedDomains = new HashSet<>();
@@ -32,14 +31,23 @@ public class AdBlockEngine {
     private static final String KEY_REFRESH_TIME = "filter_refresh_time";
 
     // QUICK WIN: small LRU cache for decisions to avoid re-parsing the same URL repeatedly.
-    // Keeps recent decisions (allow/block) for identical URLs and reduces CPU work on busy pages.
+    // Uses android.util.LruCache for simpler memory control and eviction.
+    // Added lightweight TTL wrapper: entries older than DECISION_CACHE_TTL_MS are treated as stale.
     private static final int DECISION_CACHE_MAX = 2000;
-    private static final LinkedHashMap<String, Boolean> decisionCache = new LinkedHashMap<String, Boolean>(DECISION_CACHE_MAX, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
-            return size() > DECISION_CACHE_MAX;
+    // TTL for cache entries (10 minutes)
+    private static final long DECISION_CACHE_TTL_MS = 10 * 60 * 1000L;
+
+    private static final LruCache<String, CacheEntry> decisionCache = new LruCache<>(DECISION_CACHE_MAX);
+
+    // cache entry holds the decision and the timestamp when it was inserted
+    private static final class CacheEntry {
+        final boolean blocked;
+        final long timestampMs;
+        CacheEntry(boolean blocked, long timestampMs) {
+            this.blocked = blocked;
+            this.timestampMs = timestampMs;
         }
-    };
+    }
 
     public static void init(Context context, List<String> filterLists) {
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -73,7 +81,7 @@ public class AdBlockEngine {
 
         // clear decision cache on init to avoid using stale decisions from previous runs
         synchronized (decisionCache) {
-            decisionCache.clear();
+            decisionCache.evictAll();
         }
     }
 
@@ -81,9 +89,18 @@ public class AdBlockEngine {
         if (!isEngineEnabled || url == null) return false;
 
         String key = url.toLowerCase();
+
+        // Check TTL-aware cache
         synchronized (decisionCache) {
-            Boolean cached = decisionCache.get(key);
-            if (cached != null) return cached;
+            CacheEntry cached = decisionCache.get(key);
+            if (cached != null) {
+                if (System.currentTimeMillis() - cached.timestampMs <= DECISION_CACHE_TTL_MS) {
+                    return cached.blocked;
+                } else {
+                    // stale entry -> remove
+                    decisionCache.remove(key);
+                }
+            }
         }
 
         boolean blocked = false;
@@ -141,8 +158,9 @@ public class AdBlockEngine {
             blocked = false;
         }
 
+        // Store decision with timestamp
         synchronized (decisionCache) {
-            decisionCache.put(key, blocked);
+            decisionCache.put(key, new CacheEntry(blocked, System.currentTimeMillis()));
         }
 
         return blocked;
@@ -201,7 +219,7 @@ public class AdBlockEngine {
 
                 // clear cache when rules change so we don't rely on stale decisions
                 synchronized (decisionCache) {
-                    decisionCache.clear();
+                    decisionCache.evictAll();
                 }
             }
 
