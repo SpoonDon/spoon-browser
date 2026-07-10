@@ -198,9 +198,14 @@ exportCsvLauncher = registerForActivityResult(
         if (root != null) {
             if (toolbar != null) root.addView(toolbar);
             if (browserContainer != null) root.addView(browserContainer);
+            
+            getWindow().setFlags(
+                android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            );
+            
             setContentView(root);
 
-            // FIX: Prevent Autofill from spawning a rogue popup window before the layout pass finishes
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 if (browserContainer != null) {
@@ -1173,6 +1178,10 @@ exportCsvLauncher = registerForActivityResult(
         webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
 
         android.webkit.WebSettings webSettings = webView.getSettings();
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            webSettings.setMediaPlaybackRequiresUserGesture(false);
+        }
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             webSettings.setOffscreenPreRaster(true);
