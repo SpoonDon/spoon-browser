@@ -205,13 +205,49 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
         
-        // 2. NEW: Inject Password Autosave Listener
+        // 2. NEW: Advanced SPA Password Autosave Listener (Google Fix)
         String script = "javascript:(function() {" +
             "document.addEventListener('submit', function(e) {" +
                 "var passBox = e.target.querySelector('input[type=password]');" +
                 "var userBox = e.target.querySelector('input[type=text], input[type=email], input[name=username], input[name=login]');" +
                 "if (passBox && passBox.value && userBox && userBox.value) {" +
                     "SpoonVault.saveCredentials(userBox.value, passBox.value);" +
+                "}" +
+            "});" +
+            "var lastKnownUser = '';" +
+            "document.addEventListener('input', function(e) {" +
+                "var t = e.target;" +
+                "if (t.tagName === 'INPUT') {" +
+                    "var type = t.type ? t.type.toLowerCase() : '';" +
+                    "var name = t.name ? t.name.toLowerCase() : '';" +
+                    "if (type === 'email' || type === 'text' || name === 'username' || name === 'identifier') {" +
+                        "lastKnownUser = t.value;" +
+                    "}" +
+                "}" +
+            "});" +
+            "function extractAndSave() {" +
+                "var passBox = document.querySelector('input[type=password]');" +
+                "if (passBox && passBox.value) {" +
+                    "var userBox = document.querySelector('input[type=email], input[name=username], input[name=login], input[type=text]');" +
+                    "var finalUser = (userBox && userBox.value) ? userBox.value : lastKnownUser;" +
+                    "if (!finalUser && window.location.hostname.includes('google.com')) {" +
+                        "var profileDiv = document.querySelector('#profileIdentifier');" +
+                        "if (profileDiv) finalUser = profileDiv.innerText.trim();" +
+                    "}" +
+                    "if (finalUser && passBox.value) {" +
+                        "SpoonVault.saveCredentials(finalUser, passBox.value);" +
+                    "}" +
+                "}" +
+            "}" +
+            "document.addEventListener('click', function(e) {" +
+                "var t = e.target;" +
+                "if (t.closest('button') || t.closest('input[type=submit]') || t.closest('[role=button]')) {" +
+                    "extractAndSave();" +
+                "}" +
+            "});" +
+            "document.addEventListener('keydown', function(e) {" +
+                "if (e.key === 'Enter') {" +
+                    "extractAndSave();" +
                 "}" +
             "});" +
         "})();";
