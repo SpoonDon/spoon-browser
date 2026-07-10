@@ -35,6 +35,16 @@ public class SpoonWebViewClient extends WebViewClient {
             }
 
             String url = request.getUrl().toString();
+            String host = request.getUrl().getHost();
+
+            // BUG 2 FIX: Strict YouTube / Google Video Bypass
+            // Allows the complex XHR streaming requests to pass without triggering the black circle of death
+            if (host != null) {
+                String lowerHost = host.toLowerCase();
+                if (lowerHost.contains("youtube.com") || lowerHost.contains("googlevideo.com")) {
+                    return super.shouldInterceptRequest(view, request);
+                }
+            }
             
             // Instantly kill the connection if the engine flags it
             if (AdBlockEngine.shouldBlock(url)) {
