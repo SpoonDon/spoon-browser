@@ -55,9 +55,78 @@
 
 <div id="status">Ready</div>
 
+<script src="https://unpkg.com/@capacitor/core@latest/dist/capacitor.js"></script>
+<script src="https://unpkg.com/@capacitor/storage@latest/dist/storage.umd.js"></script>
+
 <script>
+  const { Storage } = window.CapacitorStorage;
+  
+  // In-memory cache for performance
   let historyStack = [];
   let index = -1;
+  const STORAGE_KEY = "spoon_browser_history";
+  const MAX_HISTORY_SIZE = 100;
+
+  /**
+   * Initialize history from encrypted storage on app load
+   */
+  async function initHistory() {
+    try {
+      const stored = await Storage.get({ key: STORAGE_KEY });
+      if (stored && stored.value) {
+        const data = JSON.parse(stored.value);
+        historyStack = data.stack || [];
+        index = data.index !== undefined ? data.index : -1;
+        document.getElementById("status").innerText = `History loaded: ${historyStack.length} items`;
+      }
+    } catch (error) {
+      console.warn("Failed to load history:", error);
+      // Fall back to empty history on error
+      historyStack = [];
+      index = -1;
+    }
+  }
+
+  /**
+   * Save history to encrypted device storage
+   */
+  async function saveHistory() {
+    try {
+      // Limit history size to prevent unbounded growth
+      if (historyStack.length > MAX_HISTORY_SIZE) {
+        historyStack = historyStack.slice(-MAX_HISTORY_SIZE);
+        index = Math.min(index, historyStack.length - 1);
+      }
+
+      const data = {
+        stack: historyStack,
+        index: index,
+        timestamp: new Date().toISOString()
+      };
+      
+      await Storage.set({
+        key: STORAGE_KEY,
+        value: JSON.stringify(data)
+      });
+    } catch (error) {
+      console.error("Failed to save history:", error);
+      document.getElementById("status").innerText = "Error: Could not save history";
+    }
+  }
+
+  /**
+   * Clear all browsing history (user action)
+   */
+  async function clearHistory() {
+    try {
+      await Storage.remove({ key: STORAGE_KEY });
+      historyStack = [];
+      index = -1;
+      document.getElementById("status").innerText = "History cleared";
+    } catch (error) {
+      console.error("Failed to clear history:", error);
+    }
+  }
 
   function resolve(input) {
     input = input.trim();
@@ -87,6 +156,7 @@
     historyStack.push(url);
     index++;
 
+    saveHistory();
     load(url);
   }
 
@@ -108,6 +178,9 @@
       load(historyStack[index]);
     }
   }
+
+  // Initialize history from storage when page loads
+  document.addEventListener("DOMContentLoaded", initHistory);
 </script>
 
 </body>
