@@ -1944,9 +1944,17 @@ exportCsvLauncher = registerForActivityResult(
                     .setTitle("Remove Filter List")
                     .setMessage(url)
                     .setPositiveButton("Remove", (d, w) -> {
+                        // 1. Your existing UI and list logic
                         filterLists.remove(url);
                         adapter.notifyDataSetChanged();
                         saveFilterLists();
+                        
+                        // 2. THE FIX: Fire up a quick background thread to delete the ghost file and flush RAM
+                        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+                        AdBlockEngine.removeFilterList(MainActivity.this, url, executor);
+                        
+                        // 3. THE FIX: Reboot the engine instantly with the remaining lists
+                        AdBlockEngine.init(MainActivity.this, filterLists);
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
