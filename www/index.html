@@ -68,6 +68,46 @@
   const MAX_HISTORY_SIZE = 100;
 
   /**
+   * Validate URL scheme and origin for security
+   * Allows: http, https, and Android app assets
+   * Blocks: javascript, data, file:// (except Android assets), and other dangerous schemes
+   */
+  function isUrlSafe(url) {
+    try {
+      // Handle protocol-relative URLs
+      if (url.startsWith('//')) {
+        url = 'https:' + url;
+      }
+      
+      const parsed = new URL(url);
+      
+      // Allow http and https for normal web browsing
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        return true;
+      }
+      
+      // Allow Android assets (vault.html and app resources)
+      // Only allow file:// URLs pointing to /android_asset/
+      if (parsed.protocol === 'file:' && parsed.pathname.includes('/android_asset/')) {
+        return true;
+      }
+      
+      // Allow Capacitor plugins for future features
+      if (parsed.protocol === 'capacitor:') {
+        return true;
+      }
+      
+      // Block everything else (javascript:, data:, file:// to other locations, etc.)
+      console.warn(`Blocked unsafe URL: ${url}`);
+      return false;
+    } catch (error) {
+      // Invalid URL format
+      console.warn(`Invalid URL format: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Initialize history from encrypted storage on app load
    */
   async function initHistory() {
@@ -161,6 +201,12 @@
   }
 
   function load(url) {
+    // Validate URL security before navigation
+    if (!isUrlSafe(url)) {
+      document.getElementById("status").innerText = "Error: Invalid or unsafe URL";
+      return;
+    }
+
     document.getElementById("status").innerText = "Loading: " + url;
     window.location.href = url;
   }
