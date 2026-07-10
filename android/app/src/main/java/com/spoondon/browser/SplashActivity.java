@@ -1,5 +1,6 @@
 package com.spoondon.browser;
 
+import com.spoondon.browser.R;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
