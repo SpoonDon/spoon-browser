@@ -29,10 +29,11 @@ public class SplashActivity extends AppCompatActivity {
         title.startAnimation(textAnim);
         tagline.startAnimation(textAnim);
 
+        // Extended from 1200ms to 3000ms to ensure the tagline is readable
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             Intent intent = new Intent(SplashActivity.this, MainActivity.class);
             startActivity(intent);
             finish();
-        }, 1200);
+        }, 3000);
     }
 }

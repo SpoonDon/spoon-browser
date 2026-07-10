@@ -2,7 +2,7 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?android:attr/windowBackground"
+    android:background="#121212"
     android:keepScreenOn="true">
 
     <LinearLayout
@@ -26,6 +26,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:text="Spoon Browser"
+            android:textColor="#FFFFFF"
             android:textAppearance="?android:attr/textAppearanceLarge"
             android:textStyle="bold" />
 
@@ -36,8 +37,9 @@
             android:layout_marginTop="8dp"
             android:gravity="center"
             android:text="Don't gulp the internet, take one spoonful at a time."
+            android:textColor="#E0E0E0"
             android:textAppearance="?android:attr/textAppearanceMedium"
-            android:alpha="0.7" />
+            android:alpha="0.8" />
 
     </LinearLayout>
 
