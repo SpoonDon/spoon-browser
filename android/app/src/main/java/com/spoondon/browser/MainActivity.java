@@ -583,7 +583,13 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
                         
                     case "Exit":
-                        clearSessionOnExit = true;        
+                        // FIX: Ensure this remains false so onStop() does not vaporize cookies
+                        clearSessionOnExit = false; 
+                        
+                        // Force a final cookie flush to the physical disk right before termination
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                            android.webkit.CookieManager.getInstance().flush();
+                        }
                         
                         if (prefs != null) {
                             prefs.edit().remove("open_tabs").remove("current_tab").apply();
