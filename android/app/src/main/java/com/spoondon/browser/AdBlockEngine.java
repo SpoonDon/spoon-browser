@@ -231,6 +231,70 @@ public class AdBlockEngine {
         });
     }
 
+    /**
+     * Remove a specific filter list and clean up its cached rules.
+     * This fixes the "ghost rules" bug where disabled lists remained active.
+     * 
+     * @param context Android context for file access
+     * @param filterUrl URL of the filter list to remove
+     * @param executor Executor for background cleanup
+     */
+    public static void removeFilterList(Context context, String filterUrl, ExecutorService executor) {
+        if (filterUrl == null || filterUrl.isEmpty()) return;
+
+        // Run cleanup in background to avoid blocking UI
+        executor.execute(() -> {
+            // Delete the cached filter file
+            String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
+            File localFile = new File(context.getFilesDir(), filename);
+            if (localFile.exists()) {
+                boolean deleted = localFile.delete();
+                if (!deleted) {
+                    android.util.Log.w("AdBlockEngine", "Failed to delete filter file: " + filename);
+                }
+            }
+
+            // Clear decision cache so we don't use stale blocking decisions
+            synchronized (decisionCache) {
+                decisionCache.evictAll();
+            }
+        });
+    }
+
+    /**
+     * Clear all filter lists completely.
+     * Deletes all cached files and resets in-memory rules.
+     * 
+     * @param context Android context for file access
+     * @param executor Executor for background cleanup
+     */
+    public static void clearAllFilterLists(Context context, ExecutorService executor) {
+        executor.execute(() -> {
+            // Delete all cached filter files
+            File filesDir = context.getFilesDir();
+            File[] files = filesDir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.getName().startsWith("filter_") && file.getName().endsWith(".txt")) {
+                        boolean deleted = file.delete();
+                        if (!deleted) {
+                            android.util.Log.w("AdBlockEngine", "Failed to delete: " + file.getName());
+                        }
+                    }
+                }
+            }
+
+            // Clear all in-memory rules
+            blockedDomains = new HashSet<>();
+            scopedPathRules = new HashMap<>();
+
+            // Clear decision cache
+            synchronized (decisionCache) {
+                decisionCache.evictAll();
+            }
+        });
+    }
+
     private static void parseFilterLines(BufferedReader reader, HashSet<String> domainSet, HashMap<String, ArrayList<String>> pathMap) throws Exception {
         String line;
         while ((line = reader.readLine()) != null) {
