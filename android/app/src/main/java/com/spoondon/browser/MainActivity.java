@@ -261,8 +261,17 @@ exportCsvLauncher = registerForActivityResult(
     protected void onPause() {
         super.onPause();
         
+        // BUG 2 FIX: Force RAM cookies and DOM storage to write to physical disk 
+        // BEFORE we freeze the WebView threads.
+        try {
+            if (!clearSessionOnExit) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+            }
+        } catch (Exception ignored) {}
+
         // OPTIMIZATION: Suspend active media streams, CSS animations, and JS intervals.
-        // This resets HTML5 Page Visibility targets, completely fixing the YouTube main stream loading bug.
         WebView activeWebView = getCurrentWebView();
         if (activeWebView != null) {
             activeWebView.onPause();
@@ -274,27 +283,34 @@ exportCsvLauncher = registerForActivityResult(
     protected void onStop() {
         super.onStop();
         
-        // Let onStop handle the ultimate decision: Clear completely OR Save completely
+        // Let onStop handle the ultimate decision: Clear completely
         try {
             if (clearSessionOnExit) {
                 android.webkit.WebStorage.getInstance().deleteAllData();
                 android.webkit.CookieManager.getInstance().removeAllCookies(null);
                 android.webkit.CookieManager.getInstance().flush();
-            } else {
-                // Instantly commit active forum/site login session states to permanent flash storage 
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    android.webkit.CookieManager.getInstance().flush();
-                }
             }
         } catch (Exception ignored) {}
     }
 
     @Override
     protected void onDestroy() {
-        super.onDestroy();
-        backgroundExecutor.shutdownNow();
-    }
+        // BUG 2 FIX: A final safety net flush if the app is violently swiped away 
+        // from the recents menu before onStop can fully execute.
+        try {
+            if (!clearSessionOnExit) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+            }
+        } catch (Exception ignored) {}
 
+        super.onDestroy();
+        if (backgroundExecutor != null) {
+            backgroundExecutor.shutdownNow();
+        }
+    }
+    
         private boolean restoreSession() {
         try {
             String savedTabs = prefs.getString(KEY_OPEN_TABS, "");
