@@ -204,6 +204,10 @@ public class SpoonWebViewClient extends WebViewClient {
     public void onPageFinished(android.webkit.WebView view, String url) {
         super.onPageFinished(view, url);
 
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            android.webkit.CookieManager.getInstance().flush();
+        }
+
         view.evaluateJavascript(activity.filterEngine.compileCosmeticJavascript(), null);
         java.util.List<String> cssBatches = activity.filterEngine.getCosmeticStyleBatches(url);
         for (String cssChunk : cssBatches) {
