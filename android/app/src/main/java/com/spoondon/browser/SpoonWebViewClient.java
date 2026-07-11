@@ -29,7 +29,6 @@ public class SpoonWebViewClient extends WebViewClient {
     public android.webkit.WebResourceResponse shouldInterceptRequest(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             
-            // PROTECTION LAYER: Never block the main website HTML, only block background assets
             if (request.isForMainFrame()) {
                 return super.shouldInterceptRequest(view, request);
             }
@@ -37,8 +36,6 @@ public class SpoonWebViewClient extends WebViewClient {
             String url = request.getUrl().toString();
             String host = request.getUrl().getHost();
 
-            // BUG 2 FIX: Strict YouTube / Google Video Bypass
-            // Allows the complex XHR streaming requests to pass without triggering the black circle of death
             if (host != null) {
                 String lowerHost = host.toLowerCase();
                 if (lowerHost.contains("youtube.com") || lowerHost.contains("googlevideo.com")) {
@@ -46,7 +43,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 }
             }
             
-            // Instantly kill the connection if the engine flags it
             if (AdBlockEngine.shouldBlock(url)) {
                 return new android.webkit.WebResourceResponse(
                     "text/plain", 
@@ -62,17 +58,15 @@ public class SpoonWebViewClient extends WebViewClient {
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
         String url = request.getUrl().toString();
 
-        // 1. The Malformed URL Fix (Extracts actual HTTP link from garbage text strings)
         if (url.contains(" ") && (url.contains("http://") || url.contains("https://"))) {
             int httpIndex = url.indexOf("http");
             if (httpIndex != -1) {
                 String cleanUrl = url.substring(httpIndex).trim();
                 view.loadUrl(cleanUrl);
-                return true; // We handled the navigation manually
+                return true; 
             }
         }
 
-        // 2. The Android Intent Fix (Handles external app redirects seamlessly)
         if (url.startsWith("intent://")) {
             try {
                 android.content.Context context = view.getContext();
@@ -83,10 +77,8 @@ public class SpoonWebViewClient extends WebViewClient {
                     android.content.pm.ResolveInfo info = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
                     
                     if (info != null) {
-                        // The app is installed, launch it
                         context.startActivity(intent);
                     } else {
-                        // The app is NOT installed, gracefully fall back to the web version
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
                         if (fallbackUrl != null) {
                             view.loadUrl(fallbackUrl);
@@ -95,11 +87,10 @@ public class SpoonWebViewClient extends WebViewClient {
                     return true; 
                 }
             } catch (Exception e) {
-                return true; // Failsafe: if the intent is completely broken, silently kill the tap rather than crashing the browser
+                return true; 
             }
         }
 
-        // 3. Handle standard external URIs (mailto:, tel:, market://)
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             try {
                 android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
@@ -110,17 +101,14 @@ public class SpoonWebViewClient extends WebViewClient {
             }
         }
 
-        // 4. Let the WebView handle all clean, standard HTTP/HTTPS links natively
         return false;
     }
 
-    // Legacy support for older Android versions
     @SuppressWarnings("deprecation")
     @Override
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
         if (urlString == null) return false;
         
-        // 1. Enforce HTTPS upgrades for raw HTTP endpoints
         if (urlString.startsWith("http://") && !urlString.contains("localhost") && !urlString.contains("10.0.2.2")) {
             String secureUrl = urlString.replace("http://", "https://");
             view.loadUrl(secureUrl);
@@ -131,7 +119,6 @@ public class SpoonWebViewClient extends WebViewClient {
             return false;
         }
         
-        // 2. Route EVERYTHING else out
         try {
             android.content.Intent intent = android.content.Intent.parseUri(urlString, android.content.Intent.URI_INTENT_SCHEME);
             if (intent != null) {
@@ -149,25 +136,20 @@ public class SpoonWebViewClient extends WebViewClient {
     public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
 
-        // 1. Your existing Cookie flush logic
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             android.webkit.CookieManager.getInstance().flush();
         }
 
-        // 2. Your existing Address Bar UI update
         if (view == activity.getCurrentWebView() && activity.addressBar != null) {
             activity.addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
         }
 
-        // 3. NEW: The Domain-Specific Desktop Mode Engine
         if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
             String host = android.net.Uri.parse(url).getHost();
             if (host != null) {
-                // Read the saved domain list
                 android.content.SharedPreferences prefs = activity.getSharedPreferences("browser_prefs", android.content.Context.MODE_PRIVATE);
                 java.util.Set<String> desktopSites = prefs.getStringSet("desktop_sites", new java.util.HashSet<>());
 
-                // Apply the correct mode automatically
                 if (desktopSites.contains(host)) {
                     view.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
                     view.getSettings().setLoadWithOverviewMode(true);
@@ -186,23 +168,19 @@ public class SpoonWebViewClient extends WebViewClient {
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
             long currentTime = System.currentTimeMillis();
 
-            // 1. Parse URLs securely using Android's native engine
             android.net.Uri currentUri = android.net.Uri.parse(url);
             android.net.Uri lastUri = android.net.Uri.parse(lastRecordedHistoryUrl);
 
-            // 2. Extract ONLY the Host (domain) and Path (folder), stripping www. and ignoring http/https
             String currentHost = currentUri.getHost() != null ? currentUri.getHost().replaceFirst("^www\\.", "") : "";
             String currentPath = currentUri.getPath() != null ? currentUri.getPath() : "";
 
             String lastHost = lastUri.getHost() != null ? lastUri.getHost().replaceFirst("^www\\.", "") : "";
             String lastPath = lastUri.getPath() != null ? lastUri.getPath() : "";
 
-            // 3. Logic Engine: Is it the exact same core page loaded rapidly?
             boolean isSameCorePage = currentHost.equals(lastHost) && currentPath.equals(lastPath);
             boolean isRapidFire = (currentTime - lastRecordedHistoryTime) < 1500;
 
             if (activity.dbHelper != null) {
-                // INSTANT KILL-SWITCH: Pre-calculate to avoid spawning heavy thread tasks during benchmarks or SPA navigation
                 if (isSameCorePage && isRapidFire) {
                     return; 
                 }
@@ -226,7 +204,6 @@ public class SpoonWebViewClient extends WebViewClient {
     public void onPageFinished(android.webkit.WebView view, String url) {
         super.onPageFinished(view, url);
 
-        // 1. Inject Cosmetic AdBlock Filters (Your existing code)
         view.evaluateJavascript(activity.filterEngine.compileCosmeticJavascript(), null);
         java.util.List<String> cssBatches = activity.filterEngine.getCosmeticStyleBatches(url);
         for (String cssChunk : cssBatches) {
@@ -238,7 +215,6 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
         
-        // 2. NEW: Advanced SPA Password Autosave Listener (Google Fix)
         String script = "javascript:(function() {" +
             "document.addEventListener('submit', function(e) {" +
                 "var passBox = e.target.querySelector('input[type=password]');" +
