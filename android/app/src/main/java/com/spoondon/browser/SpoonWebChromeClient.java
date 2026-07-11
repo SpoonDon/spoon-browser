@@ -34,7 +34,8 @@ public class SpoonWebChromeClient extends WebChromeClient {
                     }
                 }
                 
-                view.loadUrl(rawUrl);
+                activity.openUrlInNewTab(rawUrl);
+                
                 return true; 
             }
         });
