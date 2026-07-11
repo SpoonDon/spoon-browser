@@ -60,35 +60,58 @@ public class SpoonWebViewClient extends WebViewClient {
     
     @Override
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            android.net.Uri url = request.getUrl();
-            if (url == null) return false;
-            String urlString = url.toString();
+        String url = request.getUrl().toString();
 
-            // 1. Enforce HTTPS upgrades for raw HTTP endpoints
-            if (urlString.startsWith("http://") && !urlString.contains("localhost") && !urlString.contains("10.0.2.2")) {
-                String secureUrl = urlString.replace("http://", "https://");
-                view.loadUrl(secureUrl);
-                return true; // Cancel the unencrypted request, we just kicked off the secure one
-            }
-
-            if (urlString.startsWith("https://")) {
-                return false; // Load native HTTPS requests normally
-            }
-
-            // 2. Route EVERYTHING else (intent://, mailto:, tel:, market://, magnet:) to the Android OS
-            try {
-                android.content.Intent intent = android.content.Intent.parseUri(urlString, android.content.Intent.URI_INTENT_SCHEME);
-                if (intent != null) {
-                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                    view.getContext().startActivity(intent);
-                    return true;
-                }
-            } catch (Exception e) {
-                android.widget.Toast.makeText(view.getContext(), "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show();
+        // 1. The Malformed URL Fix (Extracts actual HTTP link from garbage text strings)
+        if (url.contains(" ") && (url.contains("http://") || url.contains("https://"))) {
+            int httpIndex = url.indexOf("http");
+            if (httpIndex != -1) {
+                String cleanUrl = url.substring(httpIndex).trim();
+                view.loadUrl(cleanUrl);
+                return true; // We handled the navigation manually
             }
         }
-        return true; 
+
+        // 2. The Android Intent Fix (Handles external app redirects seamlessly)
+        if (url.startsWith("intent://")) {
+            try {
+                android.content.Context context = view.getContext();
+                android.content.Intent intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME);
+                
+                if (intent != null) {
+                    android.content.pm.PackageManager packageManager = context.getPackageManager();
+                    android.content.pm.ResolveInfo info = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+                    
+                    if (info != null) {
+                        // The app is installed, launch it
+                        context.startActivity(intent);
+                    } else {
+                        // The app is NOT installed, gracefully fall back to the web version
+                        String fallbackUrl = intent.getStringExtra("browser_fallback_url");
+                        if (fallbackUrl != null) {
+                            view.loadUrl(fallbackUrl);
+                        }
+                    }
+                    return true; 
+                }
+            } catch (Exception e) {
+                return true; // Failsafe: if the intent is completely broken, silently kill the tap rather than crashing the browser
+            }
+        }
+
+        // 3. Handle standard external URIs (mailto:, tel:, market://)
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            try {
+                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
+                view.getContext().startActivity(intent);
+                return true;
+            } catch (Exception e) {
+                return true; 
+            }
+        }
+
+        // 4. Let the WebView handle all clean, standard HTTP/HTTPS links natively
+        return false;
     }
 
     // Legacy support for older Android versions
