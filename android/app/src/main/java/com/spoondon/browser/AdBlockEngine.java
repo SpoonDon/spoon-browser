@@ -30,16 +30,11 @@ public class AdBlockEngine {
     private static final String KEY_WHITELIST = "adblock_whitelist";
     private static final String KEY_REFRESH_TIME = "filter_refresh_time";
 
-    // QUICK WIN: small LRU cache for decisions to avoid re-parsing the same URL repeatedly.
-    // Uses android.util.LruCache for simpler memory control and eviction.
-    // Added lightweight TTL wrapper: entries older than DECISION_CACHE_TTL_MS are treated as stale.
     private static final int DECISION_CACHE_MAX = 2000;
-    // TTL for cache entries (10 minutes)
     private static final long DECISION_CACHE_TTL_MS = 10 * 60 * 1000L;
 
     private static final LruCache<String, CacheEntry> decisionCache = new LruCache<>(DECISION_CACHE_MAX);
 
-    // cache entry holds the decision and the timestamp when it was inserted
     private static final class CacheEntry {
         final boolean blocked;
         final long timestampMs;
@@ -79,7 +74,6 @@ public class AdBlockEngine {
         blockedDomains = initialDomains;
         scopedPathRules = initialPaths;
 
-        // clear decision cache on init to avoid using stale decisions from previous runs
         synchronized (decisionCache) {
             decisionCache.evictAll();
         }
@@ -90,14 +84,12 @@ public class AdBlockEngine {
 
         String key = url.toLowerCase();
 
-        // Check TTL-aware cache
         synchronized (decisionCache) {
             CacheEntry cached = decisionCache.get(key);
             if (cached != null) {
                 if (System.currentTimeMillis() - cached.timestampMs <= DECISION_CACHE_TTL_MS) {
                     return cached.blocked;
                 } else {
-                    // stale entry -> remove
                     decisionCache.remove(key);
                 }
             }
@@ -118,7 +110,6 @@ public class AdBlockEngine {
                 } else if (blockedDomains.contains(host)) {
                     blocked = true;
                 } else {
-                    // 2. Check Parent Domain Block
                     int firstDot = host.indexOf('.');
                     int lastDot = host.lastIndexOf('.');
                     String parentDomain = null;
@@ -131,7 +122,6 @@ public class AdBlockEngine {
                         }
                     }
 
-                    // 3. High-Performance Scoped Path Evaluation
                     if (!blocked) {
                         String pathAndQuery = uri.getPath();
                         if (pathAndQuery == null) pathAndQuery = "";
@@ -141,12 +131,9 @@ public class AdBlockEngine {
                         pathAndQuery = pathAndQuery.toLowerCase();
 
                         if (!pathAndQuery.isEmpty()) {
-                            // Check specific host rules
                             if (checkPathMatch(host, pathAndQuery)) {
                                 blocked = true;
                             }
-
-                            // Check parent domain host rules if applicable
                             if (!blocked && parentDomain != null && checkPathMatch(parentDomain, pathAndQuery)) {
                                 blocked = true;
                             }
@@ -158,7 +145,6 @@ public class AdBlockEngine {
             blocked = false;
         }
 
-        // Store decision with timestamp
         synchronized (decisionCache) {
             decisionCache.put(key, new CacheEntry(blocked, System.currentTimeMillis()));
         }
@@ -217,7 +203,6 @@ public class AdBlockEngine {
                 blockedDomains = newDomains;
                 scopedPathRules = newPaths;
 
-                // clear cache when rules change so we don't rely on stale decisions
                 synchronized (decisionCache) {
                     decisionCache.evictAll();
                 }
@@ -232,63 +217,63 @@ public class AdBlockEngine {
     }
 
     /**
-     * Remove a specific filter list and clean up its cached rules.
-     * This fixes the "ghost rules" bug where disabled lists remained active.
-     * 
-     * @param context Android context for file access
-     * @param filterUrl URL of the filter list to remove
-     * @param executor Executor for background cleanup
+     * Safely deletes a filter file and rebuilds the engine in the background
+     * to prevent Race Conditions with the main UI thread.
      */
-    public static void removeFilterList(Context context, String filterUrl, ExecutorService executor) {
+    public static void removeFilterList(Context context, String filterUrl, List<String> remainingLists, ExecutorService executor) {
         if (filterUrl == null || filterUrl.isEmpty()) return;
 
-        // Run cleanup in background to avoid blocking UI
         executor.execute(() -> {
-            // Delete the cached filter file
+            // 1. Safely delete the physical file first
             String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
             File localFile = new File(context.getFilesDir(), filename);
             if (localFile.exists()) {
-                boolean deleted = localFile.delete();
-                if (!deleted) {
-                    android.util.Log.w("AdBlockEngine", "Failed to delete filter file: " + filename);
-                }
+                localFile.delete();
             }
 
-            // Clear decision cache so we don't use stale blocking decisions
+            // 2. Clear decision cache
             synchronized (decisionCache) {
                 decisionCache.evictAll();
             }
+
+            // 3. Rebuild the live rules array IN THE BACKGROUND using only remaining lists
+            HashSet<String> newDomains = new HashSet<>();
+            HashMap<String, ArrayList<String>> newPaths = new HashMap<>();
+
+            if (remainingLists != null) {
+                for (String url : remainingLists) {
+                    String fn = "filter_" + Math.abs(url.hashCode()) + ".txt";
+                    File lf = new File(context.getFilesDir(), fn);
+                    if (lf.exists()) {
+                        try (InputStream is = new FileInputStream(lf);
+                             BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
+                            parseFilterLines(reader, newDomains, newPaths);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+
+            // 4. Atomically swap the old rules for the clean rules
+            blockedDomains = newDomains;
+            scopedPathRules = newPaths;
         });
     }
 
-    /**
-     * Clear all filter lists completely.
-     * Deletes all cached files and resets in-memory rules.
-     * 
-     * @param context Android context for file access
-     * @param executor Executor for background cleanup
-     */
     public static void clearAllFilterLists(Context context, ExecutorService executor) {
         executor.execute(() -> {
-            // Delete all cached filter files
             File filesDir = context.getFilesDir();
             File[] files = filesDir.listFiles();
             if (files != null) {
                 for (File file : files) {
                     if (file.getName().startsWith("filter_") && file.getName().endsWith(".txt")) {
-                        boolean deleted = file.delete();
-                        if (!deleted) {
-                            android.util.Log.w("AdBlockEngine", "Failed to delete: " + file.getName());
-                        }
+                        file.delete();
                     }
                 }
             }
 
-            // Clear all in-memory rules
             blockedDomains = new HashSet<>();
             scopedPathRules = new HashMap<>();
 
-            // Clear decision cache
             synchronized (decisionCache) {
                 decisionCache.evictAll();
             }
