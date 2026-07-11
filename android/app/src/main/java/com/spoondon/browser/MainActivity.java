@@ -2253,28 +2253,34 @@ exportCsvLauncher = registerForActivityResult(
         String input = addressBar.getText().toString().trim();
         if (input.isEmpty()) return;
 
-        String lowerInput = input.toLowerCase();
-        if ((lowerInput.startsWith("javascript:") ||
-             lowerInput.startsWith("file:") ||
-             lowerInput.startsWith("content:") ||
-             lowerInput.startsWith("intent:")) && 
-            !lowerInput.equals("file:///android_asset/vault.html")) {
+        // Hide keyboard immediately to keep the UI snappy
+        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(addressBar.getWindowToken(), 0);
+        addressBar.clearFocus();
 
-            Toast.makeText(this, "Blocked unsafe URL", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        backgroundExecutor.execute(() -> {
+            String lowerInput = input.toLowerCase();
+            if ((lowerInput.startsWith("javascript:") ||
+                 lowerInput.startsWith("file:") ||
+                 lowerInput.startsWith("content:") ||
+                 lowerInput.startsWith("intent:")) &&
+                !lowerInput.equals("file:///android_asset/vault.html")) {
+                
+                runOnUiThread(() -> Toast.makeText(this, "Blocked unsafe URL", Toast.LENGTH_SHORT).show());
+                return;
+            }
 
-        String url;
-        if (lowerInput.equals("file:///android_asset/vault.html")) {
-            url = "file:///android_asset/vault.html";
-        } else if (input.contains(".") && !input.contains(" ")) {
-            url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
-        } else {
-            url = "https://duckduckgo.com/?q=" + Uri.encode(input);
-        }
+            String url;
+            if (lowerInput.equals("file:///android_asset/vault.html")) {
+                url = "file:///android_asset/vault.html";
+            } else if (input.contains(".") && !input.contains(" ")) {
+                url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
+            } else {
+                url = "https://duckduckgo.com/?q=" + Uri.encode(input);
+            }
 
-        openUrl(url);
-
+            runOnUiThread(() -> openUrl(url));
+        });
     }
     
 private void triggerExternalDownload(String url, String mimeType) {
