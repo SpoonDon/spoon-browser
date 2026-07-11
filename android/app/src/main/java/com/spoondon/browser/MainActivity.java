@@ -1376,6 +1376,27 @@ exportCsvLauncher = registerForActivityResult(
         switchToTab(currentTab);
     }
 
+    public void openUrlInNewTab(String url) {
+        runOnUiThread(() -> {
+            // 1. Spawn a fresh tab using your existing engine
+            createNewTab(); 
+            
+            // 2. Grab the newly created WebView (createNewTab usually updates currentTab to the new one)
+            android.webkit.WebView newTab = tabs.get(currentTab);
+            
+            // 3. Load the requested URL into the new tab
+            newTab.loadUrl(url);
+            
+            // 4. Update the UI badge counter so the user knows a tab opened
+            if (tabBadgeButton != null) {
+                tabBadgeButton.setText(String.valueOf(tabs.size()));
+            }
+            
+            // Optional: Show a quick toast so the user knows it opened in the background
+            android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
+        });
+    }
+
     private void switchToTab(int index) {
         if (tabs == null || index < 0 || index >= tabs.size()) return;
 
