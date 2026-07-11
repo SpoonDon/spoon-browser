@@ -1439,17 +1439,18 @@ exportCsvLauncher = registerForActivityResult(
 
     }
 
-
     private void closeTab(int index) {
         if (tabs.size() == 1) {
-            clearSessionOnExit = true;
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                android.webkit.CookieManager.getInstance().flush();
+            }
             if (prefs != null) {
                 prefs.edit().remove("open_tabs").remove("current_tab").apply();
             }
             finishAndRemoveTask();
             return;
         }
-    
+
         WebView webView = tabs.get(index);
         String url = webView.getUrl();
 
@@ -1458,7 +1459,6 @@ exportCsvLauncher = registerForActivityResult(
         }
         tabs.remove(index);
 
-        // Comprehensive WebView Memory Teardown Sequence (Point #5)
         webView.stopLoading();
         webView.setDownloadListener(null);
         webView.setWebChromeClient(null);
@@ -1469,7 +1469,6 @@ exportCsvLauncher = registerForActivityResult(
         webView.loadUrl("about:blank");
         webView.removeAllViews();
         
-        // Final explicit teardown to signal Chromium to release its native layer RAM immediately
         webView.destroy();
         webView = null;
         
