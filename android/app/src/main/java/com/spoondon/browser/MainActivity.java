@@ -1891,70 +1891,46 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     private void showFilterListOptions() {
-        String[] options = {"View Subscriptions", "Add EasyList", "Add EasyPrivacy", "Update All Subscriptions"};
+        // Removed hardcoded EasyLists and added a Custom URL option
+        String[] options = {"View Subscriptions", "Add Custom Filter List", "Update All Subscriptions"};
+        
         new AlertDialog.Builder(this)
                 .setTitle("Filter Lists")
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
                         showSubscribedFilterLists();
+                        
                     } else if (which == 1) {
-                        String url = "https://easylist.to/easylist/easylist.txt";
-                        if (!filterLists.contains(url)) {
-                            filterLists.add(url);
-                            AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-                            saveFilterLists();
-                        }
+                        // Create an input box for custom URLs
+                        android.widget.EditText input = new android.widget.EditText(this);
+                        input.setHint("https://...");
+                        
+                        new AlertDialog.Builder(this)
+                                .setTitle("Add Filter List")
+                                .setView(input)
+                                .setPositiveButton("Add", (d, w) -> {
+                                    String url = input.getText().toString().trim();
+                                    if (!url.isEmpty() && !filterLists.contains(url)) {
+                                        filterLists.add(url);
+                                        saveFilterLists(); // Save URL to SharedPreferences
+                                        Toast.makeText(this, "Downloading list...", Toast.LENGTH_SHORT).show();
+                                        
+                                        // Safely download and inject to RAM via the Engine
+                                        AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
+                                    }
+                                })
+                                .setNegativeButton("Cancel", null)
+                                .show();
+                                
                     } else if (which == 2) {
-                        String url = "https://easylist.to/easylist/easyprivacy.txt";
-                        if (!filterLists.contains(url)) {
-                            filterLists.add(url);
-                            AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-                            saveFilterLists();
-                        }
-                    } else if (which == 3) {
+                        // Update existing lists without duplicating download logic
                         if (filterLists.isEmpty()) {
                             Toast.makeText(this, "No lists to update", Toast.LENGTH_SHORT).show();
                         } else {
                             Toast.makeText(this, "Updating filter lists in background...", Toast.LENGTH_SHORT).show();
-                            backgroundExecutor.execute(() -> {
-                                boolean totalSuccess = true;
-                                for (String listUrl : filterLists) {
-                                    try {
-                                        java.net.URL urlObj = new java.net.URL(listUrl);
-                                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) urlObj.openConnection();
-                                        conn.setConnectTimeout(10000);
-                                        conn.setReadTimeout(10000);
-                                        if (conn.getResponseCode() == 200) {
-                                            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
-                                            StringBuilder sb = new StringBuilder();
-                                            String line;
-                                            while ((line = reader.readLine()) != null) {
-                                                sb.append(line).append("\n");
-                                            }
-                                            reader.close();
-                                            // Save the downloaded rules safely locally to match your naming pattern
-                                            String filename = "filter_" + Math.abs(listUrl.hashCode()) + ".txt";
-                                            java.io.File file = new java.io.File(getFilesDir(), filename);
-                                            java.io.FileWriter writer = new java.io.FileWriter(file);
-                                            writer.write(sb.toString());
-                                            writer.close();
-                                        } else {
-                                            totalSuccess = false;
-                                        }
-                                    } catch (Exception e) {
-                                        totalSuccess = false;
-                                    }
-                                }
-                                boolean finalSuccess = totalSuccess;
-                                runOnUiThread(() -> {
-                                    saveFilterLists(); // re-triggers rebuildBlockedDomains natively
-                                    if (finalSuccess) {
-                                        Toast.makeText(this, "All filter lists updated successfully!", Toast.LENGTH_LONG).show();
-                                    } else {
-                                        Toast.makeText(this, "Updates finished, but some lists failed to download", Toast.LENGTH_LONG).show();
-                                    }
-                                });
-                            });
+                            
+                            // Safely download and inject to RAM via the Engine
+                            AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
                         }
                     }
                 })
@@ -1981,6 +1957,9 @@ exportCsvLauncher = registerForActivityResult(
                         filterLists.remove(url);
                         adapter.notifyDataSetChanged();
                         saveFilterLists();
+                        
+                        // Fire the new thread-safe method to sync the backend
+                        AdBlockEngine.removeFilterList(MainActivity.this, url, filterLists, backgroundExecutor);
                         
                         // 2. THE FIX: Fire up a quick background thread to delete the ghost file and flush RAM
                         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
