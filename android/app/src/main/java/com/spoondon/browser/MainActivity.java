@@ -498,10 +498,11 @@ exportCsvLauncher = registerForActivityResult(
             // Add the dynamic menu item
             popup.getMenu().add(isCurrentSiteDesktop ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("Passwords");
-            popup.getMenu().add("🔑 Vault (Copy)"); 
+            popup.getMenu().add("🔑 Vault (Copy)");
             popup.getMenu().add("About");
+            popup.getMenu().add("Startup Animation");
             popup.getMenu().add("Exit");
-
+            
             popup.setOnMenuItemClickListener(item -> {
                 String title = item.getTitle().toString();
                 switch (title) {
@@ -582,6 +583,17 @@ exportCsvLauncher = registerForActivityResult(
                     case "🔑 Vault (Copy)":
                         showVaultForCurrentSite();
                         return true;
+
+                    case "Startup Animation":
+                        // Flip the user's saved preference
+                        android.content.SharedPreferences splashPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+                        boolean isCurrentlyEnabled = splashPrefs.getBoolean("show_splash_screen", true);
+                        splashPrefs.edit().putBoolean("show_splash_screen", !isCurrentlyEnabled).apply();
+                        
+                        // Let the user know it worked
+                        String statusMsg = !isCurrentlyEnabled ? "Startup Animation Enabled" : "Startup Animation Disabled";
+                        android.widget.Toast.makeText(MainActivity.this, statusMsg, android.widget.Toast.LENGTH_SHORT).show();
+                        return true;    
                         
                     case "About":
                         showAbout();
