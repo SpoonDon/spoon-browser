@@ -16,6 +16,19 @@ public class SplashActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // CHECK PREFERENCES: Kill animation if user disabled it
+        android.content.SharedPreferences prefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        boolean showSplash = prefs.getBoolean("show_splash_screen", true);
+        
+        if (!showSplash) {
+            Intent intent = new Intent(SplashActivity.this, MainActivity.class);
+            startActivity(intent);
+            finish();
+            return; // Stop executing the rest of the file
+        }
+
+        // If enabled, proceed with the normal splash screen
         setContentView(R.layout.activity_splash);
 
         ImageView logo = findViewById(R.id.splash_logo);
