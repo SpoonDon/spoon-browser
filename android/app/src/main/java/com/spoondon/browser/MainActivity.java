@@ -2290,7 +2290,7 @@ exportCsvLauncher = registerForActivityResult(
         });
     }
     
-private void triggerExternalDownload(String url, String mimeType) {
+public void triggerExternalDownload(String url, String mimeType) {
         try {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
             if (mimeType != null && !mimeType.isEmpty()) {
@@ -2299,18 +2299,56 @@ private void triggerExternalDownload(String url, String mimeType) {
                 intent.setData(android.net.Uri.parse(url));
             }
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-            
-            // Safe check to ensure an app exists to handle this
+
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(android.content.Intent.createChooser(intent, "Download File via..."));
             } else {
-                Toast.makeText(this, "No external app found to handle this download.", Toast.LENGTH_SHORT).show();
+                android.content.Intent shareIntent = new android.content.Intent(android.content.Intent.ACTION_SEND);
+                shareIntent.setType("text/plain");
+                shareIntent.putExtra(android.content.Intent.EXTRA_TEXT, url);
+                startActivity(android.content.Intent.createChooser(shareIntent, "Send link to external downloader..."));
             }
-        } catch (android.content.ActivityNotFoundException e) {
-            Toast.makeText(this, "No compatible app found on device.", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(this, "Download failed to initiate.", Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(this, "Could not launch external app", android.widget.Toast.LENGTH_SHORT).show();
         }
+    }
+
+    public void triggerManualDownload(String url, String mimeType) {
+        String targetFileName = android.webkit.URLUtil.guessFileName(url, null, mimeType);
+        if (targetFileName.endsWith(".bin") || targetFileName.equals("downloadfile")) {
+            String extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+            if (extension != null) {
+                targetFileName = targetFileName.replace(".bin", "").replace("downloadfile", "download") + "." + extension;
+            }
+        }
+        
+        final String finalFileName = targetFileName;
+        
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Download Media")
+            .setMessage("Do you want to download " + finalFileName + "?")
+            .setPositiveButton("Download", (dialog, item) -> {
+                try {
+                    android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                    String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
+                    if (cookies != null) request.addRequestHeader("Cookie", cookies);
+                    request.setMimeType(mimeType);
+                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, finalFileName);
+                    request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    request.setTitle(finalFileName);
+                    
+                    android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    if (manager != null) {
+                        manager.enqueue(request);
+                        android.widget.Toast.makeText(this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    triggerExternalDownload(url, mimeType);
+                }
+            })
+            .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, mimeType))
+            .setNegativeButton("Cancel", null)
+            .show();
     }
     
  private void toggleDesktopMode() {
