@@ -132,6 +132,23 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         return historyList;
     }
 
+    public List<String[]> getMatchingHistory(String query) {
+        List<String[]> historyList = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_HISTORY + 
+            " WHERE " + COLUMN_URL + " LIKE ? OR " + COLUMN_TITLE + " LIKE ? ORDER BY id DESC LIMIT 30", 
+            new String[]{"%" + query + "%", "%" + query + "%"});
+
+        if (cursor.moveToFirst()) {
+            do {
+                historyList.add(new String[]{cursor.getString(0), cursor.getString(1)});
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        db.close();
+        return historyList;
+    }
+
     public List<String> getAllBookmarksUrls() {
         List<String> bookmarkUrls = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
