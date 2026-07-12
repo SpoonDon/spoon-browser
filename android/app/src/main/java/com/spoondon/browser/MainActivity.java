@@ -2348,4 +2348,59 @@ public void triggerExternalDownload(String url, String mimeType) {
         }
     }
 
-} 
+}
+
+public static class Suggestion {
+        public String title;
+        public String url;
+
+        public Suggestion(String title, String url) {
+            this.title = title;
+            this.url = url;
+        }
+
+        @Override
+        public String toString() {
+            return url;
+        }
+    }
+
+    public class SuggestionAdapter extends android.widget.ArrayAdapter<Suggestion> {
+        public SuggestionAdapter(android.content.Context context, java.util.List<Suggestion> items) {
+            super(context, 0, items);
+        }
+
+        @Override
+        public android.view.View getView(int position, android.view.View convertView, android.view.ViewGroup parent) {
+            if (convertView == null) {
+                convertView = android.view.LayoutInflater.from(getContext()).inflate(R.layout.item_suggestion, parent, false);
+            }
+
+            Suggestion item = getItem(position);
+            if (item != null) {
+                android.widget.TextView titleView = convertView.findViewById(R.id.suggestion_title);
+                android.widget.TextView urlView = convertView.findViewById(R.id.suggestion_url);
+
+                titleView.setText(item.title);
+                urlView.setText(item.url);
+            }
+
+            return convertView;
+        }
+
+        @Override
+        public android.widget.Filter getFilter() {
+            return new android.widget.Filter() {
+                @Override
+                protected FilterResults performFiltering(CharSequence constraint) {
+                    FilterResults results = new FilterResults();
+                    results.count = getCount();
+                    return results;
+                }
+                @Override
+                protected void publishResults(CharSequence constraint, FilterResults results) {
+                    notifyDataSetChanged();
+                }
+            };
+        }
+    }
