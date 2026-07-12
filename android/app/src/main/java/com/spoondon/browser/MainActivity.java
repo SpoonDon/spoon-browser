@@ -207,6 +207,14 @@ public class MainActivity extends AppCompatActivity {
 
         loadSavedData();
 
+        if (backgroundExecutor != null && dbHelper != null) {
+            backgroundExecutor.execute(() -> {
+                try {
+                    dbHelper.cleanupOldHistory(90);
+                } catch (Exception ignored) {}
+            });
+        }
+
         AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
     }
 
@@ -2346,7 +2354,7 @@ public void triggerExternalDownload(String url, String mimeType) {
 
 }
 
-    static class Suggestion {
+    class Suggestion {
         public String title;
         public String url;
 
