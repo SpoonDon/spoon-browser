@@ -222,4 +222,16 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         db.close();
         return tabsList;
     }
+
+    public void cleanupOldHistory(int daysToKeep) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        try {
+            // SQLite natively calculates the date and purges rows at the C-level
+            db.execSQL("DELETE FROM " + TABLE_HISTORY + 
+                       " WHERE " + COLUMN_TIMESTAMP + " <= datetime('now', '-" + daysToKeep + " days')");
+        } catch (Exception ignored) {
+        } finally {
+            db.close();
+        }
+    }
 }
