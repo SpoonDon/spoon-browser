@@ -83,6 +83,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_OPEN_TABS = "open_tabs";
     private static final String KEY_CURRENT_TAB = "current_tab";
     private static final int MAX_HISTORY = 500;
+    public android.webkit.PermissionRequest currentPermissionRequest;
+    public android.webkit.GeolocationPermissions.Callback currentGeolocationCallback;
+    public String currentGeolocationOrigin;
+    private androidx.activity.result.ActivityResultLauncher<String[]> webPermissionLauncher;
 
     AutoCompleteTextView addressBar;
     private SuggestionAdapter addressBarAdapter;
@@ -148,6 +152,46 @@ public class MainActivity extends AppCompatActivity {
         dbHelper = new BrowserDatabaseHelper(this);
         AdBlockEngine.init(this, filterLists);
         AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
+
+        webPermissionLauncher = registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+            result -> {
+                if (currentPermissionRequest != null) {
+                    java.util.List<String> granted = new java.util.ArrayList<>();
+                    Boolean cam = result.get(android.Manifest.permission.CAMERA);
+                    Boolean mic = result.get(android.Manifest.permission.RECORD_AUDIO);
+                    if (cam != null && cam) {
+                        granted.add(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE);
+                    }
+                    if (mic != null && mic) {
+                        granted.add(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE);
+                    }
+                    if (!granted.isEmpty()) {
+                        currentPermissionRequest.grant(granted.toArray(new String[0]));
+                    } else {
+                        currentPermissionRequest.deny();
+                    }
+                    currentPermissionRequest = null;
+                }
+                if (currentGeolocationCallback != null) {
+                    Boolean fine = result.get(android.Manifest.permission.ACCESS_FINE_LOCATION);
+                    Boolean coarse = result.get(android.Manifest.permission.ACCESS_COARSE_LOCATION);
+                    if ((fine != null && fine) || (coarse != null && coarse)) {
+                        currentGeolocationCallback.invoke(currentGeolocationOrigin, true, false);
+                    } else {
+                        currentGeolocationCallback.invoke(currentGeolocationOrigin, false, false);
+                    }
+                    currentGeolocationCallback = null;
+                    currentGeolocationOrigin = null;
+                }
+            }
+        );
+
+        public void requestWebPermissions(String[] permissions) {
+            if (webPermissionLauncher != null) {
+                webPermissionLauncher.launch(permissions);
+            }
+        }
 
         passwordImportLauncher = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
