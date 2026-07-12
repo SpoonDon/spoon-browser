@@ -108,7 +108,16 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
         if (urlString == null) return false;
-        
+
+        String cleanUrl = urlString.split("\\?")[0].split("#")[0].toLowerCase();
+        if (cleanUrl.matches(".*\\.(mp4|webm|mkv|avi|mov|flv|wmv|ts|png|jpg|jpeg|gif|webp|apk|zip|rar|7z|pdf|iso)$")) {
+            String mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(android.webkit.MimeTypeMap.getFileExtensionFromUrl(cleanUrl));
+            if (mime == null) mime = "application/octet-stream";
+            
+            activity.triggerManualDownload(urlString, mime);
+            return true;
+        }
+
         if (urlString.startsWith("http://") && !urlString.contains("localhost") && !urlString.contains("10.0.2.2")) {
             String secureUrl = urlString.replace("http://", "https://");
             view.loadUrl(secureUrl);
