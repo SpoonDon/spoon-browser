@@ -275,6 +275,5 @@ public class SpoonWebViewClient extends WebViewClient {
         "})();";
         
         view.evaluateJavascript(script, null);
-    }
-    
+    }   
 }
