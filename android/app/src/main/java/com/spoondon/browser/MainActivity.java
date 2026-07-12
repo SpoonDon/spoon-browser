@@ -845,26 +845,7 @@ public class MainActivity extends AppCompatActivity {
             justGainedFocus[0] = false;
         });
 
-        addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
-
-                    @Override
-            public android.widget.Filter getFilter() {
-                return new android.widget.Filter() {
-                    @Override
-                    protected FilterResults performFiltering(CharSequence constraint) {
-                        FilterResults results = new FilterResults();
-                        if (constraint != null) {
-                            results.count = 1;
-                        }
-                        return results;
-                    }
-                    @Override
-                    protected void publishResults(CharSequence constraint, FilterResults results) {
-                        notifyDataSetChanged();
-                    }
-                };
-            }
-        };
+        addressBarAdapter = new SuggestionAdapter(this, new java.util.ArrayList<>());
 
         addressBar.post(() -> {
             try {
@@ -2365,7 +2346,7 @@ public void triggerExternalDownload(String url, String mimeType) {
 
 }
 
-public static class Suggestion {
+    static class Suggestion {
         public String title;
         public String url;
 
@@ -2380,7 +2361,7 @@ public static class Suggestion {
         }
     }
 
-    public class SuggestionAdapter extends android.widget.ArrayAdapter<Suggestion> {
+    class SuggestionAdapter extends android.widget.ArrayAdapter<Suggestion> {
         public SuggestionAdapter(android.content.Context context, java.util.List<Suggestion> items) {
             super(context, 0, items);
         }
