@@ -858,11 +858,8 @@ public class MainActivity extends AppCompatActivity {
         addressBar.post(() -> {
             try {
                 addressBar.setAdapter(addressBarAdapter);
-                addressBar.setDropDownBackgroundDrawable(new android.graphics.drawable.GradientDrawable() {{
-                    setColor(android.graphics.Color.parseColor("#1F1F1F"));
-                    setCornerRadius(dp(16));
-                }});
-                addressBar.setDropDownVerticalOffset(dp(4));
+                addressBar.setDropDownBackgroundResource(R.drawable.bg_dropdown_rounded);
+                addressBar.setDropDownVerticalOffset(dp(8));               
             } catch (Exception ignored) {}
         });
 
