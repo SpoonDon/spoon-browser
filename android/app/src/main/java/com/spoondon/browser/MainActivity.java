@@ -187,12 +187,6 @@ public class MainActivity extends AppCompatActivity {
             }
         );
 
-        public void requestWebPermissions(String[] permissions) {
-            if (webPermissionLauncher != null) {
-                webPermissionLauncher.launch(permissions);
-            }
-        }
-
         passwordImportLauncher = registerForActivityResult(
             new ActivityResultContracts.GetContent(),
             uri -> {
@@ -2393,6 +2387,11 @@ public void triggerExternalDownload(String url, String mimeType) {
         }
     }
 
+    public void requestWebPermissions(String[] permissions) {
+        if (webPermissionLauncher != null) {
+            webPermissionLauncher.launch(permissions);
+        }
+    }
 }
 
     class Suggestion {
