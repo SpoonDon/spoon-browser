@@ -1,6 +1,5 @@
 package com.spoondon.browser;
 
-// Core Android System, OS, and Lifecycle
 import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.os.Build;
@@ -11,7 +10,6 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.TypedValue;
 
-// Android Graphics, Themes, and Windowing
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -24,7 +22,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 
-// Android View Framework and Native UI Widgets
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.widget.ArrayAdapter;
@@ -40,7 +37,6 @@ import android.widget.Toast;
 import android.text.TextUtils;
 import android.app.AlertDialog;
 
-// Android WebKit (Core Browser Engine Dependencies)
 import android.webkit.DownloadListener;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SafeBrowsingResponse;
@@ -53,7 +49,6 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebView.WebViewTransport;
 
-// AndroidX Jetpack Components (Activity, Window Insets, Contracts)
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -66,7 +61,6 @@ import androidx.webkit.WebViewFeature;
 import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebMessagePortCompat;
 
-// Java Standard Core Utilities & I/O Packages
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
@@ -128,10 +122,7 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
-        // Assign directly to the class variable without declaring the type here
-exportCsvLauncher = registerForActivityResult(
-    new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),
-    uri -> {
+        exportCsvLauncher = registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),uri -> {
         if (uri != null && secureCredentialManager != null) {
             backgroundExecutor.execute(() -> {
                 try {
@@ -187,7 +178,7 @@ exportCsvLauncher = registerForActivityResult(
         );
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        // Safely load your desktop mode preference here where context is fully ready
+        
         isDesktopMode = prefs.getBoolean("isDesktopMode", false);
         setupRootLayout();
         createToolbarViews();
@@ -230,7 +221,6 @@ exportCsvLauncher = registerForActivityResult(
         super.onResume();
         handleIncomingIntent(getIntent());
         
-        // OPTIMIZATION: Wake up the active WebView engine and resume its internal rendering loops
         WebView activeWebView = getCurrentWebView();
         if (activeWebView != null) {
             activeWebView.onResume();
@@ -244,7 +234,6 @@ exportCsvLauncher = registerForActivityResult(
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
-            // If the browser is fresh, reuse the initial tab. Otherwise, create a new one.
             if (tabs.isEmpty()) {
                 createNewTab();
             }
@@ -254,7 +243,6 @@ exportCsvLauncher = registerForActivityResult(
             }
             openUrl(urlToLoad);
             
-            // Clear intent so it does not trigger on app restart
             setIntent(new Intent());
             
         } else if (intent.getAction() != null) {
@@ -266,8 +254,6 @@ exportCsvLauncher = registerForActivityResult(
     protected void onPause() {
         super.onPause();
         
-        // BUG 2 FIX: Force RAM cookies and DOM storage to write to physical disk 
-        // BEFORE we freeze the WebView threads.
         try {
             if (!clearSessionOnExit) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
@@ -276,7 +262,6 @@ exportCsvLauncher = registerForActivityResult(
             }
         } catch (Exception ignored) {}
 
-        // OPTIMIZATION: Suspend active media streams, CSS animations, and JS intervals.
         WebView activeWebView = getCurrentWebView();
         if (activeWebView != null) {
             activeWebView.onPause();
@@ -288,7 +273,6 @@ exportCsvLauncher = registerForActivityResult(
     protected void onStop() {
         super.onStop();
         
-        // Let onStop handle the ultimate decision: Clear completely
         try {
             if (clearSessionOnExit) {
                 android.webkit.WebStorage.getInstance().deleteAllData();
@@ -300,8 +284,7 @@ exportCsvLauncher = registerForActivityResult(
 
     @Override
     protected void onDestroy() {
-        // BUG 2 FIX: A final safety net flush if the app is violently swiped away 
-        // from the recents menu before onStop can fully execute.
+        
         try {
             if (!clearSessionOnExit) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
@@ -321,10 +304,9 @@ exportCsvLauncher = registerForActivityResult(
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.BLACK);
 
-        // Apply window insets cleanly without shrinking side dimensions
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, windowInsets) -> {
             Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(0, systemBars.top, 0, 0); // Only pad the status bar area
+            v.setPadding(0, systemBars.top, 0, 0);
             return windowInsets;
         });
 
@@ -354,7 +336,7 @@ exportCsvLauncher = registerForActivityResult(
             }
         }
         AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-        // Boot fresh every time
+        
         createNewTab();
         showHome();
     }
@@ -383,7 +365,7 @@ exportCsvLauncher = registerForActivityResult(
         if (secureCredentialManager == null) return;
         
         backgroundExecutor.execute(() -> {
-            // 1. Offload file disk parsing safely to background worker thread
+            
             java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
             java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
             if (vaultFile.exists()) {
@@ -400,7 +382,6 @@ exportCsvLauncher = registerForActivityResult(
                 } catch (Exception e) { e.printStackTrace(); }
             }
 
-            // 2. Switch back to the UI thread if no passwords exist to paint the empty alert dialog
             if (hosts.isEmpty()) {
                 runOnUiThread(() -> {
                     new AlertDialog.Builder(this)
@@ -412,14 +393,12 @@ exportCsvLauncher = registerForActivityResult(
                 return;
             }
 
-            // 3. Process background decryption operations before attempting view rendering
             java.util.ArrayList<String> displayList = new java.util.ArrayList<>();
             for (String h : hosts) {
                 String user = secureCredentialManager.getUsername(h);
                 displayList.add(h + " (" + user + ")");
             }
 
-            // 4. Safely return back to the main layout channel to build and show the dialog boxes
             runOnUiThread(() -> {
                 ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayList);
                 ListView listView = new ListView(this);
@@ -434,7 +413,6 @@ exportCsvLauncher = registerForActivityResult(
                 listView.setOnItemClickListener((parent, view, position, id) -> {
                     String selectedHost = hosts.get(position);
                     
-                    // Offload individual account key extraction to a worker thread
                     backgroundExecutor.execute(() -> {
                         String user = secureCredentialManager.getUsername(selectedHost);
                         String pass = secureCredentialManager.getPassword(selectedHost);
@@ -444,13 +422,13 @@ exportCsvLauncher = registerForActivityResult(
                                 .setTitle(selectedHost)
                                 .setMessage("Username: " + user + "\nPassword: " + pass)
                                 .setNegativeButton("Delete", (d, w) -> {
-                                    // Handle safe asynchronous database cleanup entries
+                                    
                                     backgroundExecutor.execute(() -> {
                                         secureCredentialManager.clearCredentials(selectedHost);
                                         runOnUiThread(() -> {
                                             Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
                                             dialog.dismiss();
-                                            showSavedPasswordsDialog(); // Safe refresh loop recursion
+                                            showSavedPasswordsDialog();
                                         });
                                     });
                                 })
@@ -480,7 +458,7 @@ exportCsvLauncher = registerForActivityResult(
             popup.getMenu().add("Clear History");
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
-            // --- REPLACE the old isDesktopMode line with this block ---
+            
             String currentHost = "";
             if (currentTab >= 0 && currentTab < tabs.size()) {
                 android.webkit.WebView activeWebView = tabs.get(currentTab);
@@ -495,7 +473,6 @@ exportCsvLauncher = registerForActivityResult(
                     .getStringSet("desktop_sites", new java.util.HashSet<>()).contains(currentHost);
             }
             
-            // Add the dynamic menu item
             popup.getMenu().add(isCurrentSiteDesktop ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("Passwords");
             popup.getMenu().add("🔑 Vault (Copy)");
@@ -585,12 +562,11 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
 
                     case "Startup Animation":
-                        // Flip the user's saved preference
+                        
                         android.content.SharedPreferences splashPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
                         boolean isCurrentlyEnabled = splashPrefs.getBoolean("show_splash_screen", true);
                         splashPrefs.edit().putBoolean("show_splash_screen", !isCurrentlyEnabled).apply();
                         
-                        // Let the user know it worked
                         String statusMsg = !isCurrentlyEnabled ? "Startup Animation Enabled" : "Startup Animation Disabled";
                         android.widget.Toast.makeText(MainActivity.this, statusMsg, android.widget.Toast.LENGTH_SHORT).show();
                         return true;    
@@ -600,10 +576,9 @@ exportCsvLauncher = registerForActivityResult(
                         return true;
                         
                     case "Exit":
-                        // FIX: Ensure this remains false so onStop() does not vaporize cookies
+                        
                         clearSessionOnExit = false; 
                         
-                        // Force a final cookie flush to the physical disk right before termination
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                             android.webkit.CookieManager.getInstance().flush();
                         }
@@ -627,24 +602,20 @@ exportCsvLauncher = registerForActivityResult(
 
         android.view.ViewGroup rootLayout = findViewById(android.R.id.content);
 
-        // Prevent opening multiple bars if clicked twice
         if (findInPageBar != null) rootLayout.removeView(findInPageBar);
 
-        // Build a horizontal container
         android.widget.LinearLayout barLayout = new android.widget.LinearLayout(this);
         barLayout.setOrientation(android.widget.LinearLayout.HORIZONTAL);
         barLayout.setGravity(android.view.Gravity.CENTER_VERTICAL);
         barLayout.setPadding(20, 10, 20, 10);
         barLayout.setElevation(10f); // Give it a shadow
 
-        // Modern floating glass look
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setCornerRadius(24);
         shape.setColor(android.graphics.Color.parseColor("#B3121212"));
         shape.setStroke(2, android.graphics.Color.parseColor("#333333"));
         barLayout.setBackground(shape);
 
-        // 1. Search Input
         android.widget.EditText input = new android.widget.EditText(this);
         input.setHint("Find...");
         input.setSingleLine(true);
@@ -654,14 +625,12 @@ exportCsvLauncher = registerForActivityResult(
         android.widget.LinearLayout.LayoutParams inputParams = new android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         barLayout.addView(input, inputParams);
 
-        // 2. Match Counter
         android.widget.TextView countText = new android.widget.TextView(this);
         countText.setText("0/0");
         countText.setTextColor(android.graphics.Color.LTGRAY);
         countText.setPadding(15, 0, 15, 0);
         barLayout.addView(countText);
 
-        // 3. Up/Down/Close Buttons
         android.widget.Button prevBtn = new android.widget.Button(this);
         prevBtn.setText("∧");
         prevBtn.setTextColor(android.graphics.Color.WHITE);
@@ -674,20 +643,17 @@ exportCsvLauncher = registerForActivityResult(
 
         android.widget.Button closeBtn = new android.widget.Button(this);
         closeBtn.setText("X");
-        closeBtn.setTextColor(android.graphics.Color.parseColor("#FF5555")); // Red close button
+        closeBtn.setTextColor(android.graphics.Color.parseColor("#FF5555"));
         closeBtn.setBackground(null);
 
         barLayout.addView(prevBtn);
         barLayout.addView(nextBtn);
         barLayout.addView(closeBtn);
 
-        // --- Functionality ---
-
         webView.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
             countText.setText(numberOfMatches == 0 ? "0/0" : (activeMatchOrdinal + 1) + "/" + numberOfMatches);
         });
 
-        // The Debouncer (prevents stuttering while typing)
         final android.os.Handler searchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         final Runnable[] searchRunnable = new Runnable[1];
 
@@ -698,7 +664,7 @@ exportCsvLauncher = registerForActivityResult(
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (searchRunnable[0] != null) searchHandler.removeCallbacks(searchRunnable[0]);
                 searchRunnable[0] = () -> webView.findAllAsync(s.toString());
-                searchHandler.postDelayed(searchRunnable[0], 300); // 300ms wait
+                searchHandler.postDelayed(searchRunnable[0], 300);
             }
             @Override
             public void afterTextChanged(android.text.Editable s) {}
@@ -712,23 +678,21 @@ exportCsvLauncher = registerForActivityResult(
             findInPageBar = null;
         });
 
-        // Inject the bar at the absolute top of the screen
         android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT, 
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         );
         params.gravity = android.view.Gravity.TOP;
-        params.setMargins(20, 40, 20, 0); // Margins so it floats nicely
+        params.setMargins(20, 40, 20, 0);
         
         rootLayout.addView(barLayout, params);
         findInPageBar = barLayout;
         
-        // Auto-focus the input
         input.requestFocus();
     }
     
     private void setupToolbarListeners() {
-        // Feature Removed: Disabled long press behavior entirely
+        
         tabIndicator.setOnLongClickListener(null);
         tabIndicator.setLongClickable(false);
         tabIndicator.setOnClickListener(v -> showTabSwitcher());
@@ -776,53 +740,49 @@ exportCsvLauncher = registerForActivityResult(
         toolbar = new LinearLayout(this);
         toolbar.setOrientation(LinearLayout.HORIZONTAL);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(12), dp(10), dp(12), dp(10)); // Increased padding for touch targets
-        toolbar.setBackgroundColor(Color.parseColor("#141414")); // Sleek modern dark mode accent
-
+        toolbar.setPadding(dp(12), dp(10), dp(12), dp(10));
+        toolbar.setBackgroundColor(Color.parseColor("#141414"));
+        
         forwardButton = makeButton("→");
         prevTabButton = makeButton("◀");
         nextTabButton = makeButton("▶");
         newTabButton = makeButton("+");
         menuButton = makeButton("☰");
-        // Attach the native Android Popup Menu to your menuButton
+        
         menuButton.setOnClickListener(view -> {
             android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(MainActivity.this, menuButton);
             
-            // Add your menu items (You can add "Settings", "Bookmarks", etc. here later)
             popupMenu.getMenu().add("Global History");
-            popupMenu.getMenu().add("🔑 Vault / Autofill"); // Our new indestructible option
+            popupMenu.getMenu().add("🔑 Vault / Autofill");
             
-            // Listen for which item the user tapped
             popupMenu.setOnMenuItemClickListener(menuItem -> {
                 String title = menuItem.getTitle().toString();
                 
                 if (title.equals("🔑 Vault / Autofill")) {
-                    // Trigger the native Vault side-panel!
+                    
                     showVaultForCurrentSite();
                     return true;
                 } 
                 else if (title.equals("Global History")) {
-                    // Trigger your existing history dialog we fixed earlier
+                    
                     showHistoryDialog();
                     return true;
                 }
                 return false;
             });
             
-            // Display the menu on the screen
             popupMenu.show();
         });
 
-        // Responsive UI Logic for Phones vs Tablets
         int screenWidth = getScreenWidthDp();
         if (screenWidth < 600) {
-            // True Mobile Mode: Hide back/forward/tabs to maximize space for the URL bar
+            
             forwardButton.setVisibility(View.GONE);
             prevTabButton.setVisibility(View.GONE);
             nextTabButton.setVisibility(View.GONE);
             newTabButton.setVisibility(View.GONE);
         } else {
-            // Tablet Mode: Ensure everything is explicitly visible when rotated
+            
             forwardButton.setVisibility(View.VISIBLE);
             prevTabButton.setVisibility(View.VISIBLE);
             nextTabButton.setVisibility(View.VISIBLE);
@@ -834,7 +794,6 @@ exportCsvLauncher = registerForActivityResult(
         tabIndicator.setTextSize(14);
         tabIndicator.setPadding(dp(8), 0, dp(8), 0);
         
-        // Hide tab counter on small phones if it crowds the bar
         if (screenWidth < 360) {
             tabIndicator.setVisibility(View.GONE);
         }
@@ -845,27 +804,24 @@ exportCsvLauncher = registerForActivityResult(
         addressBar.setHintTextColor(Color.GRAY);
         addressBar.setSingleLine(true);
         addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        // Avoid immediate popup on focus/startup — threshold 1 reduces race conditions.
+        
         addressBar.setThreshold(1);
         
-        // Modernized Address Bar Background styling - Isolated unique variable name
         android.graphics.drawable.GradientDrawable customAddressBg = new android.graphics.drawable.GradientDrawable();
         customAddressBg.setColor(android.graphics.Color.parseColor("#222222"));
-        customAddressBg.setCornerRadius(dp(20)); // Perfectly rounded capsule shape
+        customAddressBg.setCornerRadius(dp(20));
         addressBar.setBackground(customAddressBg);
 
         addressBar.setPadding(dp(16), dp(8), dp(16), dp(8));
 
-        // CRITICAL FIX: Give address bar dynamic layout weight so it stretches elegantly
         LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         addressParams.setMargins(dp(6), 0, dp(6), 0);
         addressBar.setLayoutParams(addressParams);
         
-        // Smart URL Selection Logic: Clear on first tap, edit on second tap
         final boolean[] justGainedFocus = {false};
         addressBar.setOnFocusChangeListener((view, hasFocus) -> {
             if (hasFocus) {
-                // Let the UI layout complete, then select all text so one backspace drops it entirely
+                
                 addressBar.post(() -> {
                     if (addressBar.getText() != null) {
                         addressBar.selectAll();
@@ -878,18 +834,17 @@ exportCsvLauncher = registerForActivityResult(
         });
 
         addressBar.setOnClickListener(view -> {
-            // If the user already tapped once to select it, a second tap should drop the cursor right at their finger
+            
             if (!justGainedFocus[0]) {
                 int cursorPosition = addressBar.getSelectionStart();
                 if (cursorPosition >= 0) {
                     addressBar.setSelection(cursorPosition);
                 }
             }
-            // Reset flag on subsequent click sequences
+            
             justGainedFocus[0] = false;
         });
 
-        // Keep your existing adapter and text watcher setups underneath...
         addressBarAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, new ArrayList<>()) {
 
                     @Override
@@ -911,16 +866,14 @@ exportCsvLauncher = registerForActivityResult(
             }
         };
 
-        // Defer adapter attachment until after layout to reduce early-popup races.
         addressBar.post(() -> {
             try {
                 addressBar.setAdapter(addressBarAdapter);
-                // STYLING ADDITION: Apply matching dark, rounded design to the dropdown panel itself
                 addressBar.setDropDownBackgroundDrawable(new android.graphics.drawable.GradientDrawable() {{
-                    setColor(android.graphics.Color.parseColor("#1F1F1F")); // Subtle contrast dark accent
-                    setCornerRadius(dp(16));                               // Premium rounded corner profiles
+                    setColor(android.graphics.Color.parseColor("#1F1F1F"));
+                    setCornerRadius(dp(16));
                 }});
-                addressBar.setDropDownVerticalOffset(dp(4));               // Floating gap separation
+                addressBar.setDropDownVerticalOffset(dp(4));
             } catch (Exception ignored) {}
         });
 
@@ -946,7 +899,6 @@ exportCsvLauncher = registerForActivityResult(
             }
             if (rawItem == null || rawItem.isEmpty()) return;
 
-            // Clean the input string: extract the actual URL if it contains a label or CSS scrap
             String cleanUrl = rawItem;
             if (rawItem.contains("http://") || rawItem.contains("https://")) {
                 int httpIndex = rawItem.indexOf("http://");
@@ -975,11 +927,11 @@ exportCsvLauncher = registerForActivityResult(
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (suppressSuggestions) return;
-                // Trim the query to prevent searching for empty space
+                
                 updateAddressBarSuggestions(s.toString().trim());
             }
             @Override public void afterTextChanged(android.text.Editable s) {}
-            // Explicitly declared android.text.Editable signature package target to avoid any lookup failures
+            
         });
 
         GradientDrawable addressBg = new GradientDrawable();
@@ -992,11 +944,10 @@ exportCsvLauncher = registerForActivityResult(
         inputParams.setMargins(dp(8), 0, dp(8), 0);
         addressBar.setLayoutParams(inputParams);
 
-        // Calculate device width profile dynamically using modern Configuration bounds
         float widthDp = getResources().getConfiguration().screenWidthDp;
 
         if (widthDp >= 600) {
-            // TABLET LAYOUT: Show all individual controls side-by-side
+            
             toolbar.addView(forwardButton);
             toolbar.addView(prevTabButton);
             toolbar.addView(tabIndicator);
@@ -1005,8 +956,7 @@ exportCsvLauncher = registerForActivityResult(
             toolbar.addView(addressBar);
             toolbar.addView(menuButton);
         } else {
-            // MOBILE LAYOUT: Pure minimalism
-            // SAFEST PRE-EMPTIVE FIX: Force detach mobile elements from any previous parent trees to prevent layout crashes
+            
             if (addressBar != null && addressBar.getParent() instanceof ViewGroup) {
                 ((ViewGroup) addressBar.getParent()).removeView(addressBar);
             }
@@ -1014,14 +964,12 @@ exportCsvLauncher = registerForActivityResult(
                 ((ViewGroup) menuButton.getParent()).removeView(menuButton);
             }
 
-            // Hide the redundant desktop buttons entirely
             forwardButton.setVisibility(View.GONE);
             prevTabButton.setVisibility(View.GONE);
             tabIndicator.setVisibility(View.GONE);
             nextTabButton.setVisibility(View.GONE);
             newTabButton.setVisibility(View.GONE);
 
-            // Create a gorgeous modern Tab Switcher Badge [ 1 ]
             tabBadgeButton = new Button(this);
             int tabCount = (tabs != null) ? tabs.size() : 1;
             tabBadgeButton.setText(String.valueOf(tabCount));
@@ -1030,34 +978,28 @@ exportCsvLauncher = registerForActivityResult(
             tabBadgeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             tabBadgeButton.setGravity(Gravity.CENTER);
             
-            // CRITICAL FIX: Strip default Android button paddings to keep text perfectly centered
             tabBadgeButton.setPadding(0, 0, 0, 0);
             tabBadgeButton.setIncludeFontPadding(false);
 
-            // Give it a sleek rounded border look
             GradientDrawable badgeBg = new GradientDrawable();
             badgeBg.setColor(Color.TRANSPARENT);
             badgeBg.setStroke(dp(2), Color.parseColor("#CCCCCC"));
             badgeBg.setCornerRadius(dp(6));
             tabBadgeButton.setBackground(badgeBg);
 
-            // Expand touch target to 36dp x 36dp for smaller screens so it registers clicks easily
             LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(36), dp(36));
             badgeParams.setMargins(dp(6), 0, dp(6), 0);
             tabBadgeButton.setLayoutParams(badgeParams);
 
-            // DIRECT FIX: Fire your browser's native tab layout window directly!
             tabBadgeButton.setOnClickListener(v -> {
                 showTabSwitcher();
             });
 
-            // MENU OVERLAY ALIGNMENT FIX: Strip implicit button boundaries so the icon is perfectly squared
             if (menuButton != null) {
                 menuButton.setPadding(0, 0, 0, 0);
                 menuButton.setIncludeFontPadding(false);
             }
 
-            // Cleanly attach views only if they don't already have an assigned parent layout
             if (addressBar != null && addressBar.getParent() == null) {
                 toolbar.addView(addressBar);
             }
@@ -1109,24 +1051,20 @@ exportCsvLauncher = registerForActivityResult(
     private void configureWebSettings(android.webkit.WebSettings settings) {
         if (settings == null) return;
 
-        // 1. Core Web & Javascript Capabilities
         settings.setJavaScriptEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setSupportMultipleWindows(true);
 
-        // 2. HTML5 Storage & Security Engines (Fixes Cloudflare loops & f95zone)
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setSaveFormData(true);
         settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
 
-        // 3. File & Local Storage Access Configuration
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(true);
         settings.setAllowUniversalAccessFromFileURLs(true);
 
-        // 4. Layout & UI Controls Optimization
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
             settings.setLayoutAlgorithm(android.webkit.WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
         }
@@ -1135,12 +1073,10 @@ exportCsvLauncher = registerForActivityResult(
         settings.setDisplayZoomControls(false);
         settings.setGeolocationEnabled(false);
 
-        // 5. Media Engine Initialization (Fixes YouTube Video Playback Loops)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
 
-        // 6. Cross-Origin Contexts & Mixed Security Handshakes
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
@@ -1148,7 +1084,6 @@ exportCsvLauncher = registerForActivityResult(
             settings.setSafeBrowsingEnabled(true); 
         }
         
-        // 7. Thread-Safe Session Authentication Cookie Synchronizers
         try {
             android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
             cm.setAcceptCookie(true);
@@ -1157,10 +1092,7 @@ exportCsvLauncher = registerForActivityResult(
                 cm.setAcceptThirdPartyCookies(getCurrentWebView(), true); 
             }
         } catch (Exception ignored) {}
-    
-        // 8. Base User-Agent Profile
-        // We now set the default to Mobile. The smart engine in SpoonWebViewClient 
-        // will automatically switch this to Desktop ONLY if the specific website demands it.
+        
         settings.setUserAgentString(MOBILE_UA);
         settings.setUseWideViewPort(false);
         settings.setLoadWithOverviewMode(false);
@@ -1357,10 +1289,8 @@ exportCsvLauncher = registerForActivityResult(
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
 
-        // Attach the autosave bridge directly to this new tab's WebView
         webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
 
-        // Force full hardware GPU pipeline rendering
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
@@ -1374,7 +1304,7 @@ exportCsvLauncher = registerForActivityResult(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             );
-            // Natively attach to layout tree immediately, default to hidden
+            
             webView.setVisibility(View.GONE);
             if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
             browserContainer.addView(webView, params);
@@ -1385,21 +1315,17 @@ exportCsvLauncher = registerForActivityResult(
 
     public void openUrlInNewTab(String url) {
         runOnUiThread(() -> {
-            // 1. Spawn a fresh tab using your existing engine
+            
             createNewTab(); 
             
-            // 2. Grab the newly created WebView (createNewTab usually updates currentTab to the new one)
             android.webkit.WebView newTab = tabs.get(currentTab);
             
-            // 3. Load the requested URL into the new tab
             newTab.loadUrl(url);
             
-            // 4. Update the UI badge counter so the user knows a tab opened
             if (tabBadgeButton != null) {
                 tabBadgeButton.setText(String.valueOf(tabs.size()));
             }
             
-            // Optional: Show a quick toast so the user knows it opened in the background
             android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
         });
     }
@@ -1413,13 +1339,13 @@ exportCsvLauncher = registerForActivityResult(
         updateTabBadgeCount();
 
         if (browserContainer != null) {
-            // High-Performance Visibility Toggle Pattern
+            
             for (int i = 0; i < tabs.size(); i++) {
                 WebView wv = tabs.get(i);
                 if (wv != null) {
                     if (i == index) {
                         wv.setVisibility(View.VISIBLE);
-                        // Prevent background rendering freezes by requesting window focus
+                        
                         wv.onResume();
                         wv.resumeTimers();
                         
@@ -1429,7 +1355,7 @@ exportCsvLauncher = registerForActivityResult(
                         }
                     } else {
                         wv.setVisibility(View.GONE);
-                        // Pause inactive tabs to preserve battery and CPU limits natively
+                        
                         wv.onPause();
                     }
                 }
@@ -1508,13 +1434,11 @@ exportCsvLauncher = registerForActivityResult(
     private void showTabSwitcher() {
         if (tabs == null || tabs.isEmpty()) return;
 
-        // 1. Create a vertical container layout (Using UI Overhaul's improved styling)
         LinearLayout dialogContainer = new LinearLayout(this);
         dialogContainer.setOrientation(LinearLayout.VERTICAL);
         dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
         dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
 
-        // 2. Build a responsive instruction hint banner
         TextView hintTextView = new TextView(this);
         boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
         hintTextView.setText(isTablet ? "💡 Tip: Long-press an item to close it / Tap to switch views" : "💡 Tip: Long-press a tab item to instantly close it");
@@ -1525,13 +1449,11 @@ exportCsvLauncher = registerForActivityResult(
         hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         dialogContainer.addView(hintTextView);
 
-        // 3. Configure the main ListView
         ListView listView = new ListView(this);
         listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
         listView.setDividerHeight(dp(1));
         dialogContainer.addView(listView);
 
-        // 4. Extract string titles
         ArrayList<String> tabTitles = new ArrayList<>();
         for (WebView webView : tabs) {
             String title = (webView != null) ? webView.getTitle() : null;
@@ -1541,20 +1463,17 @@ exportCsvLauncher = registerForActivityResult(
         ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, tabTitles);
         listView.setAdapter(tabAdapter);
 
-        // 5. Build the dialog
         final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("Active Tabs")
                 .setView(dialogContainer)
                 .create();
 
-        // 6. Navigation click actions
         listView.setOnItemClickListener((parent, view, position, id) -> {
             currentTab = position;
             if (tabs != null && position < tabs.size()) switchToTab(position);
             dialog.dismiss();
         });
 
-        // 7. Unified long-press action (Your Ad-Blocker logic)
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             if (tabs != null && position < tabs.size()) {
                 closeTab(position);
@@ -1570,8 +1489,6 @@ exportCsvLauncher = registerForActivityResult(
 
         dialog.show();
     }
-
-    // Deleted old buildHistoryItems and buildBookmarkItems
 
     private void showHistoryDialog() {
         if (dbHelper == null) return;
@@ -1632,19 +1549,17 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     public void saveHistory() {
-        // Neutered legacy saveHistory - SQLite handles this now!
+        
     }
     
     static class ContentFilterEngine {
-        // Fast direct domain lookup buckets
+        
         public final java.util.Set<String> blockDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
         public final java.util.Set<String> whitelistDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
 
-        // Complex substring/wildcard fallback paths
         public final java.util.List<String> blockPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
         public final java.util.List<String> whitelistPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-        // Site-Specific and Global Cosmetic Cache Buckets
         public final java.util.Set<String> globalCosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
         public final java.util.Map<String, java.util.Set<String>> siteCosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -1660,7 +1575,6 @@ exportCsvLauncher = registerForActivityResult(
         public void addRule(String rule) {
             if (rule == null || rule.isEmpty()) return;
             
-            // Handle true cosmetic rules (e.g., cnn.com##.ad-box or ##.ad-banner)
             if (rule.contains("##")) {
                 int index = rule.indexOf("##");
                 String domainPart = rule.substring(0, index).trim();
@@ -1669,10 +1583,10 @@ exportCsvLauncher = registerForActivityResult(
                 if (selector.isEmpty() || selector.contains("{") || selector.contains("(")) return;
 
                 if (domainPart.isEmpty()) {
-                    // Global rule applies to everything
+                    
                     globalCosmeticSelectors.add(selector);
                 } else {
-                    // Site-specific rule (Handles comma-separated domains if present)
+                    
                     String[] domains = domainPart.split(",");
                     for (String domain : domains) {
                         domain = domain.trim().toLowerCase();
@@ -1722,12 +1636,10 @@ exportCsvLauncher = registerForActivityResult(
                     "})()";
         }
 
-        // Extracts targeted rules matching the specific domain currently running
         public java.util.List<String> getCosmeticStyleBatches(String urlString) {
             java.util.List<String> batches = new java.util.ArrayList<>();
             java.util.Set<String> activeSelectors = new java.util.HashSet<>(globalCosmeticSelectors);
 
-            // Extract host domain to fetch specific rules
             String host = null;
             if (urlString != null) {
                 try {
@@ -1840,8 +1752,7 @@ exportCsvLauncher = registerForActivityResult(
     private final java.util.concurrent.atomic.AtomicBoolean isFilterUpdating = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     public void recordPageVisit(String url, String title) {
-        // 🚀 SAFELY NEUTERED!
-        // The background database engine in SpoonWebViewClient handles all writing now.
+        
         runOnUiThread(() -> {
             if (addressBarAdapter != null) {
                 addressBarAdapter.notifyDataSetChanged();
@@ -1856,16 +1767,14 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     private void saveOpenTabs() {
-        // 1. Capture the URLs on the Main UI Thread where Chromium is happy
         ArrayList<String> safeUrls = new ArrayList<>();
         for (WebView tab : tabs) {
-            String url = tab.getUrl(); // 100% safe here!
+            String url = tab.getUrl();
             if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
                 safeUrls.add(url);
             }
         }
 
-        // 2. Pass the standard Java strings into the background for heavy disk I/O
         backgroundExecutor.execute(() -> {
             prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", safeUrls)).apply();
         });
@@ -1874,8 +1783,6 @@ exportCsvLauncher = registerForActivityResult(
     private void saveCurrentTab() {
         prefs.edit().putInt(KEY_CURRENT_TAB, currentTab).apply();
     }
-
-    // Deleted savePageTitles
 
     private void showFilterListsDialog() {
         EditText input = new EditText(this);
@@ -1897,7 +1804,6 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     private void showFilterListOptions() {
-        // Removed hardcoded EasyLists and added a Custom URL option
         String[] options = {"View Subscriptions", "Add Custom Filter List", "Update All Subscriptions"};
         
         new AlertDialog.Builder(this)
@@ -1907,7 +1813,7 @@ exportCsvLauncher = registerForActivityResult(
                         showSubscribedFilterLists();
                         
                     } else if (which == 1) {
-                        // Create an input box for custom URLs
+                        
                         android.widget.EditText input = new android.widget.EditText(this);
                         input.setHint("https://...");
                         
@@ -1921,7 +1827,6 @@ exportCsvLauncher = registerForActivityResult(
                                         saveFilterLists(); // Save URL to SharedPreferences
                                         Toast.makeText(this, "Downloading list...", Toast.LENGTH_SHORT).show();
                                         
-                                        // Safely download and inject to RAM via the Engine
                                         AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
                                     }
                                 })
@@ -1929,13 +1834,12 @@ exportCsvLauncher = registerForActivityResult(
                                 .show();
                                 
                     } else if (which == 2) {
-                        // Update existing lists without duplicating download logic
+                        
                         if (filterLists.isEmpty()) {
                             Toast.makeText(this, "No lists to update", Toast.LENGTH_SHORT).show();
                         } else {
                             Toast.makeText(this, "Updating filter lists in background...", Toast.LENGTH_SHORT).show();
                             
-                            // Safely download and inject to RAM via the Engine
                             AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
                         }
                     }
@@ -2076,7 +1980,7 @@ exportCsvLauncher = registerForActivityResult(
 
     public void updateTabBadgeCount() {
         if (tabBadgeButton != null && tabs != null) {
-            // Run on UI thread to guarantee instant rendering updates
+           
             runOnUiThread(() -> {
                 tabBadgeButton.setText(String.valueOf(tabs.size()));
             });
@@ -2099,7 +2003,7 @@ exportCsvLauncher = registerForActivityResult(
         int count = 0;
 
         if (dbHelper != null) {
-            // 🚀 Search directly through the SQLite history
+           
             java.util.List<String[]> recentHistory = dbHelper.getAllHistory();
             for (String[] entry : recentHistory) {
                 if (count >= 5) break;
@@ -2136,7 +2040,7 @@ exportCsvLauncher = registerForActivityResult(
                     addressBar.dismissDropDown();
                 }
             } else if (addressBar != null) {
-                // Post a safe attempt after layout if not attached yet.
+           
                 addressBar.post(() -> {
                     try {
                         if (addressBar.isAttachedToWindow()) {
@@ -2161,11 +2065,9 @@ exportCsvLauncher = registerForActivityResult(
         String currentUrl = webView.getUrl();
         String host = android.net.Uri.parse(currentUrl).getHost();
         if (host == null) return;
-        
-        // Strip www. so it perfectly matches your vault database
+                
         String cleanHost = host.toLowerCase().trim().replaceFirst("^www\\.", "");
-
-        // Ask the vault for this specific website's passwords
+        
         String accountsJson = secureCredentialManager.getAllAccountsForHost(cleanHost);
         
         if (accountsJson == null || accountsJson.equals("[]")) {
@@ -2175,8 +2077,7 @@ exportCsvLauncher = registerForActivityResult(
 
         try {
             org.json.JSONArray accountsArray = new org.json.JSONArray(accountsJson);
-            
-            // Build the Native UI Panel
+                        
             android.app.Dialog dialog = new android.app.Dialog(this);
             dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
             
@@ -2184,7 +2085,6 @@ exportCsvLauncher = registerForActivityResult(
             layout.setOrientation(android.widget.LinearLayout.VERTICAL);
             layout.setPadding(dp(16), dp(16), dp(16), dp(16));
             
-            // Sleek dark background with rounded corners
             android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
             bg.setColor(android.graphics.Color.parseColor("#1F1F1F"));
             bg.setCornerRadius(dp(12));
@@ -2205,7 +2105,6 @@ exportCsvLauncher = registerForActivityResult(
                 String user = acc.optString("username", "");
                 String pass = acc.optString("password", "");
 
-                // Copy Username Button
                 android.widget.Button userBtn = new android.widget.Button(this);
                 userBtn.setText("Copy ID: " + user);
                 userBtn.setAllCaps(false);
@@ -2217,7 +2116,6 @@ exportCsvLauncher = registerForActivityResult(
                 });
                 layout.addView(userBtn);
 
-                // Copy Password Button
                 android.widget.Button passBtn = new android.widget.Button(this);
                 passBtn.setText("Copy Password");
                 passBtn.setAllCaps(false);
@@ -2237,17 +2135,16 @@ exportCsvLauncher = registerForActivityResult(
             }
 
             dialog.setContentView(layout);
-            
-            // Force the dialog to snap to the Top-Right of the screen, just like a menu!
+
             android.view.Window window = dialog.getWindow();
             if (window != null) {
                 window.setGravity(android.view.Gravity.TOP | android.view.Gravity.END);
                 android.view.WindowManager.LayoutParams params = window.getAttributes();
-                params.x = dp(10); // Margin from the right edge
-                params.y = dp(70); // Margin from the top edge (clears the address bar)
+                params.x = dp(10);
+                params.y = dp(70);
                 window.setAttributes(params);
                 window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND); // Don't darken the web page
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             }
             
             dialog.show();
@@ -2261,7 +2158,6 @@ exportCsvLauncher = registerForActivityResult(
         String input = addressBar.getText().toString().trim();
         if (input.isEmpty()) return;
 
-        // Hide keyboard immediately to keep the UI snappy
         android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) imm.hideSoftInputFromWindow(addressBar.getWindowToken(), 0);
         addressBar.clearFocus();
@@ -2361,7 +2257,6 @@ public void triggerExternalDownload(String url, String mimeType) {
         String host = android.net.Uri.parse(activeWebView.getUrl()).getHost();
         if (host == null) return;
 
-        // 🛠️ THE FIX: Explicitly target the "browser_prefs" database
         android.content.SharedPreferences syncPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
         
         java.util.Set<String> desktopSites = new java.util.HashSet<>(
@@ -2376,7 +2271,6 @@ public void triggerExternalDownload(String url, String mimeType) {
             android.widget.Toast.makeText(this, "Desktop mode for " + host, android.widget.Toast.LENGTH_SHORT).show();
         }
 
-        // 🛠️ Save to the correct database
         syncPrefs.edit().putStringSet("desktop_sites", desktopSites).apply();
         
         if (desktopSites.contains(host)) {
@@ -2390,25 +2284,21 @@ public void triggerExternalDownload(String url, String mimeType) {
         activeWebView.reload();
     }
 
-// Phishing & Typosquatting Detection Engine
     private boolean isPhishingRisk(String host) {
         if (host == null) return false;
         String clean = host.toLowerCase().trim();
         if (clean.startsWith("www.")) clean = clean.substring(4);
-        
-        // Protect high-value targets from lookalikes
+
         String[] protectedDomains = {"google.com", "paypal.com", "facebook.com", "amazon.com", "netflix.com", "github.com"};
         
         for (String target : protectedDomains) {
             if (clean.equals(target)) return false; // Exact match is perfectly safe
-            
-            // Check if the domain is a subtle lookalike variance
+
             int distance = getLevenshteinDistance(clean, target);
             if (distance > 0 && distance <= 2) {
-                return true; // Dangerously close variation detected!
+                return true;
             }
 
-            // Check for malicious subdomains or hyphenated fakes (e.g., secure-paypal.com)
             if (clean.contains(target.replace(".com", "")) && !clean.endsWith("." + target) && !clean.equals(target)) {
                 return true; 
             }
@@ -2438,7 +2328,7 @@ public void triggerExternalDownload(String url, String mimeType) {
             
             runOnUiThread(() -> {
                 if (secureCredentialManager != null) {
-                    // Get the current URL to save it to the right domain
+                    
                     String currentUrl = "";
                     if (currentTab >= 0 && currentTab < tabs.size()) {
                         android.webkit.WebView activeWebView = tabs.get(currentTab);
@@ -2449,7 +2339,7 @@ public void triggerExternalDownload(String url, String mimeType) {
                     
                     if (!currentUrl.isEmpty()) {
                         String host = android.net.Uri.parse(currentUrl).getHost();
-                        // Trigger the secure save!
+                        
                         secureCredentialManager.saveCredentials(host, username, password);
                         android.widget.Toast.makeText(MainActivity.this, "Password Autosaved for: " + host, android.widget.Toast.LENGTH_SHORT).show();
                     }
