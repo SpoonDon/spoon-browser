@@ -2032,9 +2032,7 @@ exportCsvLauncher = registerForActivityResult(
     }
 
     private void showHome() {
-        // High-Performance Lazy Initialization String Caching (Preserved!)
         if (cachedHomeHtml == null) {
-            // Check screen width once during initialization natively
             float widthDp = getResources().getConfiguration().screenWidthDp;
 
             StringBuilder sb = new StringBuilder();
@@ -2043,7 +2041,6 @@ exportCsvLauncher = registerForActivityResult(
               .append("<div style='padding-top:20%;'>")
               .append("<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>");
 
-            // Only add the input block to the cached memory string if it's a tablet
             if (widthDp >= 600) {
                 sb.append("<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>");
             }
@@ -2051,7 +2048,12 @@ exportCsvLauncher = registerForActivityResult(
             sb.append("</div>")
               .append("<script>")
               .append("function goSearch(){")
-              .append("  var q=document.getElementById(\"q\").value;")
+              .append("  var inputEl = document.getElementById('q');")
+              .append("  var q = inputEl.value;")
+              .append("  if(!q) return;")
+              .append("  inputEl.blur();")
+              .append("  inputEl.value = '';")
+              .append("  inputEl.placeholder = 'Searching...';")
               .append("  window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);")
               .append("}")
               .append("var inputEl = document.getElementById('q');")
@@ -2065,7 +2067,6 @@ exportCsvLauncher = registerForActivityResult(
 
             cachedHomeHtml = sb.toString();
         }
-
 
         WebView wv = getCurrentWebView();
         if (wv != null) {
