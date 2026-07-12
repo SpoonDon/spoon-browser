@@ -85,7 +85,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int MAX_HISTORY = 500;
 
     AutoCompleteTextView addressBar;
-    private ArrayAdapter<String> addressBarAdapter;
+    private SuggestionAdapter addressBarAdapter;
     private String cachedHomeHtml = null;
     LinearLayout root;
     LinearLayout browserContainer;
@@ -1988,8 +1988,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateAddressBarSuggestions(String query) {
-        addressBarAdapter.clear();
         if (query == null || query.trim().isEmpty()) {
+            addressBarAdapter.clear();
+            addressBarAdapter.notifyDataSetChanged();
             try {
                 if (addressBar != null && addressBar.isAttachedToWindow()) {
                     addressBar.dismissDropDown();
@@ -1998,59 +1999,73 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        String lower = query.toLowerCase();
-        java.util.HashSet<String> seen = new java.util.HashSet<>();
-        int count = 0;
+        if (dbHelper == null) return;
 
-        if (dbHelper != null) {
-           
-            java.util.List<String[]> recentHistory = dbHelper.getAllHistory();
-            for (String[] entry : recentHistory) {
-                if (count >= 5) break;
-                
-                String url = entry[0];
-                if (url == null) continue;
+        backgroundExecutor.execute(() -> {
+            java.util.List<String[]> rawResults = dbHelper.getMatchingHistory(query); 
+            
+            java.util.List<Suggestion> cleanSuggestions = new java.util.ArrayList<>();
+            java.util.Set<String> addedUrls = new java.util.HashSet<>();
+            java.util.Set<String> addedHosts = new java.util.HashSet<>();
 
-                String host = null;
+            for (String[] row : rawResults) {
+                String rawUrl = row[0];
                 try {
-                    host = android.net.Uri.parse(url).getHost();
-                    if (host != null && host.startsWith("www.")) {
-                        host = host.substring(4);
+                    android.net.Uri uri = android.net.Uri.parse(rawUrl);
+                    String host = uri.getHost();
+                    if (host != null) {
+                        String cleanHost = host.replaceFirst("^www\\.", "");
+                        if (cleanHost.toLowerCase().contains(query.toLowerCase()) && !addedHosts.contains(cleanHost)) {
+                            cleanSuggestions.add(new Suggestion(cleanHost, cleanHost));
+                            addedHosts.add(cleanHost);
+                            addedUrls.add(cleanHost);
+                        }
                     }
                 } catch (Exception ignored) {}
-
-                boolean matchesUrl = url.toLowerCase().contains(lower);
-                boolean matchesHost = host != null && host.toLowerCase().contains(lower);
-
-                if (!matchesUrl && !matchesHost) continue;
-                if (!seen.add(url)) continue;
-
-                addressBarAdapter.add(url);
-                count++;
             }
-        }
 
-        addressBarAdapter.notifyDataSetChanged();
-
-        try {
-            if (addressBar != null && addressBar.isAttachedToWindow()) {
-                if (addressBarAdapter.getCount() > 0) {
-                    addressBar.showDropDown();
-                } else {
-                    addressBar.dismissDropDown();
+            int deepLinkLimit = 3; 
+            int currentDeepLinks = 0;
+            
+            for (String[] row : rawResults) {
+                if (currentDeepLinks >= deepLinkLimit) break;
+                
+                String rawUrl = row[0];
+                String title = (row[1] != null && !row[1].isEmpty()) ? row[1] : rawUrl;
+                String displayUrl = rawUrl.replaceFirst("^https?://(www\\.)?", "");
+                
+                if (!addedUrls.contains(displayUrl) && !addedHosts.contains(displayUrl)) {
+                    cleanSuggestions.add(new Suggestion(title, displayUrl));
+                    addedUrls.add(displayUrl);
+                    currentDeepLinks++;
                 }
-            } else if (addressBar != null) {
-           
-                addressBar.post(() -> {
-                    try {
-                        if (addressBar.isAttachedToWindow()) {
-                            if (addressBarAdapter.getCount() > 0) addressBar.showDropDown();
-                            else addressBar.dismissDropDown();
-                        }
-                    } catch (Exception ignored) {}
-                });
             }
-        } catch (Exception ignored) {}
+
+            runOnUiThread(() -> {
+                addressBarAdapter.clear();
+                addressBarAdapter.addAll(cleanSuggestions);
+                addressBarAdapter.notifyDataSetChanged();
+
+                try {
+                    if (addressBar != null && addressBar.isAttachedToWindow()) {
+                        if (addressBarAdapter.getCount() > 0) {
+                            addressBar.showDropDown();
+                        } else {
+                            addressBar.dismissDropDown();
+                        }
+                    } else if (addressBar != null) {
+                        addressBar.post(() -> {
+                            try {
+                                if (addressBar.isAttachedToWindow()) {
+                                    if (addressBarAdapter.getCount() > 0) addressBar.showDropDown();
+                                    else addressBar.dismissDropDown();
+                                }
+                            } catch (Exception ignored) {}
+                        });
+                    }
+                } catch (Exception ignored) {}
+            });
+        });
     }
 
     private void showVaultForCurrentSite() {
