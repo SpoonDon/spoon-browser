@@ -1241,26 +1241,33 @@ exportCsvLauncher = registerForActivityResult(
                 
                 try {
                     String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
+                    String lowerUrl = url.toLowerCase();
+
+                    boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf")) ||
+                                            lowerUrl.contains(".pdf") ||
+                                            (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
+
+                    if (targetFileName.endsWith(".bin") || targetFileName.equals("downloadfile")) {
+                        if (isActuallyPdf) {
+                            targetFileName = targetFileName.replace(".bin", "").replace("downloadfile", "download") + ".pdf";
+                        } else {
+                            String extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
+                            if (extension != null) {
+                                targetFileName = targetFileName.replace(".bin", "").replace("downloadfile", "download") + "." + extension;
+                            }
+                        }
+                    }
+
+                    if (isActuallyPdf && !targetFileName.toLowerCase().endsWith(".pdf")) {
+                        targetFileName += ".pdf";
+                    }
 
                     if (targetFileName.startsWith(".")) {
                         targetFileName = targetFileName.substring(1) + ".txt";
                     }
 
-                    String lowerUrl = url.toLowerCase();
                     if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
                     if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
-
-                    boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf")) ||
-                                            (url.toLowerCase().contains(".pdf")) ||
-                                            (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
-
-                    if (isActuallyPdf) {
-                        if (targetFileName.endsWith(".bin")) {
-                            targetFileName = targetFileName.substring(0, targetFileName.length() - 4) + ".pdf";
-                        } else if (!targetFileName.toLowerCase().endsWith(".pdf")) {
-                            targetFileName += ".pdf";
-                        }
-                    }
 
                     targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
 
