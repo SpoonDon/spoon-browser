@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout 
+<RelativeLayout 
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#121212">
@@ -10,9 +9,9 @@
         android:id="@+id/tabTitleBar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
+        android:layout_alignParentTop="true"
         android:background="#1f1f1f"
-        android:paddingHorizontal="16dp"
-        app:layout_topToTopOf="parent">
+        android:paddingHorizontal="16dp">
 
         <TextView
             android:layout_width="wrap_content"
@@ -26,23 +25,14 @@
 
     </RelativeLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/tabsRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:clipToPadding="false"
-        android:padding="12dp"
-        app:layout_bottomToTopOf="@+id/tabBottomBar"
-        app:layout_constraintTop_toBottomOf="@+id/tabTitleBar" />
-
     <LinearLayout
         android:id="@+id/tabBottomBar"
         android:layout_width="match_parent"
         android:layout_height="60dp"
+        android:layout_alignParentBottom="true"
         android:background="#1f1f1f"
         android:orientation="horizontal"
-        android:weightSum="2"
-        app:layout_bottomtoBottomOf="parent">
+        android:weightSum="2">
 
         <Button
             android:id="@+id/btnNewTab"
@@ -71,4 +61,13 @@
 
     </LinearLayout>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/tabsRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@id/tabTitleBar"
+        android:layout_above="@id/tabBottomBar"
+        android:clipToPadding="false"
+        android:padding="12dp" />
+
+</RelativeLayout>
