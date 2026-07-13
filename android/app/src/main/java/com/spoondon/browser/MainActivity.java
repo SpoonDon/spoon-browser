@@ -772,10 +772,10 @@ public class MainActivity extends AppCompatActivity {
         });
 
         prevTabButton.setOnClickListener(v -> {
-            if (tabs.size() > 1) {
-                int previous = currentTab - 1;
-                if (previous < 0) {
-                    previous = tabs.size() - 1;
+            if (tabList.size() > 1) {    
+                int previous = currentTabPosition - 1;    
+                if (previous < 0) {        
+                    previous = tabList.size() - 1;    
                 }
                 switchToTab(previous);
             }
@@ -783,7 +783,7 @@ public class MainActivity extends AppCompatActivity {
 
         nextTabButton.setOnClickListener(v -> {
             if (tabs.size() > 1) {
-                int next = (currentTab + 1) % tabs.size();
+                int next = (currentTabPosition + 1) % tabList.size();
                 switchToTab(next);
             }
         });
@@ -1002,7 +1002,7 @@ public class MainActivity extends AppCompatActivity {
             newTabButton.setVisibility(View.GONE);
 
             tabBadgeButton = new Button(this);
-            int tabCount = (tabs != null) ? tabs.size() : 1;
+            int tabCount = (tabList != null) ? tabList.size() : 1;
             tabBadgeButton.setText(String.valueOf(tabCount));
             tabBadgeButton.setTextColor(Color.WHITE);
             tabBadgeButton.setTextSize(12); // Slightly lowered font size to sit comfortably inside the box
@@ -1351,12 +1351,12 @@ public class MainActivity extends AppCompatActivity {
             
             createNewTab(); 
             
-            android.webkit.WebView newTab = tabs.get(currentTab);
+            android.webkit.WebView newTab = tabList.get(currentTabPosition).getWebView();
             
             newTab.loadUrl(url);
             
             if (tabBadgeButton != null) {
-                tabBadgeButton.setText(String.valueOf(tabs.size()));
+                tabBadgeButton.setText(String.valueOf(tabList.size()));
             }
             
             android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
@@ -1443,13 +1443,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateTabIndicator() {
         if (tabIndicator != null) {
-            tabIndicator.setText((currentTab + 1) + "/" + tabList.size());
+            tabIndicator.setText((currentTabPosition + 1) + "/" + tabList.size());
         }
     }
 
     private ArrayList<BrowserItem> buildTabItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
-        for (WebView webView : tabs) {
+        for (TabState tabState : tabList) {    
+            WebView webView = tabState.getWebView();
             if (webView == null) continue;
             String url = webView.getUrl();
             String title = webView.getTitle();
@@ -1546,12 +1547,7 @@ public class MainActivity extends AppCompatActivity {
 
         new android.app.AlertDialog.Builder(this).setTitle("Global History").setView(listView).show();
     }
-    
-    WebView getCurrentWebView() {
-        if (tabs.isEmpty() || currentTab < 0 || currentTab >= tabs.size()) return null;
-        return tabs.get(currentTab);
-    }
-
+  
     private void openUrl(String url) {
         WebView wv = getCurrentWebView();
         if (wv != null) wv.loadUrl(url);
@@ -1785,7 +1781,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void saveOpenTabs() {
         ArrayList<String> safeUrls = new ArrayList<>();
-        for (WebView tab : tabs) {
+        for (TabState tabState : tabList) {    
+            WebView webView = tabState.getWebView();
             String url = tab.getUrl();
             if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
                 safeUrls.add(url);
@@ -1798,7 +1795,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveCurrentTab() {
-        prefs.edit().putInt(KEY_CURRENT_TAB, currentTab).apply();
+        prefs.edit().putInt(KEY_CURRENT_TAB, currentTabPosition).apply();
     }
 
     private void showFilterListsDialog() {
@@ -1904,7 +1901,7 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle("Spoon Browser")
                 .setMessage("Version: " + getAppVersion() + "\n"
                         + "Engine: WebView " + webViewVer + "\n\n"
-                        + "Tabs Open: " + tabs.size() 
+                        + "Tabs Open: " + tabList.size() 
                         + "\nBookmarks Saved: " + (dbHelper != null ? dbHelper.getBookmarkCount() : 0)
                         + "\nHistory Items: " + (dbHelper != null ? dbHelper.getHistoryCount() : 0)
                         + "\nAdblock Rules Loaded: " + AdBlockEngine.getBlocklistSize()
@@ -2003,7 +2000,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void updateTabBadgeCount() {
-        if (tabBadgeButton != null && tabs != null) {
+        if (tabBadgeButton != null && tabList != null) {
            
             runOnUiThread(() -> {
                 tabBadgeButton.setText(String.valueOf(tabList.size()));
@@ -2323,10 +2320,10 @@ public void triggerExternalDownload(String url, String mimeType) {
             .show();
     }
     
- private void toggleDesktopMode() {
-        if (currentTab < 0 || currentTab >= tabs.size()) return;
-        
-        android.webkit.WebView activeWebView = tabs.get(currentTab);
+ private void toggleDesktopMode() {        
+     if (currentTabPosition < 0 || currentTabPosition >= tabList.size()) return;
+     android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
+     
         if (activeWebView == null || activeWebView.getUrl() == null) return;
 
         String host = android.net.Uri.parse(activeWebView.getUrl()).getHost();
@@ -2405,8 +2402,8 @@ public void triggerExternalDownload(String url, String mimeType) {
                 if (secureCredentialManager != null) {
                     
                     String currentUrl = "";
-                    if (currentTab >= 0 && currentTab < tabs.size()) {
-                        android.webkit.WebView activeWebView = tabs.get(currentTab);
+                    if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {    
+                        android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
                         if (activeWebView != null && activeWebView.getUrl() != null) {
                             currentUrl = activeWebView.getUrl();
                         }
