@@ -1401,13 +1401,20 @@ public class MainActivity extends AppCompatActivity {
 
     private void closeTab(int index) {
         if (tabList.size() == 1) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                android.webkit.CookieManager.getInstance().flush();
-            }
-            if (prefs != null) {
-                prefs.edit().remove("open_tabs").remove("current_tab").apply();
-            }
-            finishAndRemoveTask();
+            new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Close Spoon Browser?")
+                .setMessage("Closing the last tab will exit the app. Do you want to continue?")
+                .setPositiveButton("Exit", (dialog, which) -> {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                        android.webkit.CookieManager.getInstance().flush();
+                    }
+                    if (prefs != null) {
+                        prefs.edit().remove("open_tabs").remove("current_tab").apply();
+                    }
+                    finishAndRemoveTask();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
             return;
         }
 
@@ -1495,9 +1502,18 @@ public class MainActivity extends AppCompatActivity {
                 tabSwitcherOverlay.setOnApplyWindowInsetsListener((v, insets) -> {
                     android.view.View titleBar = v.findViewById(R.id.tabTitleBar);
                     if (titleBar != null) {
+                        int statusBarHeight = insets.getSystemWindowInsetTop();
+                        
+                        // 1. Increase the height of the bar to accommodate the status bar
+                        android.view.ViewGroup.LayoutParams params = titleBar.getLayoutParams();
+                        // 56dp converted to pixels + status bar height
+                        params.height = (int) (56 * getResources().getDisplayMetrics().density) + statusBarHeight;
+                        titleBar.setLayoutParams(params);
+
+                        // 2. Apply the padding so the text stays centered in the newly added space
                         titleBar.setPadding(
                             titleBar.getPaddingLeft(), 
-                            insets.getSystemWindowInsetTop(), 
+                            statusBarHeight, 
                             titleBar.getPaddingRight(), 
                             titleBar.getPaddingBottom()
                         );
