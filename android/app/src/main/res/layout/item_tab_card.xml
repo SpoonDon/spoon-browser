@@ -9,33 +9,24 @@
     app:cardCornerRadius="12dp"
     app:cardElevation="4dp">
 
-    <androidx.constraintlayout.widget.ConstraintLayout
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
-
-        <ImageView
-            android:id="@+id/imgTabThumbnail"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:background="#000000"
-            android:scaleType="centerCrop"
-            app:layout_bottomToTopOf="@+id/layoutTabMeta"
-            app:layout_constraintTop_toTopOf="parent" />
 
         <RelativeLayout
             android:id="@+id/layoutTabMeta"
             android:layout_width="match_parent"
             android:layout_height="48dp"
+            android:layout_alignParentBottom="true"
             android:background="#2d2d2d"
-            android:paddingHorizontal="8dp"
-            app:layout_bottomtoBottomOf="parent">
+            android:paddingHorizontal="8dp">
 
             <TextView
                 android:id="@+id/txtTabTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_toStartOf="@+id/btnCloseTab"
-                android:layout_centerInParent="true"
+                android:layout_centerVertical="true"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:text="New Tab"
@@ -47,7 +38,7 @@
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:layout_alignParentEnd="true"
-                android:layout_centerInParent="true"
+                android:layout_centerVertical="true"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Close Tab"
                 android:src="@android:drawable/ic_menu_close_clear_cancel"
@@ -55,6 +46,14 @@
 
         </RelativeLayout>
 
-    </androidx.constraintlayout.widget.ConstraintLayout>
+        <ImageView
+            android:id="@+id/imgTabThumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_above="@id/layoutTabMeta"
+            android:background="#000000"
+            android:scaleType="centerCrop" />
+
+    </RelativeLayout>
 
 </androidx.cardview.widget.CardView>
