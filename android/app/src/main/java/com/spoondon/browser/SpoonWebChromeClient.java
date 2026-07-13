@@ -84,7 +84,8 @@ public class SpoonWebChromeClient extends WebChromeClient {
             ? origin.getHost().toLowerCase(Locale.ROOT) 
             : "";
 
-        List<String> allowedResources = new ArrayList<>();
+        List<String> autoGrantResources = new ArrayList<>();
+        List<String> osPermissionsToRequest = new ArrayList<>();
 
         for (String resource : request.getResources()) {
             if (resource.equals(PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID)) {
@@ -92,16 +93,47 @@ public class SpoonWebChromeClient extends WebChromeClient {
                     host.endsWith("googlevideo.com") || 
                     host.endsWith("twitch.tv") || 
                     host.endsWith("googleusercontent.com") || 
-                    host.endsWith("spotify.com")) {
-                    allowedResources.add(resource);
+                    host.contains("spotify.com")) {
+                    autoGrantResources.add(resource);
                 }
+            } else if (resource.equals(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) {
+                osPermissionsToRequest.add(android.Manifest.permission.CAMERA);
+            } else if (resource.equals(PermissionRequest.RESOURCE_AUDIO_CAPTURE)) {
+                osPermissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO);
             }
         }
 
-        if (!allowedResources.isEmpty()) {
-            request.grant(allowedResources.toArray(new String[0]));
+        if (!osPermissionsToRequest.isEmpty()) {
+            activity.currentPermissionRequest = request;
+            activity.requestWebPermissions(osPermissionsToRequest.toArray(new String[0]));
+        } else if (!autoGrantResources.isEmpty()) {
+            request.grant(autoGrantResources.toArray(new String[0]));
         } else {
             request.deny();
         }
+    }
+
+    @Override
+    public void onPermissionRequestCanceled(PermissionRequest request) {
+        if (activity.currentPermissionRequest == request) {
+            activity.currentPermissionRequest = null;
+        }
+    }
+
+    @Override
+    public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+        activity.currentGeolocationOrigin = origin;
+        activity.currentGeolocationCallback = callback;
+        
+        activity.requestWebPermissions(new String[]{
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        });
+    }
+
+    @Override
+    public void onGeolocationPermissionsHidePrompt() {
+        activity.currentGeolocationOrigin = null;
+        activity.currentGeolocationCallback = null;
     }
 }
