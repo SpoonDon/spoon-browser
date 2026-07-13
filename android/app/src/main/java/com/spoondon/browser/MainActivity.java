@@ -1418,7 +1418,14 @@ public class MainActivity extends AppCompatActivity {
             browserContainer.removeView(webView);
         }
         
+        // Critical: Remove from list FIRST to prevent index crashes
         tabList.remove(index);
+        
+        // Notify the visual grid to instantly animate the removal
+        if (tabAdapter != null) {
+            tabAdapter.notifyItemRemoved(index);
+            tabAdapter.notifyItemRangeChanged(index, tabList.size());
+        }
 
         webView.stopLoading();
         webView.setDownloadListener(null);
@@ -1476,7 +1483,8 @@ public class MainActivity extends AppCompatActivity {
             tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
 
             tabSwitcherOverlay.findViewById(R.id.btnNewTab).setOnClickListener(v -> {
-                createNewTab(); 
+                createNewTab();
+                showHome();
                 hideTabSwitcher();
             });
 
