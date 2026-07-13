@@ -1482,6 +1482,22 @@ public class MainActivity extends AppCompatActivity {
             tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
             tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
 
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
+                tabSwitcherOverlay.setOnApplyWindowInsetsListener((v, insets) -> {
+                    android.view.View titleBar = v.findViewById(R.id.tabTitleBar);
+                    if (titleBar != null) {
+                        titleBar.setPadding(
+                            titleBar.getPaddingLeft(), 
+                            insets.getSystemWindowInsetTop(), 
+                            titleBar.getPaddingRight(), 
+                            titleBar.getPaddingBottom()
+                        );
+                    }
+                    return insets;
+                });
+                tabSwitcherOverlay.requestApplyInsets();
+            }
+
             tabSwitcherOverlay.findViewById(R.id.btnNewTab).setOnClickListener(v -> {
                 createNewTab();
                 showHome();
