@@ -109,7 +109,7 @@ public class MainActivity extends AppCompatActivity {
     private androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher;
     public final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);           
     private SharedPreferences prefs;
-    private int currentTab = 0;
+    
     private boolean suppressSuggestions = false;
     private boolean clearSessionOnExit = false;
     private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
@@ -286,7 +286,7 @@ public class MainActivity extends AppCompatActivity {
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
-            if (tabs.isEmpty()) {
+            if (tabList.isEmpty()) {
                 createNewTab();
             }
             
@@ -400,10 +400,10 @@ public class MainActivity extends AppCompatActivity {
                 WebView webView = getCurrentWebView();
                 if (webView != null && webView.canGoBack()) {
                     webView.goBack();
-                } else if (tabs.size() > 1) {
+                } else if (tabList.size() > 1) {
                     new AlertDialog.Builder(MainActivity.this)
                             .setMessage("Close this tab?")
-                            .setPositiveButton("Close", (d, w) -> closeTab(currentTab))
+                            .setPositiveButton("Close", (d, w) -> closeTab(currentTabPosition))
                             .setNegativeButton("Cancel", null)
                             .show();
                 } else {
@@ -511,9 +511,10 @@ public class MainActivity extends AppCompatActivity {
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
             
-            String currentHost = "";
-            if (currentTab >= 0 && currentTab < tabs.size()) {
-                android.webkit.WebView activeWebView = tabs.get(currentTab);
+            String currentHost = "";        
+            if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {            
+                android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
+                
                 if (activeWebView != null && activeWebView.getUrl() != null) {
                     currentHost = android.net.Uri.parse(activeWebView.getUrl()).getHost();
                 }
@@ -1317,33 +1318,33 @@ public class MainActivity extends AppCompatActivity {
         return webView;
     }
         
-    private void createNewTab() {    
-        WebView webView = createConfiguredWebView();    
+    private void createNewTab() {
+        WebView webView = createConfiguredWebView();
         webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
-    
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {        
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);    
-        }    
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        }
         webView.setDrawingCacheEnabled(false);
-            
-        TabState newTab = new TabState(webView);    
-        tabList.add(newTab);    
+
+        // Wrap the new WebView in our memory-safe TabState model
+        TabState newTab = new TabState(webView);
+        tabList.add(newTab);
         currentTabPosition = tabList.size() - 1;
-    
-        if (browserContainer != null) {        
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(            
-                LinearLayout.LayoutParams.MATCH_PARENT,            
-                LinearLayout.LayoutParams.MATCH_PARENT        
-            );        
-        
-            webView.setVisibility(View.GONE);        
-            if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();        
+
+        if (browserContainer != null) {
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            );
+            
+            webView.setVisibility(View.GONE);
+            if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
             browserContainer.addView(webView, params);
-    
-        }    
-    
+        }
+        
         switchToTab(currentTabPosition);
-    }
+    }   
 
     public void openUrlInNewTab(String url) {
         runOnUiThread(() -> {
@@ -1362,44 +1363,42 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void switchToTab(int index) {    
+    private void switchToTab(int index) {
         if (tabList == null || index < 0 || index >= tabList.size()) return;
-    
-        currentTabPosition = index;    
-        // saveCurrentTab(); // Keep your existing methods    
-        // updateTabIndicator();    
-        // updateTabBadgeCount();
-    
-        if (browserContainer != null) {        
-            for (int i = 0; i < tabList.size(); i++) {            
-                WebView wv = tabList.get(i).getWebView();            
-                if (wv != null) {                
-                    if (i == index) {                    
-                        wv.setVisibility(View.VISIBLE);                    
-                        wv.onResume();                    
-                        wv.resumeTimers();                    
-                    
-                        String url = wv.getUrl();                    
-                        if (addressBar != null) {                        
-                            addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);                    
-                        }                
-                    } else {                    
-                        wv.setVisibility(View.GONE);                    
-                        wv.onPause();                
-                    }            
-                }        
-            }    
-        }   
 
+        currentTabPosition = index;
+        saveCurrentTab(); 
+        
+        // Note: Make sure these two methods use tabList.size() inside them now!
+        updateTabIndicator(); 
+        updateTabBadgeCount();
+
+        if (browserContainer != null) {
+            for (int i = 0; i < tabList.size(); i++) {
+                WebView wv = tabList.get(i).getWebView();
+                if (wv != null) {
+                    if (i == index) {
+                        wv.setVisibility(View.VISIBLE);
+                        wv.onResume();
+                        wv.resumeTimers();
+                        
+                        String url = wv.getUrl();
+                        if (addressBar != null) {
+                            addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
+                        }
+                    } else {
+                        wv.setVisibility(View.GONE);
+                        wv.onPause();
+                    }
+                }
+            }
+        }
         if (addressBar != null) {
             try {
-                if (addressBar.isAttachedToWindow()) {
-                    addressBar.dismissDropDown();
-                }
+                if (addressBar.isAttachedToWindow()) addressBar.dismissDropDown();
             } catch (Exception ignored) {}
             addressBar.clearFocus();
         }
-
     }
 
     private void closeTab(int index) {
@@ -1420,6 +1419,9 @@ public class MainActivity extends AppCompatActivity {
         if (browserContainer != null) {
             browserContainer.removeView(webView);
         }
+        
+        // Critical: Remove from list FIRST to prevent index crashes
+        tabList.remove(index);
 
         webView.stopLoading();
         webView.setDownloadListener(null);
@@ -1430,23 +1432,18 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl("about:blank");
         webView.removeAllViews();
         webView.destroy();
-
-        tab.destroy();
         
-        tabList.remove(index);
-
+        tab.destroy(); // Recycles your saved thumbnail Bitmaps!
+        
         if (currentTabPosition >= tabList.size()) {
-            currentTabPosition = tabList.size() - 1;
+            currentTabPosition = Math.max(0, tabList.size() - 1);
         }
-        
-        if (!tabList.isEmpty()) {
-            switchToTab(currentTabPosition);
-        }
+        switchToTab(currentTabPosition);
     }
 
     private void updateTabIndicator() {
         if (tabIndicator != null) {
-            tabIndicator.setText((currentTab + 1) + "/" + tabs.size());
+            tabIndicator.setText((currentTab + 1) + "/" + tabList.size());
         }
     }
 
@@ -1998,10 +1995,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    private WebView getCurrentWebView() {   
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {        
-            return tabList.get(currentTabPosition).getWebView();    
-        }    
+    private WebView getCurrentWebView() {
+        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
+            return tabList.get(currentTabPosition).getWebView();
+        }
         return null;
     }
 
@@ -2009,7 +2006,7 @@ public class MainActivity extends AppCompatActivity {
         if (tabBadgeButton != null && tabs != null) {
            
             runOnUiThread(() -> {
-                tabBadgeButton.setText(String.valueOf(tabs.size()));
+                tabBadgeButton.setText(String.valueOf(tabList.size()));
             });
         }
     }
