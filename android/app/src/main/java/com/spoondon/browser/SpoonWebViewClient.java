@@ -58,6 +58,14 @@ public class SpoonWebViewClient extends WebViewClient {
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
         String url = request.getUrl().toString();
 
+        if (url.startsWith("spoonsearch://")) {
+            try {
+                String query = java.net.URLDecoder.decode(url.substring(14), "UTF-8");
+                view.loadUrl("https://search.brave.com/search?q=" + android.net.Uri.encode(query));
+            } catch (Exception ignored) {}
+            return true;
+        }
+
         if (url.contains(" ") && (url.contains("http://") || url.contains("https://"))) {
             int httpIndex = url.indexOf("http");
             if (httpIndex != -1) {
@@ -103,7 +111,7 @@ public class SpoonWebViewClient extends WebViewClient {
 
         return false;
     }
-
+    
     @SuppressWarnings("deprecation")
     @Override
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
