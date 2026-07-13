@@ -1468,9 +1468,16 @@ public class MainActivity extends AppCompatActivity {
 
     private void showTabSwitcher() {
         
+        // 1. Capture the current page asynchronously before showing the grid
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             TabState currentTab = tabList.get(currentTabPosition);
-            currentTab.setThumbnail(captureWebViewSnapshot(currentTab.getWebView()));
+            captureWebViewSnapshotAsync(currentTab.getWebView(), bitmap -> {
+                currentTab.setThumbnail(bitmap);
+                // Force the card to instantly update with the new screenshot
+                if (tabAdapter != null) {
+                    tabAdapter.notifyItemChanged(currentTabPosition);
+                }
+            });
         }
 
         if (tabSwitcherOverlay == null) {
@@ -1481,6 +1488,8 @@ public class MainActivity extends AppCompatActivity {
 
             tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
             tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
+            tabsRecyclerView.setHasFixedSize(true);
+            tabsRecyclerView.setItemViewCacheSize(10);
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
                 tabSwitcherOverlay.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -2241,30 +2250,63 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private android.graphics.Bitmap captureWebViewSnapshot(android.webkit.WebView webView) {
+    private void captureWebViewSnapshotAsync(android.webkit.WebView webView, android.webkit.ValueCallback<android.graphics.Bitmap> callback) {
         if (webView == null || webView.getWidth() == 0 || webView.getHeight() == 0) {
-            return null;
+            callback.onReceiveValue(null);
+            return;
         }
-        
-        try {
 
-            int width = (int) (webView.getWidth() * 0.3);
-            int height = (int) (webView.getHeight() * 0.3);
+        try {
+            // Target size is 30% of the screen
+            int targetWidth = (int) (webView.getWidth() * 0.3f);
+            int targetHeight = (int) (webView.getHeight() * 0.3f);
             
-            if (width <= 0 || height <= 0) return null;
-            
+            if (targetWidth <= 0 || targetHeight <= 0) {
+                callback.onReceiveValue(null);
+                return;
+            }
+
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(targetWidth, targetHeight, android.graphics.Bitmap.Config.ARGB_8888);
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                // Modern, Hardware-Accelerated Capture (Zero UI Lag)
+                int[] location = new int[2];
+                webView.getLocationInWindow(location);
+                android.graphics.Rect rect = new android.graphics.Rect(
+                        location[0], 
+                        location[1],
+                        location[0] + webView.getWidth(), 
+                        location[1] + webView.getHeight()
+                );
+
+                android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+                android.view.PixelCopy.request(getWindow(), rect, bitmap, copyResult -> {
+                    if (copyResult == android.view.PixelCopy.SUCCESS) {
+                        callback.onReceiveValue(bitmap);
+                    } else {
+                        // Fallback if OS denies hardware capture
+                        fallbackCanvasCapture(webView, targetWidth, targetHeight, callback);
+                    }
+                }, handler);
+            } else {
+                // Legacy device fallback
+                fallbackCanvasCapture(webView, targetWidth, targetHeight, callback);
+            }
+        } catch (Exception e) {
+            callback.onReceiveValue(null);
+        }
+    }
+
+    private void fallbackCanvasCapture(android.webkit.WebView webView, int width, int height, android.webkit.ValueCallback<android.graphics.Bitmap> callback) {
+        try {
             android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
             android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
-            
             canvas.scale(0.3f, 0.3f);
             webView.draw(canvas);
-            
-            return bitmap;
-        } catch (OutOfMemoryError e) {
+            callback.onReceiveValue(bitmap);
+        } catch (OutOfMemoryError | Exception e) {
             System.gc();
-            return null;
-        } catch (Exception e) {
-            return null;
+            callback.onReceiveValue(null);
         }
     }
     
