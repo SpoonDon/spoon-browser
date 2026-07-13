@@ -782,7 +782,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         nextTabButton.setOnClickListener(v -> {
-            if (tabs.size() > 1) {
+            if (tabList.size() > 1) {
                 int next = (currentTabPosition + 1) % tabList.size();
                 switchToTab(next);
             }
@@ -1327,7 +1327,6 @@ public class MainActivity extends AppCompatActivity {
         }
         webView.setDrawingCacheEnabled(false);
 
-        // Wrap the new WebView in our memory-safe TabState model
         TabState newTab = new TabState(webView);
         tabList.add(newTab);
         currentTabPosition = tabList.size() - 1;
@@ -1369,7 +1368,6 @@ public class MainActivity extends AppCompatActivity {
         currentTabPosition = index;
         saveCurrentTab(); 
         
-        // Note: Make sure these two methods use tabList.size() inside them now!
         updateTabIndicator(); 
         updateTabBadgeCount();
 
@@ -1420,7 +1418,6 @@ public class MainActivity extends AppCompatActivity {
             browserContainer.removeView(webView);
         }
         
-        // Critical: Remove from list FIRST to prevent index crashes
         tabList.remove(index);
 
         webView.stopLoading();
@@ -1433,7 +1430,7 @@ public class MainActivity extends AppCompatActivity {
         webView.removeAllViews();
         webView.destroy();
         
-        tab.destroy(); // Recycles your saved thumbnail Bitmaps!
+        tab.destroy();
         
         if (currentTabPosition >= tabList.size()) {
             currentTabPosition = Math.max(0, tabList.size() - 1);
@@ -1463,13 +1460,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTabSwitcher() {
-        // 1. Capture the current page before showing the grid
+        
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             TabState currentTab = tabList.get(currentTabPosition);
             currentTab.setThumbnail(captureWebViewSnapshot(currentTab.getWebView()));
         }
 
-        // 2. Inflate the overlay layout if it hasn't been created yet
         if (tabSwitcherOverlay == null) {
             android.view.LayoutInflater inflater = android.view.LayoutInflater.from(this);
             android.view.ViewGroup root = findViewById(android.R.id.content);
@@ -1487,7 +1483,6 @@ public class MainActivity extends AppCompatActivity {
             tabSwitcherOverlay.findViewById(R.id.btnBackToBrowser).setOnClickListener(v -> hideTabSwitcher());
         }
 
-        // 3. Set up the adapter and display the grid
         tabAdapter = new TabAdapter(tabList, new TabAdapter.OnTabActionListener() {
             @Override
             public void onTabSelected(int position) {
@@ -1503,7 +1498,6 @@ public class MainActivity extends AppCompatActivity {
 
         tabsRecyclerView.setAdapter(tabAdapter);
         
-        // Hide the active browser layer and show the overlay
         if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
         tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
     }
@@ -1783,7 +1777,7 @@ public class MainActivity extends AppCompatActivity {
         ArrayList<String> safeUrls = new ArrayList<>();
         for (TabState tabState : tabList) {    
             WebView webView = tabState.getWebView();
-            String url = tab.getUrl();
+            String url = webView.getUrl();
             if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
                 safeUrls.add(url);
             }
@@ -1992,7 +1986,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-    private WebView getCurrentWebView() {
+    public WebView getCurrentWebView() {
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             return tabList.get(currentTabPosition).getWebView();
         }
@@ -2165,7 +2159,7 @@ public class MainActivity extends AppCompatActivity {
                 passBtn.setOnClickListener(v -> {
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("password", pass));
                     android.widget.Toast.makeText(this, "Password Copied", android.widget.Toast.LENGTH_SHORT).show();
-                    dialog.dismiss(); // Auto-close dialog after copying password so you can instantly paste
+                    dialog.dismiss();
                 });
                 layout.addView(passBtn);
             }
@@ -2229,7 +2223,7 @@ public class MainActivity extends AppCompatActivity {
         }
         
         try {
-            // Scale down to 30% to prevent OutOfMemory crashes
+
             int width = (int) (webView.getWidth() * 0.3);
             int height = (int) (webView.getHeight() * 0.3);
             
@@ -2243,7 +2237,7 @@ public class MainActivity extends AppCompatActivity {
             
             return bitmap;
         } catch (OutOfMemoryError e) {
-            System.gc(); // Force memory cleanup if we hit a limit
+            System.gc();
             return null;
         } catch (Exception e) {
             return null;
@@ -2364,7 +2358,7 @@ public void triggerExternalDownload(String url, String mimeType) {
         String[] protectedDomains = {"google.com", "paypal.com", "facebook.com", "amazon.com", "netflix.com", "github.com"};
         
         for (String target : protectedDomains) {
-            if (clean.equals(target)) return false; // Exact match is perfectly safe
+            if (clean.equals(target)) return false;
 
             int distance = getLevenshteinDistance(clean, target);
             if (distance > 0 && distance <= 2) {
@@ -2377,6 +2371,7 @@ public void triggerExternalDownload(String url, String mimeType) {
         }
         return false;
     }
+    
     private int getLevenshteinDistance(String s, String t) {
         if (s == null || t == null) return 0;
         int[] p = new int[s.length() + 1];
