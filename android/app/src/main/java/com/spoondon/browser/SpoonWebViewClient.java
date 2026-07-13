@@ -38,7 +38,10 @@ public class SpoonWebViewClient extends WebViewClient {
 
             if (host != null) {
                 String lowerHost = host.toLowerCase();
-                if (lowerHost.contains("youtube.com") || lowerHost.contains("googlevideo.com")) {
+                if (lowerHost.contains("youtube.com") || 
+                    lowerHost.contains("googlevideo.com") ||
+                    lowerHost.contains("search.brave.com") || 
+                    lowerHost.contains("duckduckgo.com")) {
                     return super.shouldInterceptRequest(view, request);
                 }
             }
@@ -57,6 +60,17 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
         String url = request.getUrl().toString();
+        return handleUrlLoading(view, url);
+    }
+    
+    @SuppressWarnings("deprecation")
+    @Override
+    public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
+        return handleUrlLoading(view, urlString);
+    }
+
+    private boolean handleUrlLoading(android.webkit.WebView view, String url) {
+        if (url == null) return false;
 
         if (url.startsWith("spoonsearch://")) {
             try {
@@ -66,11 +80,26 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
+        String cleanUrl = url.split("\\?")[0].split("#")[0].toLowerCase();
+        if (cleanUrl.matches(".*\\.(mp4|webm|mkv|avi|mov|flv|wmv|ts|png|jpg|jpeg|gif|webp|apk|zip|rar|7z|pdf|iso)$")) {
+            String mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(android.webkit.MimeTypeMap.getFileExtensionFromUrl(cleanUrl));
+            if (mime == null) mime = "application/octet-stream";
+            
+            activity.triggerManualDownload(url, mime);
+            return true;
+        }
+
+        if (url.startsWith("http://") && !url.contains("localhost") && !url.contains("10.0.2.2")) {
+            String secureUrl = url.replace("http://", "https://");
+            view.loadUrl(secureUrl);
+            return true;
+        }
+
         if (url.contains(" ") && (url.contains("http://") || url.contains("https://"))) {
             int httpIndex = url.indexOf("http");
             if (httpIndex != -1) {
-                String cleanUrl = url.substring(httpIndex).trim();
-                view.loadUrl(cleanUrl);
+                String finalUrl = url.substring(httpIndex).trim();
+                view.loadUrl(finalUrl);
                 return true; 
             }
         }
@@ -85,6 +114,7 @@ public class SpoonWebViewClient extends WebViewClient {
                     android.content.pm.ResolveInfo info = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
                     
                     if (info != null) {
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
                     } else {
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
@@ -101,52 +131,19 @@ public class SpoonWebViewClient extends WebViewClient {
 
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             try {
-                android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url));
-                view.getContext().startActivity(intent);
-                return true;
+                android.content.Intent intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME);
+                if (intent != null) {
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    view.getContext().startActivity(intent);
+                    return true;
+                }
             } catch (Exception e) {
+                android.widget.Toast.makeText(view.getContext(), "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show();
                 return true; 
             }
         }
 
         return false;
-    }
-    
-    @SuppressWarnings("deprecation")
-    @Override
-    public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
-        if (urlString == null) return false;
-
-        String cleanUrl = urlString.split("\\?")[0].split("#")[0].toLowerCase();
-        if (cleanUrl.matches(".*\\.(mp4|webm|mkv|avi|mov|flv|wmv|ts|png|jpg|jpeg|gif|webp|apk|zip|rar|7z|pdf|iso)$")) {
-            String mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(android.webkit.MimeTypeMap.getFileExtensionFromUrl(cleanUrl));
-            if (mime == null) mime = "application/octet-stream";
-            
-            activity.triggerManualDownload(urlString, mime);
-            return true;
-        }
-
-        if (urlString.startsWith("http://") && !urlString.contains("localhost") && !urlString.contains("10.0.2.2")) {
-            String secureUrl = urlString.replace("http://", "https://");
-            view.loadUrl(secureUrl);
-            return true;
-        }
-
-        if (urlString.startsWith("https://")) {
-            return false;
-        }
-        
-        try {
-            android.content.Intent intent = android.content.Intent.parseUri(urlString, android.content.Intent.URI_INTENT_SCHEME);
-            if (intent != null) {
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                view.getContext().startActivity(intent);
-                return true;
-            }
-        } catch (Exception e) {
-             android.widget.Toast.makeText(view.getContext(), "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show();
-        }
-        return true;
     }
   
     @Override
