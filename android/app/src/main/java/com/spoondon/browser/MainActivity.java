@@ -1186,6 +1186,7 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebChromeClient(new SpoonWebChromeClient(this));
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(new SpoonWebViewClient(this));
+        webView.setWebChromeClient(new SpoonWebChromeClient(MainActivity.this));
 
         BlobDownloader downloaderBridge = new BlobDownloader(this);
         webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
