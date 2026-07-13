@@ -1983,7 +1983,7 @@ public class MainActivity extends AppCompatActivity {
               .append("  inputEl.blur();")
               .append("  inputEl.value = '';")
               .append("  inputEl.placeholder = 'Searching...';")
-              .append("  window.location.href='https://duckduckgo.com/?q='+encodeURIComponent(q);")
+              .append("  window.location.href='spoonsearch://' + encodeURIComponent(q);")
               .append("}")
               .append("var inputEl = document.getElementById('q');")
               .append("if(inputEl) {")
