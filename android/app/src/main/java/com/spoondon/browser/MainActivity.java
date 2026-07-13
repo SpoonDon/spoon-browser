@@ -119,6 +119,12 @@ public class MainActivity extends AppCompatActivity {
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
     private final HashSet<String> blockedDomains = new HashSet<>();
     private final HashSet<String> rawFilterRules = new HashSet<>();
+    private java.util.List<TabState> tabList = new java.util.ArrayList<>();
+    private int currentTabPosition = -1;
+    private TabAdapter tabAdapter;
+    private android.view.View tabSwitcherOverlay;
+    private androidx.recyclerview.widget.RecyclerView tabsRecyclerView;    
+    private android.view.ViewGroup webViewContainer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
         exportCsvLauncher = registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),uri -> {
         if (uri != null && secureCredentialManager != null) {
             backgroundExecutor.execute(() -> {
@@ -2225,6 +2232,89 @@ public class MainActivity extends AppCompatActivity {
 
             runOnUiThread(() -> openUrl(url));
         });
+    }
+
+    private android.graphics.Bitmap captureWebViewSnapshot(android.webkit.WebView webView) {
+        if (webView == null || webView.getWidth() == 0 || webView.getHeight() == 0) {
+            return null;
+        }
+        
+        try {
+            // Scale down to 30% to prevent OutOfMemory crashes
+            int width = (int) (webView.getWidth() * 0.3);
+            int height = (int) (webView.getHeight() * 0.3);
+            
+            if (width <= 0 || height <= 0) return null;
+            
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+            
+            canvas.scale(0.3f, 0.3f);
+            webView.draw(canvas);
+            
+            return bitmap;
+        } catch (OutOfMemoryError e) {
+            System.gc(); // Force memory cleanup if we hit a limit
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void showTabSwitcher() {
+        // 1. Capture the current page before showing the grid
+        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
+            TabState currentTab = tabList.get(currentTabPosition);
+            currentTab.setThumbnail(captureWebViewSnapshot(currentTab.getWebView()));
+        }
+
+        // 2. Inflate the overlay layout if it hasn't been created yet
+        if (tabSwitcherOverlay == null) {
+            android.view.LayoutInflater inflater = android.view.LayoutInflater.from(this);
+            // Assuming your root layout in activity_main.xml has an ID, or attach it to android.R.id.content
+            android.view.ViewGroup root = findViewById(android.R.id.content);
+            tabSwitcherOverlay = inflater.inflate(R.layout.layout_tab_switcher, root, false);
+            root.addView(tabSwitcherOverlay);
+
+            tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
+            tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
+
+            tabSwitcherOverlay.findViewById(R.id.btnNewTab).setOnClickListener(v -> {
+                createNewTab("https://search.brave.com");
+                hideTabSwitcher();
+            });
+
+            tabSwitcherOverlay.findViewById(R.id.btnBackToBrowser).setOnClickListener(v -> hideTabSwitcher());
+        }
+
+        // 3. Set up the adapter and display the grid
+        tabAdapter = new TabAdapter(tabList, new TabAdapter.OnTabActionListener() {
+            @Override
+            public void onTabSelected(int position) {
+                switchToTab(position);
+                hideTabSwitcher();
+            }
+
+            @Override
+            public void onTabClosed(int position) {
+                closeTab(position);
+            }
+        });
+
+        tabsRecyclerView.setAdapter(tabAdapter);
+        
+        // Hide the active browser layer and show the overlay
+        if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
+        tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
+    }
+
+    private void hideTabSwitcher() {
+        if (tabSwitcherOverlay != null) {
+            tabSwitcherOverlay.setVisibility(android.view.View.GONE);
+        }
+        if (webViewContainer != null) {
+            webViewContainer.setVisibility(android.view.View.VISIBLE);
+        }
     }
     
 public void triggerExternalDownload(String url, String mimeType) {
