@@ -1464,62 +1464,49 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTabSwitcher() {
-        if (tabs == null || tabs.isEmpty()) return;
-
-        LinearLayout dialogContainer = new LinearLayout(this);
-        dialogContainer.setOrientation(LinearLayout.VERTICAL);
-        dialogContainer.setBackgroundColor(Color.parseColor("#141414"));
-        dialogContainer.setPadding(dp(16), dp(12), dp(16), dp(16));
-
-        TextView hintTextView = new TextView(this);
-        boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
-        hintTextView.setText(isTablet ? "💡 Tip: Long-press an item to close it / Tap to switch views" : "💡 Tip: Long-press a tab item to instantly close it");
-        hintTextView.setTextColor(Color.parseColor("#8A8A8A"));
-        hintTextView.setTextSize(13);
-        hintTextView.setGravity(Gravity.CENTER_HORIZONTAL);
-        hintTextView.setPadding(0, 0, 0, dp(14));
-        hintTextView.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
-        dialogContainer.addView(hintTextView);
-
-        ListView listView = new ListView(this);
-        listView.setDivider(new ColorDrawable(Color.parseColor("#252525")));
-        listView.setDividerHeight(dp(1));
-        dialogContainer.addView(listView);
-
-        ArrayList<String> tabTitles = new ArrayList<>();
-        for (WebView webView : tabs) {
-            String title = (webView != null) ? webView.getTitle() : null;
-            tabTitles.add((title == null || title.isEmpty()) ? (webView != null && webView.getUrl() != null ? webView.getUrl() : "New Tab") : title);
+        // 1. Capture the current page before showing the grid
+        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
+            TabState currentTab = tabList.get(currentTabPosition);
+            currentTab.setThumbnail(captureWebViewSnapshot(currentTab.getWebView()));
         }
 
-        ArrayAdapter<String> tabAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, tabTitles);
-        listView.setAdapter(tabAdapter);
+        // 2. Inflate the overlay layout if it hasn't been created yet
+        if (tabSwitcherOverlay == null) {
+            android.view.LayoutInflater inflater = android.view.LayoutInflater.from(this);
+            android.view.ViewGroup root = findViewById(android.R.id.content);
+            tabSwitcherOverlay = inflater.inflate(R.layout.layout_tab_switcher, root, false);
+            root.addView(tabSwitcherOverlay);
 
-        final AlertDialog dialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Active Tabs")
-                .setView(dialogContainer)
-                .create();
+            tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
+            tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
 
-        listView.setOnItemClickListener((parent, view, position, id) -> {
-            currentTab = position;
-            if (tabs != null && position < tabs.size()) switchToTab(position);
-            dialog.dismiss();
-        });
+            tabSwitcherOverlay.findViewById(R.id.btnNewTab).setOnClickListener(v -> {
+                createNewTab(); 
+                hideTabSwitcher();
+            });
 
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            if (tabs != null && position < tabs.size()) {
-                closeTab(position);
-                tabTitles.remove(position);
-                if (currentTab >= tabs.size()) currentTab = Math.max(0, tabs.size() - 1);
-                tabAdapter.notifyDataSetChanged();
-                if (!tabs.isEmpty()) switchToTab(currentTab);
+            tabSwitcherOverlay.findViewById(R.id.btnBackToBrowser).setOnClickListener(v -> hideTabSwitcher());
+        }
+
+        // 3. Set up the adapter and display the grid
+        tabAdapter = new TabAdapter(tabList, new TabAdapter.OnTabActionListener() {
+            @Override
+            public void onTabSelected(int position) {
+                switchToTab(position);
+                hideTabSwitcher();
             }
-            dialog.dismiss();
-            if (tabs != null && !tabs.isEmpty()) showTabSwitcher();
-            return true;
+
+            @Override
+            public void onTabClosed(int position) {
+                closeTab(position);
+            }
         });
 
-        dialog.show();
+        tabsRecyclerView.setAdapter(tabAdapter);
+        
+        // Hide the active browser layer and show the overlay
+        if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
+        tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
     }
 
     private void showHistoryDialog() {
@@ -2260,54 +2247,7 @@ public class MainActivity extends AppCompatActivity {
             return null;
         }
     }
-
-    private void showTabSwitcher() {
-        // 1. Capture the current page before showing the grid
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-            TabState currentTab = tabList.get(currentTabPosition);
-            currentTab.setThumbnail(captureWebViewSnapshot(currentTab.getWebView()));
-        }
-
-        // 2. Inflate the overlay layout if it hasn't been created yet
-        if (tabSwitcherOverlay == null) {
-            android.view.LayoutInflater inflater = android.view.LayoutInflater.from(this);
-            // Assuming your root layout in activity_main.xml has an ID, or attach it to android.R.id.content
-            android.view.ViewGroup root = findViewById(android.R.id.content);
-            tabSwitcherOverlay = inflater.inflate(R.layout.layout_tab_switcher, root, false);
-            root.addView(tabSwitcherOverlay);
-
-            tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
-            tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
-
-            tabSwitcherOverlay.findViewById(R.id.btnNewTab).setOnClickListener(v -> {
-                createNewTab("https://search.brave.com");
-                hideTabSwitcher();
-            });
-
-            tabSwitcherOverlay.findViewById(R.id.btnBackToBrowser).setOnClickListener(v -> hideTabSwitcher());
-        }
-
-        // 3. Set up the adapter and display the grid
-        tabAdapter = new TabAdapter(tabList, new TabAdapter.OnTabActionListener() {
-            @Override
-            public void onTabSelected(int position) {
-                switchToTab(position);
-                hideTabSwitcher();
-            }
-
-            @Override
-            public void onTabClosed(int position) {
-                closeTab(position);
-            }
-        });
-
-        tabsRecyclerView.setAdapter(tabAdapter);
-        
-        // Hide the active browser layer and show the overlay
-        if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
-        tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
-    }
-
+    
     private void hideTabSwitcher() {
         if (tabSwitcherOverlay != null) {
             tabSwitcherOverlay.setVisibility(android.view.View.GONE);
