@@ -2220,7 +2220,7 @@ public class MainActivity extends AppCompatActivity {
             } else if (input.contains(".") && !input.contains(" ")) {
                 url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
             } else {
-                url = "https://duckduckgo.com/?q=" + Uri.encode(input);
+                url = "https://search.brave.com/search?q=" + android.net.Uri.encode(input);
             }
 
             runOnUiThread(() -> openUrl(url));
