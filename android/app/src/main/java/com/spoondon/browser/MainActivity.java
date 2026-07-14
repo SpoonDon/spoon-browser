@@ -1185,8 +1185,10 @@ public class MainActivity extends AppCompatActivity {
         webSettings.setAllowUniversalAccessFromFileURLs(true);
 
         String currentUserAgent = webSettings.getUserAgentString();
-        if (currentUserAgent != null && currentUserAgent.contains("; wv")) {
-            webSettings.setUserAgentString(currentUserAgent.replace("; wv", ""));
+        if (currentUserAgent != null) {
+            currentUserAgent = currentUserAgent.replace("; wv", "");
+            currentUserAgent = currentUserAgent.replaceFirst("Version/[0-9.]+\\s", "");
+            webSettings.setUserAgentString(currentUserAgent);
         }
 
         android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
@@ -1486,12 +1488,19 @@ public class MainActivity extends AppCompatActivity {
         
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             TabState currentTab = tabList.get(currentTabPosition);
-            captureWebViewSnapshotAsync(currentTab.getWebView(), bitmap -> {
-                currentTab.setThumbnail(bitmap);
-                if (tabAdapter != null) {
-                    tabAdapter.notifyItemChanged(currentTabPosition);
-                }
-            });
+            android.webkit.WebView currentWv = currentTab.getWebView();
+            
+            if (currentWv != null) {
+                currentTab.setTitle(currentWv.getTitle() != null ? currentWv.getTitle() : "New Tab");
+                currentTab.setUrl(currentWv.getUrl() != null ? currentWv.getUrl() : "");
+                
+                captureWebViewSnapshotAsync(currentWv, bitmap -> {
+                    currentTab.setThumbnail(bitmap);
+                    if (tabAdapter != null) {
+                        tabAdapter.notifyItemChanged(currentTabPosition);
+                    }
+                });
+            }
         }
 
         if (tabSwitcherOverlay == null) {
@@ -1611,7 +1620,20 @@ public class MainActivity extends AppCompatActivity {
   
     private void openUrl(String url) {
         WebView wv = getCurrentWebView();
-        if (wv != null) wv.loadUrl(url);
+        if (wv != null) {
+            String query = url.trim();
+            if (query.isEmpty()) return;
+
+            if (android.util.Patterns.WEB_URL.matcher(query).matches() || (query.contains(".") && !query.contains(" "))) {
+                if (!query.startsWith("http://") && !query.startsWith("https://") && !query.startsWith("file://") && !query.startsWith("about:")) {
+                    query = "https://" + query;
+                }
+                wv.loadUrl(query);
+            } else {
+                String searchUrl = "https://www.google.com/search?q=" + android.net.Uri.encode(query);
+                wv.loadUrl(searchUrl);
+            }
+        }
     }
 
     private String getAppVersion() {
@@ -2523,6 +2545,21 @@ public void triggerExternalDownload(String url, String mimeType) {
     public void requestWebPermissions(String[] permissions) {
         if (webPermissionLauncher != null) {
             webPermissionLauncher.launch(permissions);
+        }
+    }
+
+    private void loadUrlOrSearch(String input) {
+        String query = input.trim();
+        if (query.isEmpty()) return;
+
+        if (android.util.Patterns.WEB_URL.matcher(query).matches() || (query.contains(".") && !query.contains(" "))) {
+            if (!query.startsWith("http://") && !query.startsWith("https://")) {
+                query = "https://" + query;
+            }
+            getCurrentWebView().loadUrl(query);
+        } else {
+            String searchUrl = "https://www.google.com/search?q=" + android.net.Uri.encode(query);
+            getCurrentWebView().loadUrl(searchUrl);
         }
     }
 }
