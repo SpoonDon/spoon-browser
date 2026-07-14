@@ -1479,19 +1479,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTabSwitcher() {
-
-        // Freeze background web execution (JavaScript, Video, GIFs)
-        WebView currentWv = getCurrentWebView();
+        android.webkit.WebView currentWv = getCurrentWebView();
         if (currentWv != null) {
             currentWv.pauseTimers(); 
         }
         
-        // 1. Capture the current page asynchronously before showing the grid
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             TabState currentTab = tabList.get(currentTabPosition);
             captureWebViewSnapshotAsync(currentTab.getWebView(), bitmap -> {
                 currentTab.setThumbnail(bitmap);
-                // Force the card to instantly update with the new screenshot
                 if (tabAdapter != null) {
                     tabAdapter.notifyItemChanged(currentTabPosition);
                 }
@@ -1504,25 +1500,14 @@ public class MainActivity extends AppCompatActivity {
             tabSwitcherOverlay = inflater.inflate(R.layout.layout_tab_switcher, root, false);
             root.addView(tabSwitcherOverlay);
 
-            tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
-            tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
-            tabsRecyclerView.setItemAnimator(null);
-            tabsRecyclerView.setHasFixedSize(true);
-            tabsRecyclerView.setItemViewCacheSize(10);
-
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
                 tabSwitcherOverlay.setOnApplyWindowInsetsListener((v, insets) -> {
                     android.view.View titleBar = v.findViewById(R.id.tabTitleBar);
                     if (titleBar != null) {
                         int statusBarHeight = insets.getSystemWindowInsetTop();
-                        
-                        // 1. Increase the height of the bar to accommodate the status bar
                         android.view.ViewGroup.LayoutParams params = titleBar.getLayoutParams();
-                        // 56dp converted to pixels + status bar height
                         params.height = (int) (56 * getResources().getDisplayMetrics().density) + statusBarHeight;
                         titleBar.setLayoutParams(params);
-
-                        // 2. Apply the padding so the text stays centered in the newly added space
                         titleBar.setPadding(
                             titleBar.getPaddingLeft(), 
                             statusBarHeight, 
@@ -1554,74 +1539,32 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onTabClosed(int position) {
                 closeTab(position);
+                // Update ViewPager if closing the last remaining items
+                if (tabList.isEmpty()) {
+                    createNewTab();
+                    showHome();
+                    hideTabSwitcher();
+                }
             }
         });
 
-        tabsRecyclerView.setAdapter(tabAdapter);
-        androidx.recyclerview.widget.ItemTouchHelper itemTouchHelper = new androidx.recyclerview.widget.ItemTouchHelper(
-            new androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
-                androidx.recyclerview.widget.ItemTouchHelper.UP | androidx.recyclerview.widget.ItemTouchHelper.DOWN,
-                0 
-            ) {
-                @Override
-                public boolean onMove(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView recyclerView,
-                                      @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder,
-                                      @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder target) {
-                    
-                    int fromPosition = viewHolder.getAdapterPosition();
-                    int toPosition = target.getAdapterPosition();
-
-                    if (fromPosition == androidx.recyclerview.widget.RecyclerView.NO_POSITION || 
-                        toPosition == androidx.recyclerview.widget.RecyclerView.NO_POSITION) {
-                        return false;
-                    }
-
-                    TabState activeTab = null;
-                    if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-                        activeTab = tabList.get(currentTabPosition);
-                    }
-
-                    tabAdapter.moveTab(fromPosition, toPosition);
-
-                    if (activeTab != null) {
-                        currentTabPosition = tabList.indexOf(activeTab);
-                    }
-
-                    return true;
-                }
-
-                @Override
-                public void onSwiped(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int direction) { }
-
-                @Override
-                public void onSelectedChanged(androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int actionState) {
-                    super.onSelectedChanged(viewHolder, actionState);
-                    if (actionState != androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE && viewHolder != null) {
-                        viewHolder.itemView.setAlpha(0.85f);
-                        // DELETED: Scale properties that were breaking the bounds
-                        
-                        // FIX: Add a heavy shadow to simulate lifting instead of scaling
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                            viewHolder.itemView.setElevation(16f); 
-                        }
-                    }
-                }
-
-                @Override
-                public void clearView(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView recyclerView, 
-                                      @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder) {
-                    super.clearView(recyclerView, viewHolder);
-                    viewHolder.itemView.setAlpha(1.0f);
-                    
-                    // Restore original flat shadow
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                        viewHolder.itemView.setElevation(4f); 
-                    }
-                }
-            });
-
-        itemTouchHelper.attachToRecyclerView(tabsRecyclerView);
+        androidx.viewpager2.widget.ViewPager2 tabsViewPager = tabSwitcherOverlay.findViewById(R.id.tabsViewPager);
+        tabsViewPager.setAdapter(tabAdapter);
         
+        // Setup premium 3D Carousel Scaling Effect
+        tabsViewPager.setOffscreenPageLimit(3);
+        androidx.viewpager2.widget.CompositePageTransformer transformer = new androidx.viewpager2.widget.CompositePageTransformer();
+        transformer.addTransformer(new androidx.viewpager2.widget.MarginPageTransformer(24));
+        transformer.addTransformer((page, position) -> {
+            float r = 1 - Math.abs(position);
+            page.setScaleY(0.85f + r * 0.15f);
+            page.setAlpha(0.5f + r * 0.5f);
+        });
+        tabsViewPager.setPageTransformer(transformer);
+
+        // Snap to the currently active browser tab
+        tabsViewPager.setCurrentItem(currentTabPosition, false);
+
         if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
         tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
     }
