@@ -155,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         secureCredentialManager = new SecureCredentialManager(this);
-        dbHelper = new BrowserDatabaseHelper(this);
+        dbHelper = BrowserDatabaseHelper.getInstance(this);
         AdBlockEngine.init(this, filterLists);
         AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
 
