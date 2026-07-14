@@ -65,6 +65,13 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
         return tabList.size();
     }
 
+    public void moveTab(int fromPosition, int toPosition) {
+        // Swap the data objects in the background list
+        java.util.Collections.swap(tabList, fromPosition, toPosition);
+        // Tell the grid to physically animate the cards swapping
+        notifyItemMoved(fromPosition, toPosition);
+    }
+
     public static class TabViewHolder extends RecyclerView.ViewHolder {
         ImageView imgThumbnail;
         TextView txtTitle;
