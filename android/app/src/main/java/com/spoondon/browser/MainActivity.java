@@ -1505,7 +1505,7 @@ public class MainActivity extends AppCompatActivity {
             root.addView(tabSwitcherOverlay);
 
             tabsRecyclerView = tabSwitcherOverlay.findViewById(R.id.tabsRecyclerView);
-            tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.GridLayoutManager(this, 2));
+            tabsRecyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
             tabsRecyclerView.setItemAnimator(null);
             tabsRecyclerView.setHasFixedSize(true);
             tabsRecyclerView.setItemViewCacheSize(10);
@@ -1560,8 +1560,7 @@ public class MainActivity extends AppCompatActivity {
         tabsRecyclerView.setAdapter(tabAdapter);
         androidx.recyclerview.widget.ItemTouchHelper itemTouchHelper = new androidx.recyclerview.widget.ItemTouchHelper(
             new androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
-                androidx.recyclerview.widget.ItemTouchHelper.UP | androidx.recyclerview.widget.ItemTouchHelper.DOWN |
-                androidx.recyclerview.widget.ItemTouchHelper.LEFT | androidx.recyclerview.widget.ItemTouchHelper.RIGHT,
+                androidx.recyclerview.widget.ItemTouchHelper.UP | androidx.recyclerview.widget.ItemTouchHelper.DOWN,
                 0 
             ) {
                 @Override
