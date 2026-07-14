@@ -1567,17 +1567,14 @@ public class MainActivity extends AppCompatActivity {
                     int fromPosition = viewHolder.getAdapterPosition();
                     int toPosition = target.getAdapterPosition();
 
-                    // 1. Swap the visual cards and the data list
+                    // 1. Memorize the EXACT tab object that is currently active in the browser
+                    TabState activeTab = tabList.get(currentTabPosition);
+
+                    // 2. Perform the physical move in the UI and the array
                     tabAdapter.moveTab(fromPosition, toPosition);
 
-                    // 2. Safely shift the active tab pointer so the browser doesn't lose its place
-                    if (currentTabPosition == fromPosition) {
-                        currentTabPosition = toPosition;
-                    } else if (currentTabPosition > fromPosition && currentTabPosition <= toPosition) {
-                        currentTabPosition--;
-                    } else if (currentTabPosition < fromPosition && currentTabPosition >= toPosition) {
-                        currentTabPosition++;
-                    }
+                    // 3. BULLETPROOF TRACKING: Find exactly where the active tab landed
+                    currentTabPosition = tabList.indexOf(activeTab);
 
                     return true;
                 }
@@ -1589,9 +1586,11 @@ public class MainActivity extends AppCompatActivity {
                 public void onSelectedChanged(androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int actionState) {
                     super.onSelectedChanged(viewHolder, actionState);
                     if (actionState != androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE && viewHolder != null) {
-                        // Push to GPU for zero-lag dragging on cheap phones
-                        viewHolder.itemView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
                         
+                        // FIX: Force this specific card to draw over every other card
+                        viewHolder.itemView.bringToFront();
+                        
+                        viewHolder.itemView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
                         viewHolder.itemView.setAlpha(0.85f);
                         viewHolder.itemView.setScaleX(1.05f);
                         viewHolder.itemView.setScaleY(1.05f);
@@ -2408,7 +2407,7 @@ public class MainActivity extends AppCompatActivity {
         if (webViewContainer != null) {
             webViewContainer.setVisibility(android.view.View.VISIBLE);
         }
-        // Wake up the active browser tab
+        switchToTab(currentTabPosition);
         WebView currentWv = getCurrentWebView();
         if (currentWv != null) {
             currentWv.resumeTimers(); 
