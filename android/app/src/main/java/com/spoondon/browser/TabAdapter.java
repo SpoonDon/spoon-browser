@@ -71,9 +71,8 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
             return;
         }
 
-        TabState movedTab = tabList.remove(fromPosition);
-        tabList.add(toPosition, movedTab);
-        
+        // Use Collections.swap for mathematically perfect vertical list sync
+        java.util.Collections.swap(tabList, fromPosition, toPosition);
         notifyItemMoved(fromPosition, toPosition);
     }
 
