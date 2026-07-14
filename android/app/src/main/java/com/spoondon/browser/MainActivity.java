@@ -1474,6 +1474,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTabSwitcher() {
+
+        // Freeze background web execution (JavaScript, Video, GIFs)
+        WebView currentWv = getCurrentWebView();
+        if (currentWv != null) {
+            currentWv.pauseTimers(); 
+        }
         
         // 1. Capture the current page asynchronously before showing the grid
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
@@ -1546,6 +1552,75 @@ public class MainActivity extends AppCompatActivity {
         });
 
         tabsRecyclerView.setAdapter(tabAdapter);
+        // >>> START: HARDWARE ACCELERATED DRAG-AND-DROP ENGINE <<<
+        androidx.recyclerview.widget.ItemTouchHelper itemTouchHelper = new androidx.recyclerview.widget.ItemTouchHelper(
+            new androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+                androidx.recyclerview.widget.ItemTouchHelper.UP | androidx.recyclerview.widget.ItemTouchHelper.DOWN |
+                androidx.recyclerview.widget.ItemTouchHelper.LEFT | androidx.recyclerview.widget.ItemTouchHelper.RIGHT,
+                0 // 0 disables swipe-to-dismiss
+            ) {
+                @Override
+                public boolean onMove(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView recyclerView,
+                                      @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder,
+                                      @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder target) {
+                    
+                    int fromPosition = viewHolder.getAdapterPosition();
+                    int toPosition = target.getAdapterPosition();
+
+                    // 1. Swap the visual cards and the data list
+                    tabAdapter.moveTab(fromPosition, toPosition);
+
+                    // 2. Safely shift the active tab pointer so the browser doesn't lose its place
+                    if (currentTabPosition == fromPosition) {
+                        currentTabPosition = toPosition;
+                    } else if (currentTabPosition > fromPosition && currentTabPosition <= toPosition) {
+                        currentTabPosition--;
+                    } else if (currentTabPosition < fromPosition && currentTabPosition >= toPosition) {
+                        currentTabPosition++;
+                    }
+
+                    return true;
+                }
+
+                @Override
+                public void onSwiped(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int direction) { }
+
+                @Override
+                public void onSelectedChanged(androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int actionState) {
+                    super.onSelectedChanged(viewHolder, actionState);
+                    if (actionState != androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE && viewHolder != null) {
+                        // Push to GPU for zero-lag dragging on cheap phones
+                        viewHolder.itemView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+                        
+                        viewHolder.itemView.setAlpha(0.85f);
+                        viewHolder.itemView.setScaleX(1.05f);
+                        viewHolder.itemView.setScaleY(1.05f);
+                        
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                            viewHolder.itemView.setElevation(20f);
+                        }
+                    }
+                }
+
+                @Override
+                public void clearView(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView recyclerView, 
+                                      @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder) {
+                    super.clearView(recyclerView, viewHolder);
+                    
+                    // Remove from GPU memory once dropped
+                    viewHolder.itemView.setLayerType(android.view.View.LAYER_TYPE_NONE, null);
+                    
+                    viewHolder.itemView.setAlpha(1.0f);
+                    viewHolder.itemView.setScaleX(1.0f);
+                    viewHolder.itemView.setScaleY(1.0f);
+                    
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                        viewHolder.itemView.setElevation(0f);
+                    }
+                }
+            });
+
+        itemTouchHelper.attachToRecyclerView(tabsRecyclerView);
         
         if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
         tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
@@ -2282,7 +2357,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(targetWidth, targetHeight, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(targetWidth, targetHeight, android.graphics.Bitmap.Config.RGB_565);
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 // Modern, Hardware-Accelerated Capture (Zero UI Lag)
@@ -2332,6 +2407,11 @@ public class MainActivity extends AppCompatActivity {
         }
         if (webViewContainer != null) {
             webViewContainer.setVisibility(android.view.View.VISIBLE);
+        }
+        // Wake up the active browser tab
+        WebView currentWv = getCurrentWebView();
+        if (currentWv != null) {
+            currentWv.resumeTimers(); 
         }
     }
     
