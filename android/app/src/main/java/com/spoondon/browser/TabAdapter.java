@@ -71,15 +71,8 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
             return;
         }
 
-        if (fromPosition < toPosition) {
-            for (int i = fromPosition; i < toPosition; i++) {
-                java.util.Collections.swap(tabList, i, i + 1);
-            }
-        } else {
-            for (int i = fromPosition; i > toPosition; i--) {
-                java.util.Collections.swap(tabList, i, i - 1);
-            }
-        }
+        TabState movedTab = tabList.remove(fromPosition);
+        tabList.add(toPosition, movedTab);
         
         notifyItemMoved(fromPosition, toPosition);
     }
