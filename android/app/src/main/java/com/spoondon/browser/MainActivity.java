@@ -1488,13 +1488,13 @@ public class MainActivity extends AppCompatActivity {
         
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             TabState currentTab = tabList.get(currentTabPosition);
-            android.webkit.WebView currentWv = currentTab.getWebView();
+            android.webkit.WebView tabWv = currentTab.getWebView();
             
-            if (currentWv != null) {
-                currentTab.setTitle(currentWv.getTitle() != null ? currentWv.getTitle() : "New Tab");
-                currentTab.setUrl(currentWv.getUrl() != null ? currentWv.getUrl() : "");
+            if (tabWv != null) {
+                currentTab.setTitle(tabWv.getTitle() != null ? tabWv.getTitle() : "New Tab");
+                currentTab.setUrl(tabWv.getUrl() != null ? tabWv.getUrl() : "");
                 
-                captureWebViewSnapshotAsync(currentWv, bitmap -> {
+                captureWebViewSnapshotAsync(tabWv, bitmap -> {
                     currentTab.setThumbnail(bitmap);
                     if (tabAdapter != null) {
                         tabAdapter.notifyItemChanged(currentTabPosition);
