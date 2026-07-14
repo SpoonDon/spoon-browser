@@ -228,7 +228,6 @@ public class MainActivity extends AppCompatActivity {
         createToolbarViews();
         setupToolbarListeners();
         setupMenuButton();
-        setupBackButtonHandler();
 
         if (root != null) {
             if (toolbar != null) root.addView(toolbar);
