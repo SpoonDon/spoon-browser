@@ -66,9 +66,9 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
     }
 
     public void moveTab(int fromPosition, int toPosition) {
-        // Swap the data objects in the background list
-        java.util.Collections.swap(tabList, fromPosition, toPosition);
-        // Tell the grid to physically animate the cards swapping
+        // Safely remove and re-insert instead of swapping
+        TabState movedTab = tabList.remove(fromPosition);
+        tabList.add(toPosition, movedTab);
         notifyItemMoved(fromPosition, toPosition);
     }
 
