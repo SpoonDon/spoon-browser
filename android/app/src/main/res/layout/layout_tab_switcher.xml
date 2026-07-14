@@ -62,13 +62,14 @@
 
     </LinearLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/tabsRecyclerView"
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/tabsViewPager"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/tabTitleBar"
         android:layout_above="@id/tabBottomBar"
         android:clipToPadding="false"
-        android:padding="12dp" />
+        android:clipChildren="false"
+        android:paddingHorizontal="48dp" />
 
 </RelativeLayout>
