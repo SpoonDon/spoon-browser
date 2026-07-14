@@ -66,9 +66,21 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
     }
 
     public void moveTab(int fromPosition, int toPosition) {
-        // Safely remove and re-insert instead of swapping
-        TabState movedTab = tabList.remove(fromPosition);
-        tabList.add(toPosition, movedTab);
+        if (fromPosition < 0 || toPosition < 0 || 
+            fromPosition >= tabList.size() || toPosition >= tabList.size()) {
+            return;
+        }
+
+        if (fromPosition < toPosition) {
+            for (int i = fromPosition; i < toPosition; i++) {
+                java.util.Collections.swap(tabList, i, i + 1);
+            }
+        } else {
+            for (int i = fromPosition; i > toPosition; i--) {
+                java.util.Collections.swap(tabList, i, i - 1);
+            }
+        }
+        
         notifyItemMoved(fromPosition, toPosition);
     }
 
