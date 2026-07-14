@@ -1558,12 +1558,11 @@ public class MainActivity extends AppCompatActivity {
         });
 
         tabsRecyclerView.setAdapter(tabAdapter);
-        // >>> START: HARDWARE ACCELERATED DRAG-AND-DROP ENGINE <<<
         androidx.recyclerview.widget.ItemTouchHelper itemTouchHelper = new androidx.recyclerview.widget.ItemTouchHelper(
             new androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
                 androidx.recyclerview.widget.ItemTouchHelper.UP | androidx.recyclerview.widget.ItemTouchHelper.DOWN |
                 androidx.recyclerview.widget.ItemTouchHelper.LEFT | androidx.recyclerview.widget.ItemTouchHelper.RIGHT,
-                0 // 0 disables swipe-to-dismiss
+                0 
             ) {
                 @Override
                 public boolean onMove(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView recyclerView,
@@ -1573,14 +1572,21 @@ public class MainActivity extends AppCompatActivity {
                     int fromPosition = viewHolder.getAdapterPosition();
                     int toPosition = target.getAdapterPosition();
 
-                    // 1. Memorize the EXACT tab object that is currently active in the browser
-                    TabState activeTab = tabList.get(currentTabPosition);
+                    if (fromPosition == androidx.recyclerview.widget.RecyclerView.NO_POSITION || 
+                        toPosition == androidx.recyclerview.widget.RecyclerView.NO_POSITION) {
+                        return false;
+                    }
 
-                    // 2. Perform the physical move in the UI and the array
+                    TabState activeTab = null;
+                    if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
+                        activeTab = tabList.get(currentTabPosition);
+                    }
+
                     tabAdapter.moveTab(fromPosition, toPosition);
 
-                    // 3. BULLETPROOF TRACKING: Find exactly where the active tab landed
-                    currentTabPosition = tabList.indexOf(activeTab);
+                    if (activeTab != null) {
+                        currentTabPosition = tabList.indexOf(activeTab);
+                    }
 
                     return true;
                 }
@@ -1592,8 +1598,6 @@ public class MainActivity extends AppCompatActivity {
                 public void onSelectedChanged(androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder, int actionState) {
                     super.onSelectedChanged(viewHolder, actionState);
                     if (actionState != androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE && viewHolder != null) {
-                        // Let ItemTouchHelper handle the elevation natively.
-                        // Only apply the 2D scale and opacity change.
                         viewHolder.itemView.setAlpha(0.85f);
                         viewHolder.itemView.setScaleX(1.05f);
                         viewHolder.itemView.setScaleY(1.05f);
@@ -1604,8 +1608,6 @@ public class MainActivity extends AppCompatActivity {
                 public void clearView(@androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView recyclerView, 
                                       @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder) {
                     super.clearView(recyclerView, viewHolder);
-                    
-                    // Restore original state
                     viewHolder.itemView.setAlpha(1.0f);
                     viewHolder.itemView.setScaleX(1.0f);
                     viewHolder.itemView.setScaleY(1.0f);
