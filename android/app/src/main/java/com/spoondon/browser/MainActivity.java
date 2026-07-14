@@ -1598,8 +1598,12 @@ public class MainActivity extends AppCompatActivity {
                     super.onSelectedChanged(viewHolder, actionState);
                     if (actionState != androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE && viewHolder != null) {
                         viewHolder.itemView.setAlpha(0.85f);
-                        viewHolder.itemView.setScaleX(1.05f);
-                        viewHolder.itemView.setScaleY(1.05f);
+                        // DELETED: Scale properties that were breaking the bounds
+                        
+                        // FIX: Add a heavy shadow to simulate lifting instead of scaling
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                            viewHolder.itemView.setElevation(16f); 
+                        }
                     }
                 }
 
@@ -1608,8 +1612,11 @@ public class MainActivity extends AppCompatActivity {
                                       @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder) {
                     super.clearView(recyclerView, viewHolder);
                     viewHolder.itemView.setAlpha(1.0f);
-                    viewHolder.itemView.setScaleX(1.0f);
-                    viewHolder.itemView.setScaleY(1.0f);
+                    
+                    // Restore original flat shadow
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                        viewHolder.itemView.setElevation(4f); 
+                    }
                 }
             });
 
