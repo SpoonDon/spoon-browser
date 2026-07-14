@@ -1592,16 +1592,17 @@ public class MainActivity extends AppCompatActivity {
                     super.onSelectedChanged(viewHolder, actionState);
                     if (actionState != androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE && viewHolder != null) {
                         
-                        // FIX: Force this specific card to draw over every other card
-                        viewHolder.itemView.bringToFront();
+                        // DELETED: bringToFront() (This was causing the disappearing tabs!)
                         
                         viewHolder.itemView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
                         viewHolder.itemView.setAlpha(0.85f);
                         viewHolder.itemView.setScaleX(1.05f);
                         viewHolder.itemView.setScaleY(1.05f);
                         
+                        // FIX: Use native 3D Translation to force the card to the absolute top
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                            viewHolder.itemView.setElevation(20f);
+                            viewHolder.itemView.setElevation(50f);
+                            viewHolder.itemView.setTranslationZ(50f); // This is the magic line
                         }
                     }
                 }
@@ -1611,15 +1612,15 @@ public class MainActivity extends AppCompatActivity {
                                       @androidx.annotation.NonNull androidx.recyclerview.widget.RecyclerView.ViewHolder viewHolder) {
                     super.clearView(recyclerView, viewHolder);
                     
-                    // Remove from GPU memory once dropped
                     viewHolder.itemView.setLayerType(android.view.View.LAYER_TYPE_NONE, null);
-                    
                     viewHolder.itemView.setAlpha(1.0f);
                     viewHolder.itemView.setScaleX(1.0f);
                     viewHolder.itemView.setScaleY(1.0f);
                     
+                    // Restore the flat 3D depth when dropped
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                         viewHolder.itemView.setElevation(0f);
+                        viewHolder.itemView.setTranslationZ(0f);
                     }
                 }
             });
