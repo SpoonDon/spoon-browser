@@ -330,12 +330,6 @@ public class AdBlockEngine {
         return totalRules;
     }
 
-    public static boolean hasRules() {
-        return isEngineEnabled && 
-              ((blockedDomains != null && !blockedDomains.isEmpty()) || 
-               (scopedPathRules != null && !scopedPathRules.isEmpty()));
-    }
-
     public static void setEngineEnabled(android.content.Context context, boolean enabled) {
         isEngineEnabled = enabled;
         context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
