@@ -31,6 +31,14 @@ public class SplashActivity extends AppCompatActivity {
         // If enabled, proceed with the normal splash screen
         setContentView(R.layout.activity_splash);
 
+        // Pre-warm the heavy Chromium WebKit engine on a background thread
+        new Thread(() -> {
+            try {
+                // Instantiating a dummy WebView forces Android to load the Chromium libraries into RAM early
+                new android.webkit.WebView(getApplicationContext());
+            } catch (Exception ignored) {}
+        }).start();
+
         ImageView logo = findViewById(R.id.splash_logo);
         TextView title = findViewById(R.id.splash_title);
         TextView tagline = findViewById(R.id.splash_tagline);
