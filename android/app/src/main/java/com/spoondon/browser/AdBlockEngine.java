@@ -51,6 +51,7 @@ public class AdBlockEngine {
     }
 
     public static void init(Context context, List<String> filterLists) {
+        checkIsEngineEnabled(context);
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         isEngineEnabled = prefs.getBoolean(KEY_ENABLED, true);
         
@@ -222,27 +223,20 @@ public class AdBlockEngine {
         });
     }
 
-    /**
-     * Safely deletes a filter file and rebuilds the engine in the background
-     * to prevent Race Conditions with the main UI thread.
-     */
     public static void removeFilterList(Context context, String filterUrl, List<String> remainingLists, ExecutorService executor) {
         if (filterUrl == null || filterUrl.isEmpty()) return;
 
         executor.execute(() -> {
-            // 1. Safely delete the physical file first
             String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
             File localFile = new File(context.getFilesDir(), filename);
             if (localFile.exists()) {
                 localFile.delete();
             }
 
-            // 2. Clear decision cache
             synchronized (decisionCache) {
                 decisionCache.evictAll();
             }
 
-            // 3. Rebuild the live rules array IN THE BACKGROUND using only remaining lists
             HashSet<String> newDomains = new HashSet<>();
             HashMap<String, ArrayList<String>> newPaths = new HashMap<>();
 
@@ -259,7 +253,6 @@ public class AdBlockEngine {
                 }
             }
 
-            // 4. Atomically swap the old rules for the clean rules
             blockedDomains = newDomains;
             scopedPathRules = newPaths;
         });
@@ -335,5 +328,27 @@ public class AdBlockEngine {
             }
         }
         return totalRules;
+    }
+
+    public static boolean hasRules() {
+        return isEngineEnabled && 
+              ((blockedDomains != null && !blockedDomains.isEmpty()) || 
+               (scopedPathRules != null && !scopedPathRules.isEmpty()));
+    }
+
+    public static void setEngineEnabled(android.content.Context context, boolean enabled) {
+        isEngineEnabled = enabled;
+        context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+               .edit().putBoolean(KEY_ENABLED, enabled).apply();
+        
+        if (!enabled && decisionCache != null) {
+            decisionCache.evictAll(); 
+        }
+    }
+
+    public static boolean checkIsEngineEnabled(android.content.Context context) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        isEngineEnabled = prefs.getBoolean(KEY_ENABLED, true);
+        return isEngineEnabled;
     }
 }
