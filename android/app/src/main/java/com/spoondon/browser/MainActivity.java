@@ -755,17 +755,40 @@ public class MainActivity extends AppCompatActivity {
         tabIndicator.setLongClickable(false);
         tabIndicator.setOnClickListener(v -> showTabSwitcher());
 
-        addressBar.setOnKeyListener((v, keyCode, event) -> {
+        // 1. Listen for Android Soft-Keyboards (Gboard, Swiftkey, etc)
+        addressBar.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE ||
+                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
+                (event != null && event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER)) {
+                
+                navigate(); 
+                
+                addressBar.clearFocus();
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(addressBar.getWindowToken(), 0);
+                return true;
+            }
+            return false;
+        });
 
-            if (keyCode == KeyEvent.KEYCODE_ENTER && event.getAction() == KeyEvent.ACTION_DOWN) {
-                navigate();
+        // 2. Listen for Physical Keyboards or Emulators
+        addressBar.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
+                
+                navigate(); 
+                
+                addressBar.clearFocus();
+                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                if (imm != null) imm.hideSoftInputFromWindow(addressBar.getWindowToken(), 0);
                 return true;
             }
             return false;
         });
 
         forwardButton.setOnClickListener(v -> {
-            WebView webView = getCurrentWebView();
+            android.webkit.WebView webView = getCurrentWebView();
             if (webView != null && webView.canGoForward()) {
                 webView.goForward();
             }
@@ -1619,13 +1642,18 @@ public class MainActivity extends AppCompatActivity {
     }
   
     private void openUrl(String url) {
-        WebView wv = getCurrentWebView();
-        if (wv != null) {
+        android.webkit.WebView wv = getCurrentWebView();
+        if (wv != null && url != null) {
             String query = url.trim();
             if (query.isEmpty()) return;
 
+            if (query.startsWith("about:") || query.startsWith("file:") || query.startsWith("javascript:") || query.startsWith("data:")) {
+                wv.loadUrl(query);
+                return;
+            }
+
             if (android.util.Patterns.WEB_URL.matcher(query).matches() || (query.contains(".") && !query.contains(" "))) {
-                if (!query.startsWith("http://") && !query.startsWith("https://") && !query.startsWith("file://") && !query.startsWith("about:")) {
+                if (!query.startsWith("http://") && !query.startsWith("https://")) {
                     query = "https://" + query;
                 }
                 wv.loadUrl(query);
