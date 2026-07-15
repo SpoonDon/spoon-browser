@@ -515,6 +515,9 @@ public class MainActivity extends AppCompatActivity {
             popup.getMenu().add("Clear History");
             popup.getMenu().add("Clear Cache");
             popup.getMenu().add("Filter Lists");
+           
+            boolean isFilterEnabled = AdBlockEngine.checkIsEngineEnabled(this);
+            popup.getMenu().add(isFilterEnabled ? "Disable Filterlists" : "Enable Filterlists");
             
             String currentHost = "";        
             if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {            
@@ -593,6 +596,22 @@ public class MainActivity extends AppCompatActivity {
                         showFilterListsDialog();
                         return true;
                         
+                    // TOGGLE CLICK LOGIC
+                    case "Disable Filterlists":
+                    case "Enable Filterlists":
+                        boolean currentState = AdBlockEngine.checkIsEngineEnabled(MainActivity.this);
+                        AdBlockEngine.setEngineEnabled(MainActivity.this, !currentState);
+                        
+                        android.widget.Toast.makeText(MainActivity.this, 
+                            !currentState ? "Filterlists Enabled" : "Filterlists Disabled", 
+                            android.widget.Toast.LENGTH_SHORT).show();
+                            
+                        android.webkit.WebView currentWv = getCurrentWebView();
+                        if (currentWv != null) {
+                            currentWv.reload();
+                        }
+                        return true;
+                        
                     case "Desktop Site [OFF]":
                     case "Desktop Site [ON]":
                         toggleDesktopMode();
@@ -620,7 +639,6 @@ public class MainActivity extends AppCompatActivity {
                         return true;
 
                     case "Startup Animation":
-                        
                         android.content.SharedPreferences splashPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
                         boolean isCurrentlyEnabled = splashPrefs.getBoolean("show_splash_screen", true);
                         splashPrefs.edit().putBoolean("show_splash_screen", !isCurrentlyEnabled).apply();
@@ -634,7 +652,6 @@ public class MainActivity extends AppCompatActivity {
                         return true;
                         
                     case "Exit":
-                        
                         clearSessionOnExit = false; 
                         
                         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
@@ -653,7 +670,7 @@ public class MainActivity extends AppCompatActivity {
             popup.show();
         });
     }
-
+    
     private void showFindInPageDialog() {
         android.webkit.WebView webView = getCurrentWebView();
         if (webView == null) return;
