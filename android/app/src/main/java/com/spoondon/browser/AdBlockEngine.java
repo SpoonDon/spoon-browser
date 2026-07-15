@@ -35,6 +35,12 @@ public class AdBlockEngine {
 
     private static final LruCache<String, CacheEntry> decisionCache = new LruCache<>(DECISION_CACHE_MAX);
 
+    public static boolean hasRules() {
+        return isEngineEnabled && 
+              ((blockedDomains != null && !blockedDomains.isEmpty()) || 
+               (scopedPathRules != null && !scopedPathRules.isEmpty()));
+    }
+
     private static final class CacheEntry {
         final boolean blocked;
         final long timestampMs;
