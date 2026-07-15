@@ -263,28 +263,42 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                // 1. If Tab Switcher is open, close it
                 if (tabSwitcherOverlay != null && tabSwitcherOverlay.getVisibility() == android.view.View.VISIBLE) {
                     hideTabSwitcher();
                     return;
-                }
-                
-                // 2. If the current web page can go back, go back
+                }                
                 android.webkit.WebView activeWebView = getCurrentWebView();
                 if (activeWebView != null && activeWebView.canGoBack()) {
                     activeWebView.goBack();
                     return;
-                }
-                
-                // 3. Otherwise, use normal back behavior (exit app or close tab)
+                }                
                 if (tabList.size() > 1) {
                     closeTab(currentTabPosition);
                 } else {
-                    setEnabled(false); // Disables this callback
-                    getOnBackPressedDispatcher().onBackPressed(); // Triggers default exit
+                    showExitConfirmationDialog();
                 }
             }
         });
+    }
+
+    private void showExitConfirmationDialog() {
+        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Exit Browser")
+            .setMessage("Are you sure you want to exit the browser?")
+            .setPositiveButton("Exit", (dialog, which) -> {
+
+                clearSessionOnExit = false; 
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+                android.content.SharedPreferences prefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+                if (prefs != null) {
+                    prefs.edit().remove("open_tabs").remove("current_tab").apply();
+                }
+                finishAndRemoveTask();
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
     @Override
