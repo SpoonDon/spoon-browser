@@ -136,4 +136,23 @@ public class SpoonWebChromeClient extends WebChromeClient {
         activity.currentGeolocationOrigin = null;
         activity.currentGeolocationCallback = null;
     }
+
+    @Override
+    public boolean onShowFileChooser(WebView webView, android.webkit.ValueCallback<android.net.Uri[]> filePathCallback, WebChromeClient.FileChooserParams fileChooserParams) {
+        if (activity == null) return false;
+
+        if (activity.mFilePathCallback != null) {
+            activity.mFilePathCallback.onReceiveValue(null);
+        }
+        activity.mFilePathCallback = filePathCallback;
+
+        android.content.Intent intent = fileChooserParams.createIntent();
+        try {
+            activity.startActivityForResult(intent, MainActivity.FILECHOOSER_RESULTCODE);
+        } catch (android.content.ActivityNotFoundException e) {
+            activity.mFilePathCallback = null;
+            return false;
+        }
+        return true;
+    }
 }
