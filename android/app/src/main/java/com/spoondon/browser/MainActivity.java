@@ -1385,6 +1385,43 @@ public class MainActivity extends AppCompatActivity {
                 
         return webView;
     }
+
+    public void handleDeadRenderProcess(android.webkit.WebView deadWebView) {
+        if (deadWebView == null) return;
+        
+        for (int i = 0; i < tabList.size(); i++) {
+            if (tabList.get(i).getWebView() == deadWebView) {
+                if (browserContainer != null) {
+                    browserContainer.removeView(deadWebView);
+                }
+                
+                deadWebView.removeAllViews();
+                deadWebView.destroy();
+                
+                android.widget.Toast.makeText(this, "Tab closed automatically to free up device memory.", android.widget.Toast.LENGTH_LONG).show();
+                closeTab(i);
+                break;
+            }
+        }
+    }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        
+        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL || 
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            
+            for (TabState tab : tabList) {
+                if (tab != null && tab.getWebView() != null) {
+                    android.webkit.WebView wv = tab.getWebView();
+                    if (wv.getVisibility() == android.view.View.GONE) {
+                        wv.clearCache(false);
+                    }
+                }
+            }
+        }
+    }
         
     private void createNewTab() {
         WebView webView = createConfiguredWebView();
@@ -1441,19 +1478,18 @@ public class MainActivity extends AppCompatActivity {
 
         if (browserContainer != null) {
             for (int i = 0; i < tabList.size(); i++) {
-                WebView wv = tabList.get(i).getWebView();
+                android.webkit.WebView wv = tabList.get(i).getWebView();
                 if (wv != null) {
                     if (i == index) {
-                        wv.setVisibility(View.VISIBLE);
+                        wv.setVisibility(android.view.View.VISIBLE);
                         wv.onResume();
-                        wv.resumeTimers();
                         
                         String url = wv.getUrl();
                         if (addressBar != null) {
                             addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
                         }
                     } else {
-                        wv.setVisibility(View.GONE);
+                        wv.setVisibility(android.view.View.GONE);
                         wv.onPause();
                     }
                 }
