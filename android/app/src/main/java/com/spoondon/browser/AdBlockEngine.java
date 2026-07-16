@@ -273,6 +273,7 @@ public class AdBlockEngine {
 
             blockedDomains = new HashSet<>();
             scopedPathRules = new HashMap<>();
+            cosmeticRules = new HashMap<>();
 
             synchronized (decisionCache) {
                 decisionCache.evictAll();
