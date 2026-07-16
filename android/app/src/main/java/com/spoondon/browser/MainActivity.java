@@ -87,6 +87,8 @@ public class MainActivity extends AppCompatActivity {
     public android.webkit.GeolocationPermissions.Callback currentGeolocationCallback;
     public String currentGeolocationOrigin;
     private androidx.activity.result.ActivityResultLauncher<String[]> webPermissionLauncher;
+    public android.webkit.ValueCallback<android.net.Uri[]> mFilePathCallback;
+    public static final int FILECHOOSER_RESULTCODE = 100;
 
     AutoCompleteTextView addressBar;
     private SuggestionAdapter addressBarAdapter;
@@ -2650,6 +2652,33 @@ public void triggerExternalDownload(String url, String mimeType) {
         } else {
             String searchUrl = "https://www.google.com/search?q=" + android.net.Uri.encode(query);
             getCurrentWebView().loadUrl(searchUrl);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        if (requestCode == FILECHOOSER_RESULTCODE) {
+            if (mFilePathCallback == null) return;
+            
+            android.net.Uri[] results = null;
+            if (resultCode == android.app.Activity.RESULT_OK) {
+                if (data != null) {
+                    String dataString = data.getDataString();
+                    if (dataString != null) {
+                        results = new android.net.Uri[]{android.net.Uri.parse(dataString)};
+                    } else if (data.getClipData() != null) {
+                        int count = data.getClipData().getItemCount();
+                        results = new android.net.Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            results[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    }
+                }
+            }
+            mFilePathCallback.onReceiveValue(results);
+            mFilePathCallback = null;
+        } else {
+            super.onActivityResult(requestCode, resultCode, data);
         }
     }
 }
