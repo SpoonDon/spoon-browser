@@ -1465,6 +1465,9 @@ public class MainActivity extends AppCompatActivity {
         }
         
         switchToTab(currentTabPosition);
+        
+        if (tabIndicator != null) tabIndicator.setText(String.valueOf(tabList.size()));
+        if (tabBadgeButton != null) tabBadgeButton.setText(String.valueOf(tabList.size()));
     }   
 
     public void openUrlInNewTab(String url) {
@@ -1527,6 +1530,9 @@ public class MainActivity extends AppCompatActivity {
             tabAdapter.notifyItemRemoved(index);
             tabAdapter.notifyItemRangeChanged(index, tabList.size());
         }
+
+        if (tabIndicator != null) tabIndicator.setText(String.valueOf(tabList.size()));
+        if (tabBadgeButton != null) tabBadgeButton.setText(String.valueOf(tabList.size()));
 
         if (tabList.isEmpty()) {
             createNewTab();
