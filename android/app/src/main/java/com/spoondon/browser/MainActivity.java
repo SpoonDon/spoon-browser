@@ -1515,6 +1515,11 @@ public class MainActivity extends AppCompatActivity {
     public void closeTab(int index) {
         if (index < 0 || index >= tabList.size()) return;
 
+        if (tabList.size() == 1) {
+            showExitConfirmationDialog();
+            return; 
+        }
+
         TabState tabToRemove = tabList.get(index);
         android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
 
@@ -1536,14 +1541,10 @@ public class MainActivity extends AppCompatActivity {
         if (tabIndicator != null) tabIndicator.setText(String.valueOf(tabList.size()));
         if (tabBadgeButton != null) tabBadgeButton.setText(String.valueOf(tabList.size()));
 
-        if (tabList.isEmpty()) {
-            createNewTab();
-        } else {
-            if (currentTabPosition >= tabList.size()) {
-                currentTabPosition = tabList.size() - 1;
-            }
-            switchToTab(currentTabPosition);
+        if (currentTabPosition >= tabList.size()) {
+            currentTabPosition = tabList.size() - 1;
         }
+        switchToTab(currentTabPosition);
     }
 
     private void updateTabIndicator() {
