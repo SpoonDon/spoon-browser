@@ -222,17 +222,18 @@ public class SpoonWebViewClient extends WebViewClient {
             android.webkit.CookieManager.getInstance().flush();
         }
 
-        view.evaluateJavascript(activity.filterEngine.compileCosmeticJavascript(), null);
-        java.util.List<String> cssBatches = activity.filterEngine.getCosmeticStyleBatches(url);
-        for (String cssChunk : cssBatches) {
-            String cleanChunk = cssChunk.replace("\\", "\\\\").replace("'", "\\'");
+        String cosmeticCss = AdBlockEngine.getCosmeticCss(url);
+        if (!cosmeticCss.isEmpty()) {
+            String cleanCss = cosmeticCss.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"");
             String injectScript = "javascript:(function() {" +
-                    "var style = document.getElementById('spoon-cosmetic-sheets');" +
-                    "if (style) { style.appendChild(document.createTextNode('" + cleanChunk + "\\n')); }" +
-                    "})()";
+                "var style = document.createElement('style');" +
+                "style.type = 'text/css';" +
+                "style.innerHTML = '" + cleanCss + "';" +
+                "document.head.appendChild(style);" +
+                "})()";
             view.evaluateJavascript(injectScript, null);
         }
-        
+
         String script = "javascript:(function() {" +
             "document.addEventListener('submit', function(e) {" +
                 "var passBox = e.target.querySelector('input[type=password]');" +
