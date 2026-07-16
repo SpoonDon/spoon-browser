@@ -281,12 +281,23 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    public void executeSafely(Runnable task) {
+        if (backgroundExecutor != null && !backgroundExecutor.isShutdown() && !backgroundExecutor.isTerminated()) {
+            try {
+                backgroundExecutor.execute(task);
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     private void showExitConfirmationDialog() {
+        if (this.isFinishing() || this.isDestroyed()) return;
+
         new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Exit Browser")
             .setMessage("Are you sure you want to exit the browser?")
             .setPositiveButton("Exit", (dialog, which) -> {
-
                 clearSessionOnExit = false; 
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                     android.webkit.CookieManager.getInstance().flush();
@@ -436,7 +447,6 @@ public class MainActivity extends AppCompatActivity {
         if (secureCredentialManager == null) return;
         
         backgroundExecutor.execute(() -> {
-            
             java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
             java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
             if (vaultFile.exists()) {
@@ -455,11 +465,13 @@ public class MainActivity extends AppCompatActivity {
 
             if (hosts.isEmpty()) {
                 runOnUiThread(() -> {
-                    new AlertDialog.Builder(this)
-                        .setTitle("Saved Passwords")
-                        .setMessage("No passwords saved yet.")
-                        .setPositiveButton("OK", null)
-                        .show();
+                    if (!MainActivity.this.isFinishing() && !MainActivity.this.isDestroyed()) {
+                        new AlertDialog.Builder(this)
+                            .setTitle("Saved Passwords")
+                            .setMessage("No passwords saved yet.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                    }
                 });
                 return;
             }
@@ -471,6 +483,8 @@ public class MainActivity extends AppCompatActivity {
             }
 
             runOnUiThread(() -> {
+                if (MainActivity.this.isFinishing() || MainActivity.this.isDestroyed()) return;
+
                 ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayList);
                 ListView listView = new ListView(this);
                 listView.setAdapter(adapter);
@@ -489,17 +503,20 @@ public class MainActivity extends AppCompatActivity {
                         String pass = secureCredentialManager.getPassword(selectedHost);
                         
                         runOnUiThread(() -> {
+                            if (MainActivity.this.isFinishing() || MainActivity.this.isDestroyed()) return;
+
                             new AlertDialog.Builder(this)
                                 .setTitle(selectedHost)
                                 .setMessage("Username: " + user + "\nPassword: " + pass)
                                 .setNegativeButton("Delete", (d, w) -> {
-                                    
                                     backgroundExecutor.execute(() -> {
                                         secureCredentialManager.clearCredentials(selectedHost);
                                         runOnUiThread(() -> {
-                                            Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
-                                            dialog.dismiss();
-                                            showSavedPasswordsDialog();
+                                            if (!MainActivity.this.isFinishing() && !MainActivity.this.isDestroyed()) {
+                                                Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
+                                                dialog.dismiss();
+                                                showSavedPasswordsDialog();
+                                            }
                                         });
                                     });
                                 })
@@ -1467,93 +1484,58 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void switchToTab(int index) {
-        if (tabList == null || index < 0 || index >= tabList.size()) return;
-
+    public void switchToTab(int index) {
+        if (index < 0 || index >= tabList.size()) return;
         currentTabPosition = index;
-        saveCurrentTab(); 
-        
-        updateTabIndicator(); 
-        updateTabBadgeCount();
 
-        if (browserContainer != null) {
-            for (int i = 0; i < tabList.size(); i++) {
-                android.webkit.WebView wv = tabList.get(i).getWebView();
-                if (wv != null) {
-                    if (i == index) {
-                        wv.setVisibility(android.view.View.VISIBLE);
-                        wv.onResume();
-                        
-                        String url = wv.getUrl();
-                        if (addressBar != null) {
-                            addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
-                        }
-                    } else {
-                        wv.setVisibility(android.view.View.GONE);
-                        wv.onPause();
+        for (int i = 0; i < tabList.size(); i++) {
+            android.webkit.WebView wv = tabList.get(i).getWebView();
+            if (wv != null) {
+                if (i == index) {
+                    wv.setVisibility(android.view.View.VISIBLE);
+                    wv.onResume();
+                    
+                    String url = wv.getUrl();
+                    if (addressBar != null) {
+                        addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
                     }
+                } else {
+                    wv.setVisibility(android.view.View.GONE);
+                    wv.onPause();
                 }
             }
         }
-        if (addressBar != null) {
-            try {
-                if (addressBar.isAttachedToWindow()) addressBar.dismissDropDown();
-            } catch (Exception ignored) {}
-            addressBar.clearFocus();
-        }
     }
 
-    private void closeTab(int index) {
-        if (tabList.size() == 1) {
-            new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                .setTitle("Close Spoon Browser?")
-                .setMessage("Closing the last tab will exit the app. Do you want to continue?")
-                .setPositiveButton("Exit", (dialog, which) -> {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                        android.webkit.CookieManager.getInstance().flush();
-                    }
-                    if (prefs != null) {
-                        prefs.edit().remove("open_tabs").remove("current_tab").apply();
-                    }
-                    finishAndRemoveTask();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-            return;
+    public void closeTab(int index) {
+        if (index < 0 || index >= tabList.size()) return;
+
+        TabState tabToRemove = tabList.get(index);
+        android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
+
+        if (wvToDestroy != null) {
+            if (browserContainer != null) {
+                browserContainer.removeView(wvToDestroy);
+            }
+            wvToDestroy.removeAllViews();
+            wvToDestroy.destroy();
         }
 
-        TabState tab = tabList.get(index);
-        WebView webView = tab.getWebView();
-
-        if (browserContainer != null) {
-            browserContainer.removeView(webView);
-        }
-        
-        // Critical: Remove from list FIRST to prevent index crashes
         tabList.remove(index);
         
-        // Notify the visual grid to instantly animate the removal
         if (tabAdapter != null) {
             tabAdapter.notifyItemRemoved(index);
             tabAdapter.notifyItemRangeChanged(index, tabList.size());
         }
 
-        webView.stopLoading();
-        webView.setDownloadListener(null);
-        webView.setWebChromeClient(null);
-        webView.setWebViewClient(null);
-        webView.clearHistory();
-        webView.clearCache(true);
-        webView.loadUrl("about:blank");
-        webView.removeAllViews();
-        webView.destroy();
-        
-        tab.destroy();
-        
-        if (currentTabPosition >= tabList.size()) {
-            currentTabPosition = Math.max(0, tabList.size() - 1);
+        if (tabList.isEmpty()) {
+            createNewTab();
+        } else {
+            if (currentTabPosition >= tabList.size()) {
+                currentTabPosition = tabList.size() - 1;
+            }
+            switchToTab(currentTabPosition);
         }
-        switchToTab(currentTabPosition);
     }
 
     private void updateTabIndicator() {
@@ -2193,6 +2175,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    public void executeSafely(Runnable task) {
+        if (backgroundExecutor != null && !backgroundExecutor.isShutdown() && !backgroundExecutor.isTerminated()) {
+            try {
+                backgroundExecutor.execute(task);
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     private void updateAddressBarSuggestions(String query) {
         if (query == null || query.trim().isEmpty()) {
             addressBarAdapter.clear();
@@ -2207,7 +2199,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (dbHelper == null) return;
 
-        backgroundExecutor.execute(() -> {
+        executeSafely(() -> {
             java.util.List<String[]> rawResults = dbHelper.getMatchingHistory(query); 
             
             java.util.List<Suggestion> cleanSuggestions = new java.util.ArrayList<>();
