@@ -64,6 +64,9 @@ public class AdBlockEngine {
             }
         }
         whitelistedDomains = whiteSet;
+        if (loadEngineFromCache(context)) {
+            return; 
+        }
 
         if (filterLists == null || filterLists.isEmpty()) return;
         HashSet<String> initialDomains = new HashSet<>();
@@ -85,6 +88,7 @@ public class AdBlockEngine {
         synchronized (decisionCache) {
             decisionCache.evictAll();
         }
+        saveEngineToCache(context);
     }
 
     public static boolean shouldBlock(String url) {
@@ -207,9 +211,15 @@ public class AdBlockEngine {
                 }
             }
 
-            if (!newDomains.isEmpty() || !newPaths.isEmpty()) {
+            if (!newDomains.isEmpty() || !newPaths.isEmpty() || !cosmeticRules.isEmpty()) {
                 blockedDomains = newDomains;
                 scopedPathRules = newPaths;
+                
+                synchronized (decisionCache) {
+                    decisionCache.evictAll();
+                }
+                saveEngineToCache(context);
+            }
 
                 synchronized (decisionCache) {
                     decisionCache.evictAll();
@@ -278,6 +288,9 @@ public class AdBlockEngine {
             synchronized (decisionCache) {
                 decisionCache.evictAll();
             }
+
+            java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
+            if (cacheFile.exists()) cacheFile.delete();
         });
     }
 
@@ -366,5 +379,60 @@ public class AdBlockEngine {
         android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE);
         isEngineEnabled = prefs.getBoolean(KEY_ENABLED, true);
         return isEngineEnabled;
+    }
+
+    public static String getCosmeticCss(String url) {
+        if (!isEngineEnabled || url == null) return "";
+        try {
+            android.net.Uri uri = android.net.Uri.parse(url);
+            String host = uri.getHost();
+            if (host == null) return "";
+            host = host.toLowerCase();
+
+            java.util.ArrayList<String> selectors = new java.util.ArrayList<>();
+            if (cosmeticRules.containsKey(host)) {
+                selectors.addAll(cosmeticRules.get(host));
+            }
+
+            int firstDot = host.indexOf('.');
+            int lastDot = host.lastIndexOf('.');
+            if (firstDot > 0 && firstDot != lastDot) {
+                String parentDomain = host.substring(firstDot + 1);
+                if (cosmeticRules.containsKey(parentDomain)) {
+                    selectors.addAll(cosmeticRules.get(parentDomain));
+                }
+            }
+
+            if (selectors.isEmpty()) return "";
+
+            return android.text.TextUtils.join(", ", selectors) + " { display: none !important; }";
+
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static void saveEngineToCache(Context context) {
+        try {
+            java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
+            try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream(cacheFile))) {
+                oos.writeObject(new Object[]{blockedDomains, scopedPathRules, cosmeticRules});
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @SuppressWarnings("unchecked")
+    private static boolean loadEngineFromCache(Context context) {
+        java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
+        if (!cacheFile.exists()) return false;
+        try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(cacheFile))) {
+            Object[] data = (Object[]) ois.readObject();
+            blockedDomains = (java.util.HashSet<String>) data[0];
+            scopedPathRules = (java.util.HashMap<String, java.util.ArrayList<String>>) data[1];
+            cosmeticRules = (java.util.HashMap<String, java.util.ArrayList<String>>) data[2];
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
