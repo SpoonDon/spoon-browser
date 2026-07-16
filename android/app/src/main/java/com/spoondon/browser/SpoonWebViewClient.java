@@ -280,5 +280,13 @@ public class SpoonWebViewClient extends WebViewClient {
         "})();";
         
         view.evaluateJavascript(script, null);
-    }   
+    }
+
+    @Override
+    public boolean onRenderProcessGone(android.webkit.WebView view, android.webkit.RenderProcessGoneDetail detail) {
+        if (activity != null && view != null) {
+            activity.handleDeadRenderProcess(view);
+        }
+        return true; 
+    }
 }
