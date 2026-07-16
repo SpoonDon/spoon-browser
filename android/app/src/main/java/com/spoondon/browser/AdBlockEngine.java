@@ -23,6 +23,7 @@ public class AdBlockEngine {
     private static volatile HashMap<String, ArrayList<String>> scopedPathRules = new HashMap<>();
     private static volatile HashSet<String> whitelistedDomains = new HashSet<>();
     private static volatile boolean isEngineEnabled = true;
+    private static volatile HashMap<String, ArrayList<String>> cosmeticRules = new HashMap<>();
     
     private static final AtomicBoolean isUpdating = new AtomicBoolean(false);
     private static final String PREFS_NAME = "SpoonAdBlockPrefs";
@@ -284,9 +285,29 @@ public class AdBlockEngine {
         while ((line = reader.readLine()) != null) {
             line = line.trim().toLowerCase();
             
-            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || 
-                line.contains("##") || line.startsWith("@@")) {
+            // 1. We removed line.contains("##") from the ignore list
+            if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.startsWith("@@")) {
                 continue;
+            }
+
+            // 2. Intercept and store Cosmetic CSS rules
+            if (line.contains("##")) {
+                int splitIdx = line.indexOf("##");
+                String domainPart = line.substring(0, splitIdx).trim();
+                String cssSelector = line.substring(splitIdx + 2).trim();
+
+                // To save phone RAM, we only load domain-specific CSS (ignoring global rules)
+                if (!domainPart.isEmpty() && !cssSelector.isEmpty() && !domainPart.contains("*")) {
+                    String[] domains = domainPart.split(",");
+                    for (String d : domains) {
+                        if (d.startsWith("~")) continue; // Skip exclusions
+                        if (!cosmeticRules.containsKey(d)) {
+                            cosmeticRules.put(d, new ArrayList<>());
+                        }
+                        cosmeticRules.get(d).add(cssSelector);
+                    }
+                }
+                continue; 
             }
 
             if (line.startsWith("||")) {
