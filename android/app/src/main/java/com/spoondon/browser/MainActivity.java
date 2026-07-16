@@ -2175,16 +2175,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void executeSafely(Runnable task) {
-        if (backgroundExecutor != null && !backgroundExecutor.isShutdown() && !backgroundExecutor.isTerminated()) {
-            try {
-                backgroundExecutor.execute(task);
-            } catch (java.util.concurrent.RejectedExecutionException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
     private void updateAddressBarSuggestions(String query) {
         if (query == null || query.trim().isEmpty()) {
             addressBarAdapter.clear();
