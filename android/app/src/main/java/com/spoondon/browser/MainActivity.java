@@ -1470,10 +1470,20 @@ public class MainActivity extends AppCompatActivity {
         }
         
         switchToTab(currentTabPosition);
+    }
+
+    private void updateTabCountersUI() {
+        if (tabList == null || tabList.isEmpty()) {
+            if (tabIndicator != null) tabIndicator.setText("0/0");
+            if (tabBadgeButton != null) tabBadgeButton.setText("0/0");
+            return;
+        }
         
-        if (tabIndicator != null) tabIndicator.setText(String.valueOf(tabList.size()));
-        if (tabBadgeButton != null) tabBadgeButton.setText(String.valueOf(tabList.size()));
-    }   
+        String counterText = (currentTabPosition + 1) + "/" + tabList.size();
+        
+        if (tabIndicator != null) tabIndicator.setText(counterText);
+        if (tabBadgeButton != null) tabBadgeButton.setText(counterText);
+    }
 
     public void openUrlInNewTab(String url) {
         runOnUiThread(() -> {
@@ -1481,12 +1491,7 @@ public class MainActivity extends AppCompatActivity {
             createNewTab(); 
             
             android.webkit.WebView newTab = tabList.get(currentTabPosition).getWebView();
-            
             newTab.loadUrl(url);
-            
-            if (tabBadgeButton != null) {
-                tabBadgeButton.setText(String.valueOf(tabList.size()));
-            }
             
             android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
         });
@@ -1513,6 +1518,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
+        
+        updateTabCountersUI();
     }
 
     public void closeTab(int index) {
@@ -1541,21 +1548,19 @@ public class MainActivity extends AppCompatActivity {
             tabAdapter.notifyItemRangeChanged(index, tabList.size());
         }
 
-        if (tabIndicator != null) tabIndicator.setText(String.valueOf(tabList.size()));
-        if (tabBadgeButton != null) tabBadgeButton.setText(String.valueOf(tabList.size()));
-
-        if (currentTabPosition >= tabList.size()) {
+        // --- THE MATH FIX ---
+        // Shift active index left if a background tab to the left was closed
+        if (index < currentTabPosition) {
+            currentTabPosition--;
+        } 
+        // Or clamp it if the very last tab was closed
+        else if (currentTabPosition >= tabList.size()) {
             currentTabPosition = tabList.size() - 1;
         }
+        
         switchToTab(currentTabPosition);
     }
-
-    private void updateTabIndicator() {
-        if (tabIndicator != null) {
-            tabIndicator.setText((currentTabPosition + 1) + "/" + tabList.size());
-        }
-    }
-
+    
     private ArrayList<BrowserItem> buildTabItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
         for (TabState tabState : tabList) {    
