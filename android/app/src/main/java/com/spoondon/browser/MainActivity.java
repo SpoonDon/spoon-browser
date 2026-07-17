@@ -1292,7 +1292,36 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
                 if (url == null) return;
-                
+
+                if (url.startsWith("blob:")) {
+                    String safeDisposition = contentDisposition != null ? contentDisposition.replace("'", "\\'") : "";
+                    String script = "javascript:(function() {" +
+                        "var xhr = new XMLHttpRequest();" +
+                        "xhr.open('GET', '" + url + "', true);" +
+                        "xhr.responseType = 'blob';" +
+                        "xhr.onload = function(e) {" +
+                            "if (this.status == 200) {" +
+                                "var blob = this.response;" +
+                                "var mime = blob.type || '" + mimeType + "';" +
+                                "var filename = '" + safeDisposition + "'.match(/filename=[\"']?([^\"';]+)[\"']?/i);" +
+                                "filename = filename ? filename[1] : 'downloaded_file';" +
+                                "if (filename === 'downloaded_file' && mime.includes('json')) filename += '.json';" +
+                                "var reader = new FileReader();" +
+                                "reader.readAsDataURL(blob);" +
+                                "reader.onloadend = function() {" +
+                                    "var base64data = reader.result;" +
+                                    "AndroidDownloader.saveBase64ToFile(base64data, mime, filename);" +
+                                "}" +
+                            "}" +
+                        "};" +
+                        "xhr.send();" +
+                    "})()";
+                    
+                    webView.evaluateJavascript(script, null);
+                    android.widget.Toast.makeText(MainActivity.this, "Extracting file...", android.widget.Toast.LENGTH_SHORT).show();
+                    return; 
+                }
+
                 try {
                     String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
                     String lowerUrl = url.toLowerCase();
