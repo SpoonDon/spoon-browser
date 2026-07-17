@@ -150,6 +150,18 @@ public class SpoonWebViewClient extends WebViewClient {
     public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
 
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            view.evaluateJavascript(
+                "javascript:(function() {" +
+                "   if (!window.originalRevoke) {" +
+                "       window.originalRevoke = window.URL.revokeObjectURL;" +
+                "       window.URL.revokeObjectURL = function(url) {" +
+                "           setTimeout(function() { window.originalRevoke(url); }, 10000);" +
+                "       };" +
+                "   }" +
+                "})();", null);
+        }
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             android.webkit.CookieManager.getInstance().flush();
         }
