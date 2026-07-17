@@ -118,21 +118,40 @@
         function copyPass(idx, btnElement) {
             var pass = allData[idx].password;
             if(pass) {
-                var temp = document.createElement("input");
-                temp.value = pass;
-                document.body.appendChild(temp);
-                temp.select();
-                document.execCommand("copy");
-                document.body.removeChild(temp);
-                
-                var originalText = btnElement.innerText;
-                btnElement.innerText = "Copied!";
-                btnElement.style.background = "#28a745";
-                setTimeout(function() {
-                    btnElement.innerText = originalText;
-                    btnElement.style.background = "#222";
-                }, 1500);
+                var triggerSuccessUI = function() {
+                    var originalText = btnElement.innerText;
+                    btnElement.innerText = "Copied!";
+                    btnElement.style.background = "#28a745";
+                    setTimeout(function() {
+                        btnElement.innerText = originalText;
+                        btnElement.style.background = "#222";
+                    }, 1500);
+                };
+
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(pass).then(function() {
+                        triggerSuccessUI();
+                    }).catch(function() {
+                        fallbackCopy(pass, triggerSuccessUI);
+                    });
+                } else {
+                    fallbackCopy(pass, triggerSuccessUI);
+                }
             }
+        }
+
+        function fallbackCopy(pass, successCallback) {
+            var temp = document.createElement("input");
+            temp.value = pass;
+            document.body.appendChild(temp);
+            temp.select();
+            try {
+                document.execCommand("copy");
+                successCallback();
+            } catch (err) {
+                console.error("Fallback copy failed");
+            }
+            document.body.removeChild(temp);
         }
 
         function deleteCard(idx) {
