@@ -78,6 +78,19 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
+    @Override
+    public void onConfigure(SQLiteDatabase db) {
+        super.onConfigure(db);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            db.enableWriteAheadLogging();
+        }
+        
+        try {
+            db.execSQL("PRAGMA synchronous = NORMAL;");
+            db.execSQL("PRAGMA journal_size_limit = 524288;");
+        } catch (Exception ignored) {}
+    }
+
     public void addHistory(String url, String title) {
         if (url == null || url.isEmpty() || url.equals("about:blank")) return;
         SQLiteDatabase db = this.getWritableDatabase();
