@@ -64,6 +64,8 @@ public class AdBlockEngine {
             }
         }
         whitelistedDomains = whiteSet;
+
+        // If we successfully load the compiled binary, skip the text parsing!
         if (loadEngineFromCache(context)) {
             return; 
         }
@@ -71,6 +73,7 @@ public class AdBlockEngine {
         if (filterLists == null || filterLists.isEmpty()) return;
         HashSet<String> initialDomains = new HashSet<>();
         HashMap<String, ArrayList<String>> initialPaths = new HashMap<>();
+        HashMap<String, ArrayList<String>> initialCosmetic = new HashMap<>();
 
         for (String filterUrl : filterLists) {
             String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
@@ -78,12 +81,13 @@ public class AdBlockEngine {
             if (localFile.exists()) {
                 try (InputStream is = new FileInputStream(localFile);
                      BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
-                    parseFilterLines(reader, initialDomains, initialPaths);
+                    parseFilterLines(reader, initialDomains, initialPaths, initialCosmetic);
                 } catch (Exception ignored) {}
             }
         }
         blockedDomains = initialDomains;
         scopedPathRules = initialPaths;
+        cosmeticRules = initialCosmetic;
 
         synchronized (decisionCache) {
             decisionCache.evictAll();
@@ -187,6 +191,7 @@ public class AdBlockEngine {
             boolean allDownloadsSucceeded = true;
             HashSet<String> newDomains = new HashSet<>();
             HashMap<String, ArrayList<String>> newPaths = new HashMap<>();
+            HashMap<String, ArrayList<String>> newCosmetic = new HashMap<>();
 
             for (String filterUrl : filterLists) {
                 String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
@@ -204,26 +209,22 @@ public class AdBlockEngine {
                     }
 
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-                        parseFilterLines(reader, newDomains, newPaths);
+                        parseFilterLines(reader, newDomains, newPaths, newCosmetic);
                     }
                 } catch (Exception e) {
                     allDownloadsSucceeded = false;
                 }
             }
 
-            if (!newDomains.isEmpty() || !newPaths.isEmpty() || !cosmeticRules.isEmpty()) {
+            if (!newDomains.isEmpty() || !newPaths.isEmpty() || !newCosmetic.isEmpty()) {
                 blockedDomains = newDomains;
                 scopedPathRules = newPaths;
+                cosmeticRules = newCosmetic;
                 
                 synchronized (decisionCache) {
                     decisionCache.evictAll();
                 }
                 saveEngineToCache(context);
-            }
-
-                synchronized (decisionCache) {
-                    decisionCache.evictAll();
-                }
             }
 
             if (allDownloadsSucceeded) {
@@ -244,12 +245,9 @@ public class AdBlockEngine {
                 localFile.delete();
             }
 
-            synchronized (decisionCache) {
-                decisionCache.evictAll();
-            }
-
             HashSet<String> newDomains = new HashSet<>();
             HashMap<String, ArrayList<String>> newPaths = new HashMap<>();
+            HashMap<String, ArrayList<String>> newCosmetic = new HashMap<>();
 
             if (remainingLists != null) {
                 for (String url : remainingLists) {
@@ -258,7 +256,7 @@ public class AdBlockEngine {
                     if (lf.exists()) {
                         try (InputStream is = new FileInputStream(lf);
                              BufferedReader reader = new BufferedReader(new InputStreamReader(is))) {
-                            parseFilterLines(reader, newDomains, newPaths);
+                            parseFilterLines(reader, newDomains, newPaths, newCosmetic);
                         } catch (Exception ignored) {}
                     }
                 }
@@ -266,6 +264,12 @@ public class AdBlockEngine {
 
             blockedDomains = newDomains;
             scopedPathRules = newPaths;
+            cosmeticRules = newCosmetic;
+
+            synchronized (decisionCache) {
+                decisionCache.evictAll();
+            }
+            saveEngineToCache(context);
         });
     }
 
@@ -294,31 +298,28 @@ public class AdBlockEngine {
         });
     }
 
-    private static void parseFilterLines(BufferedReader reader, HashSet<String> domainSet, HashMap<String, ArrayList<String>> pathMap) throws Exception {
+    private static void parseFilterLines(BufferedReader reader, HashSet<String> domainSet, HashMap<String, ArrayList<String>> pathMap, HashMap<String, ArrayList<String>> cosmeticMap) throws Exception {
         String line;
         while ((line = reader.readLine()) != null) {
             line = line.trim().toLowerCase();
             
-            // 1. We removed line.contains("##") from the ignore list
             if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.startsWith("@@")) {
                 continue;
             }
 
-            // 2. Intercept and store Cosmetic CSS rules
             if (line.contains("##")) {
                 int splitIdx = line.indexOf("##");
                 String domainPart = line.substring(0, splitIdx).trim();
                 String cssSelector = line.substring(splitIdx + 2).trim();
 
-                // To save phone RAM, we only load domain-specific CSS (ignoring global rules)
                 if (!domainPart.isEmpty() && !cssSelector.isEmpty() && !domainPart.contains("*")) {
                     String[] domains = domainPart.split(",");
                     for (String d : domains) {
-                        if (d.startsWith("~")) continue; // Skip exclusions
-                        if (!cosmeticRules.containsKey(d)) {
-                            cosmeticRules.put(d, new ArrayList<>());
+                        if (d.startsWith("~")) continue; 
+                        if (!cosmeticMap.containsKey(d)) {
+                            cosmeticMap.put(d, new ArrayList<>());
                         }
-                        cosmeticRules.get(d).add(cssSelector);
+                        cosmeticMap.get(d).add(cssSelector);
                     }
                 }
                 continue; 
