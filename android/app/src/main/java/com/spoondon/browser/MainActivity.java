@@ -1298,29 +1298,36 @@ public class MainActivity extends AppCompatActivity {
                     String safeMime = mimeType != null ? mimeType.replace("'", "\\'") : "";
                     
                     String script = "javascript:(function() {" +
-                        "fetch('" + url + "').then(function(response) {" +
-                            "return response.blob();" +
-                        "}).then(function(blob) {" +
-                            "var mime = blob.type || '" + safeMime + "';" +
-                            "var filename = '" + safeDisposition + "'.match(/filename=[\"']?([^\"';]+)[\"']?/i);" +
-                            "filename = filename ? filename[1] : 'downloaded_file';" +
-                            
-                            // Guess extension if none is provided by the headers
-                            "if (filename === 'downloaded_file') {" +
-                                "if (mime.includes('json')) filename += '.json';" +
-                                "else if (mime.includes('pdf')) filename += '.pdf';" +
-                                "else if (mime.includes('text')) filename += '.txt';" +
-                                "else filename += '.bin';" +
+                        "var xhr = new XMLHttpRequest();" +
+                        "xhr.open('GET', '" + url + "', true);" +
+                        "xhr.responseType = 'blob';" +
+                        "xhr.onload = function(e) {" +
+                            "if (this.status === 200 || this.status === 0) {" +
+                                "var blob = this.response;" +
+                                "var mime = blob.type || '" + safeMime + "';" +
+                                "var filename = '" + safeDisposition + "'.match(/filename=[\"']?([^\"';]+)[\"']?/i);" +
+                                "filename = filename ? filename[1] : 'downloaded_file';" +
+                                
+                                "if (filename === 'downloaded_file') {" +
+                                    "if (mime.includes('json')) filename += '.json';" +
+                                    "else if (mime.includes('pdf')) filename += '.pdf';" +
+                                    "else if (mime.includes('text')) filename += '.txt';" +
+                                    "else filename += '.bin';" +
+                                "}" +
+                                
+                                "var reader = new FileReader();" +
+                                "reader.readAsDataURL(blob);" +
+                                "reader.onloadend = function() {" +
+                                    "AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
+                                "};" +
+                            "} else {" +
+                                "alert('Blob extraction failed. Status: ' + this.status);" +
                             "}" +
-                            
-                            "var reader = new FileReader();" +
-                            "reader.readAsDataURL(blob);" +
-                            "reader.onloadend = function() {" +
-                                "AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
-                            "}" +
-                        "}).catch(function(error) {" +
-                            "alert('Blob download error: The website revoked the file too quickly. (' + error.message + ')');" +
-                        "});" +
+                        "};" +
+                        "xhr.onerror = function() {" +
+                            "alert('Blob download error. The file was revoked before it could be extracted.');" +
+                        "};" +
+                        "xhr.send();" +
                     "})()";
                     
                     webView.evaluateJavascript(script, null);
