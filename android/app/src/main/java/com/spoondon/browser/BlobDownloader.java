@@ -38,9 +38,25 @@ public class BlobDownloader {
             // Decode payload
             byte[] fileBytes = Base64.decode(base64Data, Base64.DEFAULT);
 
-            // 🛠️ AUDIT FIX: Catch and repair mislabeled PDF blobs/base64 streams
+            // AUDIT FIX: Catch and repair mislabeled PDF blobs/base64 streams
             String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
             String cleanFileName = fileName;
+
+            // --- MIME TYPE OVERRIDE: Prevent Android from appending .txt ---
+            int lastDotIndex = cleanFileName.lastIndexOf(".");
+            if (lastDotIndex != -1) {
+                String extension = cleanFileName.substring(lastDotIndex + 1).toLowerCase();
+                String guessedMime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+                
+                if (guessedMime != null) {
+                    safeMimeType = guessedMime;
+                } else if (extension.equals("json")) {
+                    safeMimeType = "application/json";
+                } else if (extension.equals("md")) {
+                    safeMimeType = "text/markdown";
+                }
+            }
+            // ---------------------------------------------------------------
 
             boolean isActuallyPdf = safeMimeType.equalsIgnoreCase("application/pdf") || 
                                     cleanFileName.toLowerCase().contains(".pdf");
