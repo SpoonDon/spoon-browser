@@ -1298,36 +1298,36 @@ public class MainActivity extends AppCompatActivity {
                     String safeMime = mimeType != null ? mimeType.replace("'", "\\'") : "";
                     
                     String script = "javascript:(function() {" +
-                        "var xhr = new XMLHttpRequest();" +
-                        "xhr.open('GET', '" + url + "', true);" +
-                        "xhr.responseType = 'blob';" +
-                        "xhr.onload = function(e) {" +
-                            "if (this.status === 200 || this.status === 0) {" +
-                                "var blob = this.response;" +
-                                "var mime = blob.type || '" + safeMime + "';" +
-                                "var filename = '" + safeDisposition + "'.match(/filename=[\"']?([^\"';]+)[\"']?/i);" +
-                                "filename = filename ? filename[1] : 'downloaded_file';" +
-                                
-                                "if (filename === 'downloaded_file') {" +
-                                    "if (mime.includes('json')) filename += '.json';" +
-                                    "else if (mime.includes('pdf')) filename += '.pdf';" +
-                                    "else if (mime.includes('text')) filename += '.txt';" +
-                                    "else filename += '.bin';" +
-                                "}" +
-                                
-                                "var reader = new FileReader();" +
-                                "reader.readAsDataURL(blob);" +
-                                "reader.onloadend = function() {" +
-                                    "AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
-                                "};" +
-                            "} else {" +
-                                "alert('Blob extraction failed. Status: ' + this.status);" +
+                        "var url = '" + url + "';" +
+                        // 1. Check our secret backup vault first (from SpoonWebViewClient)
+                        "var blob = window.spoonBlobStore ? window.spoonBlobStore[url] : null;" +
+                        
+                        "function processBlob(b) {" +
+                            "var mime = b.type || '" + safeMime + "';" +
+                            "var filename = '" + safeDisposition + "'.match(/filename=[\"']?([^\"';]+)[\"']?/i);" +
+                            "filename = filename ? filename[1] : 'downloaded_file';" +
+                            "if (filename === 'downloaded_file') {" +
+                                "if (mime.includes('json')) filename += '.json';" +
+                                "else if (mime.includes('pdf')) filename += '.pdf';" +
+                                "else if (mime.includes('text')) filename += '.txt';" +
+                                "else filename += '.bin';" +
                             "}" +
-                        "};" +
-                        "xhr.onerror = function() {" +
-                            "alert('Blob download error. The file was revoked before it could be extracted.');" +
-                        "};" +
-                        "xhr.send();" +
+                            "var reader = new FileReader();" +
+                            "reader.readAsDataURL(b);" +
+                            "reader.onloadend = function() {" +
+                                "AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
+                            "}" +
+                        "}" +
+                        
+                        "if (blob) {" +
+                            // 2. Instantly extract from our vault if it exists!
+                            "processBlob(blob);" + 
+                        "} else {" +
+                            // 3. Fallback fetch just in case it bypassed our hooks
+                            "fetch(url).then(function(r){return r.blob();}).then(processBlob).catch(function(e) {" +
+                                "alert('Blob download failed. The site bypassed the memory hook.');" +
+                            "});" +
+                        "}" +
                     "})()";
                     
                     webView.evaluateJavascript(script, null);
