@@ -1686,7 +1686,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onTabClosed(int position) {
                 closeTab(position);
-                // Update ViewPager if closing the last remaining items
+                
+                if (tabSwitcherOverlay != null) {
+                    androidx.viewpager2.widget.ViewPager2 tabsViewPager = tabSwitcherOverlay.findViewById(R.id.tabsViewPager);
+                    if (tabsViewPager != null) {
+                        tabsViewPager.post(() -> tabsViewPager.requestTransform());
+                    }
+                }
+                
                 if (tabList.isEmpty()) {
                     createNewTab();
                     showHome();
@@ -1698,7 +1705,6 @@ public class MainActivity extends AppCompatActivity {
         androidx.viewpager2.widget.ViewPager2 tabsViewPager = tabSwitcherOverlay.findViewById(R.id.tabsViewPager);
         tabsViewPager.setAdapter(tabAdapter);
         
-        // Setup premium 3D Carousel Scaling Effect
         tabsViewPager.setOffscreenPageLimit(3);
         androidx.viewpager2.widget.CompositePageTransformer transformer = new androidx.viewpager2.widget.CompositePageTransformer();
         transformer.addTransformer(new androidx.viewpager2.widget.MarginPageTransformer(24));
@@ -1709,7 +1715,6 @@ public class MainActivity extends AppCompatActivity {
         });
         tabsViewPager.setPageTransformer(transformer);
 
-        // Snap to the currently active browser tab
         tabsViewPager.setCurrentItem(currentTabPosition, false);
 
         if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
