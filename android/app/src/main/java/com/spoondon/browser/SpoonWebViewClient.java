@@ -150,17 +150,7 @@ public class SpoonWebViewClient extends WebViewClient {
     public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
-            view.evaluateJavascript(
-                "javascript:(function() {" +
-                "   if (!window.originalRevoke) {" +
-                "       window.originalRevoke = window.URL.revokeObjectURL;" +
-                "       window.URL.revokeObjectURL = function(url) {" +
-                "           setTimeout(function() { window.originalRevoke(url); }, 10000);" +
-                "       };" +
-                "   }" +
-                "})();", null);
-        }
+        injectBlobHook(view);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             android.webkit.CookieManager.getInstance().flush();
@@ -188,8 +178,10 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
+    public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
         super.doUpdateVisitedHistory(view, url, isReload);
+
+        injectBlobHook(view);
 
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
             long currentTime = System.currentTimeMillis();
@@ -223,6 +215,45 @@ public class SpoonWebViewClient extends WebViewClient {
                     } catch (Exception ignored) {}
                 });
             }
+        }
+    }
+
+    // Makes a secret backup of memory files before the website can delete them
+    public void injectBlobHook(android.webkit.WebView view) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            view.evaluateJavascript(
+                "javascript:(function() {" +
+                "   if (window.spoonBlobHooked) return;" +
+                "   window.spoonBlobHooked = true;" +
+                "   window.spoonBlobStore = {};" +
+                
+                // 1. Hook the Blob Engine to make a backup
+                "   var origCreate = window.URL.createObjectURL;" +
+                "   window.URL.createObjectURL = function(blob) {" +
+                "       var url = origCreate.call(window.URL, blob);" +
+                "       window.spoonBlobStore[url] = blob;" +
+                "       return url;" +
+                "   };" +
+                
+                // 2. Hook programmatic hidden clicks
+                "   var origClick = HTMLAnchorElement.prototype.click;" +
+                "   HTMLAnchorElement.prototype.click = function() {" +
+                "       if (this.href && this.href.startsWith('blob:')) {" +
+                "           var blob = window.spoonBlobStore[this.href];" +
+                "           if (blob) {" +
+                "               var mime = blob.type;" +
+                "               var filename = this.download || 'downloaded_file';" +
+                "               var reader = new FileReader();" +
+                "               reader.readAsDataURL(blob);" +
+                "               reader.onloadend = function() {" +
+                "                   AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
+                "               };" +
+                "               return;" + // Stop the browser from attempting a normal download
+                "           }" +
+                "       }" +
+                "       return origClick.apply(this, arguments);" +
+                "   };" +
+                "})();", null);
         }
     }
 
