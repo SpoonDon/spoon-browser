@@ -37,7 +37,8 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
     public void onBindViewHolder(@NonNull TabViewHolder holder, int position) {
         TabState tab = tabList.get(position);
         
-        holder.txtTitle.setText(tab.getTitle());
+        String dynamicTitle = "[" + (position + 1) + "/" + tabList.size() + "] " + tab.getTitle();
+        holder.txtTitle.setText(dynamicTitle);
         
         Bitmap thumbnail = tab.getThumbnail();
         if (thumbnail != null && !thumbnail.isRecycled()) {
@@ -48,14 +49,16 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
         }
 
         holder.itemView.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onTabSelected(holder.getAdapterPosition());
+            int currentPos = holder.getAdapterPosition();
+            if (listener != null && currentPos != RecyclerView.NO_POSITION) {
+                listener.onTabSelected(currentPos);
             }
         });
 
         holder.btnClose.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onTabClosed(holder.getAdapterPosition());
+            int currentPos = holder.getAdapterPosition();
+            if (listener != null && currentPos != RecyclerView.NO_POSITION) {
+                listener.onTabClosed(currentPos);
             }
         });
     }
@@ -71,7 +74,6 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
             return;
         }
 
-        // Use Collections.swap for mathematically perfect vertical list sync
         java.util.Collections.swap(tabList, fromPosition, toPosition);
         notifyItemMoved(fromPosition, toPosition);
     }
