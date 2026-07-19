@@ -2443,11 +2443,17 @@ public class MainActivity extends AppCompatActivity {
             if (lowerInput.equals("file:///android_asset/vault.html")) {
                 url = "file:///android_asset/vault.html";
             } else if (input.contains(".") && !input.contains(" ")) {
-                url = (input.startsWith("http://") || input.startsWith("https://")) ? input : "https://" + input;
+                if (input.startsWith("http://") || input.startsWith("https://")) {
+                    url = input;
+                } else {
+                    boolean isIpAddress = input.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?::[0-9]{1,5})?(?:/.*)?$");
+                    
+                    url = isIpAddress ? "http://" + input : "https://" + input;
+                }
             } else {
                 url = "https://search.brave.com/search?q=" + android.net.Uri.encode(input);
             }
-
+            
             runOnUiThread(() -> openUrl(url));
         });
     }
