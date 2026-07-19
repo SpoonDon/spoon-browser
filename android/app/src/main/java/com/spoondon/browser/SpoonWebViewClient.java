@@ -91,8 +91,16 @@ public class SpoonWebViewClient extends WebViewClient {
 
         if (url.startsWith("http://") && !url.contains("localhost") && !url.contains("10.0.2.2")) {
             try {
-                String host = android.net.Uri.parse(url).getHost();
-                if (host != null && host.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$")) {
+                String remaining = url.substring(7);
+                int slashIndex = remaining.indexOf("/");
+                String rawHost = (slashIndex != -1) ? remaining.substring(0, slashIndex) : remaining;
+                
+                if (rawHost.contains(":")) {
+                    rawHost = rawHost.split(":")[0];
+                }
+                rawHost = rawHost.trim();
+
+                if (rawHost.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$")) {
                     view.loadUrl(url);
                     return true;
                 }
