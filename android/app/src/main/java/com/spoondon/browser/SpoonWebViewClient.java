@@ -179,6 +179,12 @@ public class SpoonWebViewClient extends WebViewClient {
                     view.getSettings().setLoadWithOverviewMode(true);
                     view.getSettings().setUseWideViewPort(true);
                 } else {
+                    
+                    if (url.contains("youtube.com") && url.contains("app=desktop")) {
+                        view.loadUrl(url.replace("app=desktop", "app=m"));
+                        return;
+                    }
+
                     String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(activity);
                     
                     if (defaultUA != null) {
@@ -188,8 +194,8 @@ public class SpoonWebViewClient extends WebViewClient {
                         view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
                     }
                     
-                    view.getSettings().setLoadWithOverviewMode(true);
-                    view.getSettings().setUseWideViewPort(true);
+                    view.getSettings().setLoadWithOverviewMode(false);
+                    view.getSettings().setUseWideViewPort(false);
                 }
             }
         }
