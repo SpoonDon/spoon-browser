@@ -2612,10 +2612,18 @@ public class MainActivity extends AppCompatActivity {
 
         syncPrefs.edit().putStringSet("desktop_sites", desktopSites).apply();
         
+        String currentUrl = activeWebView.getUrl();
+
         if (desktopSites.contains(host)) {
             activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
             activeWebView.getSettings().setLoadWithOverviewMode(true);
             activeWebView.getSettings().setUseWideViewPort(true);
+            
+            if (currentUrl.contains("youtube.com") && !currentUrl.contains("app=desktop")) {
+                activeWebView.loadUrl(currentUrl + (currentUrl.contains("?") ? "&" : "?") + "app=desktop");
+            } else {
+                activeWebView.reload();
+            }
         } else {
             String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(this);
             if (defaultUA != null) {
@@ -2624,12 +2632,15 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
             }
-            
             activeWebView.getSettings().setLoadWithOverviewMode(false);
             activeWebView.getSettings().setUseWideViewPort(false);
+
+            if (currentUrl.contains("youtube.com") && currentUrl.contains("app=desktop")) {
+                activeWebView.loadUrl(currentUrl.replace("app=desktop", "app=m"));
+            } else {
+                activeWebView.reload();
+            }
         }
-        
-        activeWebView.reload();
     }
     
     private boolean isPhishingRisk(String host) {
