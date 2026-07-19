@@ -410,4 +410,35 @@ public class SpoonWebViewClient extends WebViewClient {
             android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
         }
     }
+
+    @Override
+    public void onReceivedSslError(android.webkit.WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+        String url = error.getUrl();
+        if (url != null) {
+            try {
+                android.net.Uri uri = android.net.Uri.parse(url);
+                String host = uri.getHost();
+                
+                if (host != null) {
+                    host = host.toLowerCase();
+                    boolean isIpAddress = host.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$");
+                    boolean isLocalRouter = host.endsWith("tplinkwifi.net") || 
+                                            host.endsWith("routerlogin.net") || 
+                                            host.endsWith("tendawifi.com") || 
+                                            host.endsWith("asusrouter.com") ||
+                                            host.endsWith("mwlogin.net") ||
+                                            host.endsWith("pi.hole") ||
+                                            host.endsWith(".local");
+                                            
+                    if (isIpAddress || isLocalRouter) {
+                        handler.proceed(); 
+                        return;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        
+        handler.cancel();
+        android.widget.Toast.makeText(view.getContext(), "SSL Certificate Error Blocked", android.widget.Toast.LENGTH_SHORT).show();
+    }
 }
