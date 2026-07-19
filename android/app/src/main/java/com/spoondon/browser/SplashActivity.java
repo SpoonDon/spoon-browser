@@ -33,7 +33,7 @@ public class SplashActivity extends AppCompatActivity {
         boolean showSplash = prefs.getBoolean("show_splash_screen", true);
 
         if (!showSplash) {
-            splashScreen.setKeepOnScreenCondition(() -> true);
+            splashScreen.setKeepOnScreenCondition(() -> false);
             routeToMain();
             return;
         }
