@@ -20,7 +20,7 @@
         android:theme="@style/AppTheme"
         android:largeHeap="true"
         android:hardwareAccelerated="true"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".SplashActivity"
