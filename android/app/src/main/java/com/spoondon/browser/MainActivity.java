@@ -422,7 +422,6 @@ public class MainActivity extends AppCompatActivity {
         browserContainer.setLayoutParams(browserParams);
     }
 
-
     private void loadSavedData() {
         String savedFilterLists = prefs.getString(KEY_FILTER_LISTS, "");
         if (!savedFilterLists.isEmpty()) {
@@ -2527,7 +2526,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
     
-public void triggerExternalDownload(String url, String mimeType) {
+    public void triggerExternalDownload(String url, String mimeType) {
         try {
             android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW);
             if (mimeType != null && !mimeType.isEmpty()) {
@@ -2549,7 +2548,7 @@ public void triggerExternalDownload(String url, String mimeType) {
             android.widget.Toast.makeText(this, "Could not launch external app", android.widget.Toast.LENGTH_SHORT).show();
         }
     }
-
+    
     public void triggerManualDownload(String url, String mimeType) {
         String targetFileName = android.webkit.URLUtil.guessFileName(url, null, mimeType);
         if (targetFileName.endsWith(".bin") || targetFileName.equals("downloadfile")) {
@@ -2587,11 +2586,11 @@ public void triggerExternalDownload(String url, String mimeType) {
             .setNegativeButton("Cancel", null)
             .show();
     }
-    
- private void toggleDesktopMode() {        
-     if (currentTabPosition < 0 || currentTabPosition >= tabList.size()) return;
-     android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
-     
+
+    private void toggleDesktopMode() {        
+        if (currentTabPosition < 0 || currentTabPosition >= tabList.size()) return;
+        android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
+        
         if (activeWebView == null || activeWebView.getUrl() == null) return;
 
         String host = android.net.Uri.parse(activeWebView.getUrl()).getHost();
@@ -2618,12 +2617,21 @@ public void triggerExternalDownload(String url, String mimeType) {
             activeWebView.getSettings().setLoadWithOverviewMode(true);
             activeWebView.getSettings().setUseWideViewPort(true);
         } else {
-            activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+            String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(this);
+            if (defaultUA != null) {
+                defaultUA = defaultUA.replace("; wv", "").replaceFirst("Version/[0-9.]+\\s", "");
+                activeWebView.getSettings().setUserAgentString(defaultUA);
+            } else {
+                activeWebView.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+            }
+            
+            activeWebView.getSettings().setLoadWithOverviewMode(false);
+            activeWebView.getSettings().setUseWideViewPort(false);
         }
         
         activeWebView.reload();
     }
-
+    
     private boolean isPhishingRisk(String host) {
         if (host == null) return false;
         String clean = host.toLowerCase().trim();
