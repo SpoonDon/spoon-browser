@@ -2448,7 +2448,15 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     boolean isIpAddress = input.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}(?::[0-9]{1,5})?(?:/.*)?$");
                     
-                    url = isIpAddress ? "http://" + input : "https://" + input;
+                    boolean isLocalRouter = lowerInput.endsWith("tplinkwifi.net") || 
+                                            lowerInput.endsWith("routerlogin.net") || 
+                                            lowerInput.endsWith("tendawifi.com") || 
+                                            lowerInput.endsWith("asusrouter.com") ||
+                                            lowerInput.endsWith("mwlogin.net") ||
+                                            lowerInput.endsWith("pi.hole") ||
+                                            lowerInput.endsWith(".local");
+
+                    url = (isIpAddress || isLocalRouter) ? "http://" + input : "https://" + input;
                 }
             } else {
                 url = "https://search.brave.com/search?q=" + android.net.Uri.encode(input);
@@ -2465,7 +2473,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
-            // Target size is 30% of the screen
             int targetWidth = (int) (webView.getWidth() * 0.3f);
             int targetHeight = (int) (webView.getHeight() * 0.3f);
             
@@ -2477,7 +2484,6 @@ public class MainActivity extends AppCompatActivity {
             android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(targetWidth, targetHeight, android.graphics.Bitmap.Config.RGB_565);
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                // Modern, Hardware-Accelerated Capture (Zero UI Lag)
                 int[] location = new int[2];
                 webView.getLocationInWindow(location);
                 android.graphics.Rect rect = new android.graphics.Rect(
@@ -2492,12 +2498,10 @@ public class MainActivity extends AppCompatActivity {
                     if (copyResult == android.view.PixelCopy.SUCCESS) {
                         callback.onReceiveValue(bitmap);
                     } else {
-                        // Fallback if OS denies hardware capture
                         fallbackCanvasCapture(webView, targetWidth, targetHeight, callback);
                     }
                 }, handler);
             } else {
-                // Legacy device fallback
                 fallbackCanvasCapture(webView, targetWidth, targetHeight, callback);
             }
         } catch (Exception e) {
