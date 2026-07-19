@@ -179,7 +179,17 @@ public class SpoonWebViewClient extends WebViewClient {
                     view.getSettings().setLoadWithOverviewMode(true);
                     view.getSettings().setUseWideViewPort(true);
                 } else {
-                    view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+                    String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(activity);
+                    
+                    if (defaultUA != null) {
+                        defaultUA = defaultUA.replace("; wv", "").replaceFirst("Version/[0-9.]+\\s", "");
+                        view.getSettings().setUserAgentString(defaultUA);
+                    } else {
+                        view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+                    }
+                    
+                    view.getSettings().setLoadWithOverviewMode(true);
+                    view.getSettings().setUseWideViewPort(true);
                 }
             }
         }
@@ -363,9 +373,7 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     private void handleNetworkError(android.webkit.WebView view, int errorCode) {
-        
-        if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || 
-            errorCode == ERROR_TIMEOUT || errorCode == ERROR_INTERNET_DISCONNECTED) {
+        if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
             
             String errorHtml = "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;background-color:#202124;font-family:sans-serif;color:#e8eaed;text-align:center;padding:20px;'>" +
                                "<div><svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#e8eaed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M10.53 5.53a9 9 0 0 1 8.94 0'/><path d='M15.41 10.41a4 4 0 0 1 3.12 0'/><path d='M20 15h.01M4 9l16 10'/><path d='M5.53 10.53a9 9 0 0 0-1.47.47'/><path d='M8.59 13.59a4 4 0 0 0-1.47.47'/><path d='M4 15h.01'/></svg>" +
@@ -374,7 +382,6 @@ public class SpoonWebViewClient extends WebViewClient {
                                "</body></html>";
                                
             view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
-            
             android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
         }
     }
