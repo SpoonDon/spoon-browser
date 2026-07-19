@@ -98,11 +98,20 @@ public class SpoonWebViewClient extends WebViewClient {
                 if (rawHost.contains(":")) {
                     rawHost = rawHost.split(":")[0];
                 }
-                rawHost = rawHost.trim();
+                rawHost = rawHost.trim().toLowerCase();
 
-                if (rawHost.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$")) {
-                    view.loadUrl(url);
-                    return true;
+                boolean isIpAddress = rawHost.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$");
+                
+                boolean isLocalRouter = rawHost.endsWith("tplinkwifi.net") || 
+                                        rawHost.endsWith("routerlogin.net") || 
+                                        rawHost.endsWith("tendawifi.com") || 
+                                        rawHost.endsWith("asusrouter.com") ||
+                                        rawHost.endsWith("mwlogin.net") ||
+                                        rawHost.endsWith("pi.hole") ||
+                                        rawHost.endsWith(".local");
+
+                if (isIpAddress || isLocalRouter) {
+                    return false; 
                 }
             } catch (Exception ignored) {}
 
