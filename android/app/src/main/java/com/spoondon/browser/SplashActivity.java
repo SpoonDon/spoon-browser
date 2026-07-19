@@ -1,7 +1,7 @@
 package com.spoondon.browser;
 
-import com.spoondon.browser.R;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -10,34 +10,36 @@ import android.view.animation.AnimationUtils;
 import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.splashscreen.SplashScreen;
 
 public class SplashActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 1. Initialize Android 12+ Native Splash Screen (MUST be before super.onCreate)
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
-        // CHECK PREFERENCES: Kill animation if user disabled it
-        android.content.SharedPreferences prefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-        boolean showSplash = prefs.getBoolean("show_splash_screen", true);
-        
-        if (!showSplash) {
-            Intent intent = new Intent(SplashActivity.this, MainActivity.class);
-            startActivity(intent);
-            finish();
-            return; // Stop executing the rest of the file
-        }
-
-        // If enabled, proceed with the normal splash screen
-        setContentView(R.layout.activity_splash);
-
-        // Pre-warm the heavy Chromium WebKit engine on a background thread
-        new Thread(() -> {
+        // 2. Safe Chromium Engine Pre-warming
+        Looper.myQueue().addIdleHandler(() -> {
             try {
-                // Instantiating a dummy WebView forces Android to load the Chromium libraries into RAM early
                 new android.webkit.WebView(getApplicationContext());
             } catch (Exception ignored) {}
-        }).start();
+            return false; 
+        });
+
+        // 3. Check Preferences
+        SharedPreferences prefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        boolean showSplash = prefs.getBoolean("show_splash_screen", true);
+
+        if (!showSplash) {
+            splashScreen.setKeepOnScreenCondition(() -> true);
+            routeToMain();
+            return;
+        }
+
+        // 4. Load Custom UI
+        setContentView(R.layout.activity_splash);
 
         ImageView logo = findViewById(R.id.splash_logo);
         TextView title = findViewById(R.id.splash_title);
@@ -46,15 +48,29 @@ public class SplashActivity extends AppCompatActivity {
         Animation logoAnim = AnimationUtils.loadAnimation(this, R.anim.splash_logo_fade_in);
         Animation textAnim = AnimationUtils.loadAnimation(this, R.anim.splash_text_fade_in);
 
+        // 5. Dynamic Transition
+        logoAnim.setAnimationListener(new Animation.AnimationListener() {
+            @Override
+            public void onAnimationStart(Animation animation) {}
+
+            @Override
+            public void onAnimationEnd(Animation animation) {
+                new Handler(Looper.getMainLooper()).postDelayed(() -> routeToMain(), 500);
+            }
+
+            @Override
+            public void onAnimationRepeat(Animation animation) {}
+        });
+
         logo.startAnimation(logoAnim);
         title.startAnimation(textAnim);
         tagline.startAnimation(textAnim);
+    }
 
-        // Extended from 1200ms to 3000ms to ensure the tagline is readable
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            Intent intent = new Intent(SplashActivity.this, MainActivity.class);
-            startActivity(intent);
-            finish();
-        }, 3000);
+    private void routeToMain() {
+        Intent intent = new Intent(SplashActivity.this, MainActivity.class);
+        startActivity(intent);
+        finish();
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 }
