@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Base64;
 import androidx.security.crypto.EncryptedSharedPreferences;
-import androidx.security.crypto.MasterKeys;
+import androidx.security.crypto.MasterKey;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -21,12 +21,14 @@ public class SecureCredentialManager {
     public SecureCredentialManager(Context context) {
         this.context = context.getApplicationContext();
         try {
-            // Generates or retrieves a hardware-backed key from the Android Keystore
-            String masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
+            MasterKey masterKey = new MasterKey.Builder(this.context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build();
+
             encryptedPrefs = EncryptedSharedPreferences.create(
-                    "spoon_secure_vault",
-                    masterKeyAlias,
                     this.context,
+                    "spoon_secure_vault",
+                    masterKey,
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             );
@@ -42,7 +44,6 @@ public class SecureCredentialManager {
         if (!legacyFile.exists()) return;
 
         try {
-            // Temporarily resurrect the old key to decrypt legacy data
             String rawKey = (context.getPackageName() + "SpoonSaltString").substring(0, 16);
             SecretKeySpec secretKey = new SecretKeySpec(rawKey.getBytes(StandardCharsets.UTF_8), "AES");
             Cipher cipher = Cipher.getInstance("AES");
@@ -59,11 +60,16 @@ public class SecureCredentialManager {
                         byte[] decoded = Base64.decode(parts[1], Base64.DEFAULT);
                         String decryptedVal = new String(cipher.doFinal(decoded), StandardCharsets.UTF_8);
                         editor.putString(key, decryptedVal);
+                        
+                        if (key.endsWith("_user")) {
+                            String host = key.substring(0, key.lastIndexOf("_" + decryptedVal + "_user"));
+                            editor.putString(host + "_primary_user", decryptedVal);
+                        }
                     }
                 }
             }
             editor.apply();
-            legacyFile.delete(); // Permanently destroy the old weak file
+            legacyFile.delete();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -75,29 +81,20 @@ public class SecureCredentialManager {
         encryptedPrefs.edit()
             .putString(host + "_" + cleanUser + "_user", cleanUser)
             .putString(host + "_" + cleanUser + "_pass", password != null ? password : "")
+            .putString(host + "_primary_user", cleanUser)
             .apply();
     }
 
     public synchronized String getUsername(String host) {
         if (!isReady || host == null) return "";
-        java.util.Map<String, ?> all = encryptedPrefs.getAll();
-        for (String key : all.keySet()) {
-            if (key.startsWith(host + "_") && key.endsWith("_user")) {
-                return (String) all.get(key);
-            }
-        }
-        return "";
+        return encryptedPrefs.getString(host + "_primary_user", "");
     }
 
     public synchronized String getPassword(String host) {
         if (!isReady || host == null) return "";
-        java.util.Map<String, ?> all = encryptedPrefs.getAll();
-        for (String key : all.keySet()) {
-            if (key.startsWith(host + "_") && key.endsWith("_pass")) {
-                return (String) all.get(key);
-            }
-        }
-        return "";
+        String username = getUsername(host);
+        if (username.isEmpty()) return "";
+        return encryptedPrefs.getString(host + "_" + username + "_pass", "");
     }
 
     public synchronized String getAllAccountsForHost(String host) {
@@ -106,7 +103,7 @@ public class SecureCredentialManager {
             org.json.JSONArray array = new org.json.JSONArray();
             java.util.Map<String, ?> all = encryptedPrefs.getAll();
             for (String key : all.keySet()) {
-                if (key.startsWith(host + "_") && key.endsWith("_user")) {
+                if (key.startsWith(host + "_") && key.endsWith("_user") && !key.endsWith("_primary_user")) {
                     String username = (String) all.get(key);
                     if (username != null && !username.isEmpty()) {
                         String password = encryptedPrefs.getString(host + "_" + username + "_pass", "");
@@ -129,10 +126,9 @@ public class SecureCredentialManager {
         try {
             java.util.Map<String, ?> all = encryptedPrefs.getAll();
             for (String key : all.keySet()) {
-                if (key.endsWith("_user")) {
+                if (key.endsWith("_user") && !key.endsWith("_primary_user")) {
                     String username = (String) all.get(key);
                     if (username != null && !username.isEmpty()) {
-                        // FIX: Safely extract host without splitting to prevent underscore domain truncation
                         String suffix = "_" + username + "_user";
                         if (key.endsWith(suffix) && key.length() > suffix.length()) {
                             String host = key.substring(0, key.length() - suffix.length());
@@ -157,7 +153,7 @@ public class SecureCredentialManager {
         try {
             java.util.Map<String, ?> all = encryptedPrefs.getAll();
             for (String key : all.keySet()) {
-                if (key.endsWith("_user")) {
+                if (key.endsWith("_user") && !key.endsWith("_primary_user")) {
                     String username = (String) all.get(key);
                     if (username == null || username.isEmpty()) continue;
                     String suffix = "_" + username + "_user";
@@ -184,11 +180,14 @@ public class SecureCredentialManager {
     public synchronized void deleteCredentials(String host, String username) {
         if (!isReady || host == null || username == null) return;
         
-        // 🛠️ THE FIX: Replaced .apply() with .commit() for synchronous, immediate deletion
-        encryptedPrefs.edit()
-            .remove(host + "_" + username + "_pass")
-            .remove(host + "_" + username + "_user")
-            .commit(); 
+        SharedPreferences.Editor editor = encryptedPrefs.edit();
+        editor.remove(host + "_" + username + "_pass");
+        editor.remove(host + "_" + username + "_user");
+        
+        if (username.equals(encryptedPrefs.getString(host + "_primary_user", ""))) {
+            editor.remove(host + "_primary_user");
+        }
+        editor.commit(); 
     }
 
     public synchronized void clearCredentials(String host) {
@@ -211,26 +210,23 @@ public class SecureCredentialManager {
             String headerLine = reader.readLine();
             if (headerLine == null) return false;
 
-            // 1. Map columns dynamically based on the header
             String[] headers = headerLine.toLowerCase().replace("\"", "").split(",");
             int urlIndex = -1, usernameIndex = -1, passwordIndex = -1;
 
             for (int i = 0; i < headers.length; i++) {
                 String h = headers[i].trim();
-                // Broader matching to support Chrome, Bitwarden, Firefox, etc.
                 if (h.equals("url") || h.equals("login_uri") || h.equals("website") || h.contains("url")) urlIndex = i;
                 else if (h.equals("username") || h.equals("login_username") || h.equals("email") || h.contains("user")) usernameIndex = i;
                 else if (h.equals("password") || h.equals("login_password") || h.contains("pass")) passwordIndex = i;
             }
 
             if (urlIndex == -1 || usernameIndex == -1 || passwordIndex == -1) {
-                return false; // Invalid CSV format
+                return false;
             }
 
             android.content.SharedPreferences.Editor editor = encryptedPrefs.edit();
             String line;
             
-            // 2. The Magic Regex: Splits by commas ONLY if they are outside of quotation marks
             String csvRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
             while ((line = reader.readLine()) != null) {
@@ -239,34 +235,27 @@ public class SecureCredentialManager {
                 String[] columns = line.split(csvRegex, -1);
                 
                 try {
-                    // Ensure the row actually has enough columns to avoid IndexOutOfBounds
                     if (columns.length > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
                         
-                        // Extract and strip bounding quotation marks ONLY (replaceAll("^\"|\"$", ""))
-                        // This preserves intentional quotes inside the password!
                         String host = columns[urlIndex].replaceAll("^\"|\"$", "").trim();
                         String username = columns[usernameIndex].replaceAll("^\"|\"$", "").trim();
                         
-                        // NEVER trim passwords, they might intentionally start/end with spaces!
-                        // Unescape double quotes ("") back to single quotes (")
                         String password = columns[passwordIndex].replaceAll("^\"|\"$", "").replace("\"\"", "\"");
 
                         if (!host.isEmpty() && !username.isEmpty()) {
-                            // Clean host URL down to the base domain
                             if (host.contains("://")) host = host.substring(host.indexOf("://") + 3);
                             if (host.contains("/")) host = host.split("/")[0];
                             host = host.toLowerCase().trim();
 
                             editor.putString(host + "_" + username + "_user", username);
                             editor.putString(host + "_" + username + "_pass", password);
+                            editor.putString(host + "_primary_user", username);
                         }
                     }
                 } catch (Exception e) {
-                    // Silently skip malformed rows so the rest of the file continues to import
                 }
             }
 
-            // Commit all imported passwords natively to the hardware keystore in one action
             editor.apply();
             return true;
 
