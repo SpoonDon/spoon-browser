@@ -1,18 +1,21 @@
 package com.spoondon.browser;
 
 import android.content.Context;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.view.Gravity;
+
 import java.util.ArrayList;
-import java.net.URI;
 
 public class BrowserItemAdapter extends ArrayAdapter<BrowserItem> {
 
-    // OPTIMIZATION: ViewHolder caches view references to stop redundant layout lookups and memory allocations
+    // Cache the padding calculations so we don't query device metrics on the fly
+    private final int padX;
+    private final int padY;
+
     private static class ViewHolder {
         TextView titleView;
         TextView urlView;
@@ -20,6 +23,11 @@ public class BrowserItemAdapter extends ArrayAdapter<BrowserItem> {
 
     public BrowserItemAdapter(Context context, ArrayList<BrowserItem> items) {
         super(context, 0, items);
+        
+        // Calculate screen density precisely once when the adapter boots up
+        float density = context.getResources().getDisplayMetrics().density;
+        this.padX = (int) (16 * density); 
+        this.padY = (int) (12 * density); 
     }
 
     @Override
@@ -28,14 +36,10 @@ public class BrowserItemAdapter extends ArrayAdapter<BrowserItem> {
         LinearLayout layout;
         ViewHolder holder;
 
-        // 1. If convertView is null, construct the interface elements once
         if (convertView == null) {
             layout = new LinearLayout(getContext());
             layout.setOrientation(LinearLayout.VERTICAL);
-            float density = getContext().getResources().getDisplayMetrics().density;
-            int padX = (int) (16 * density); // ~32px on xhdpi
-            int padY = (int) (12 * density); // ~24px on xhdpi
-            layout.setPadding(padX, padY, padX, padY);
+            layout.setPadding(padX, padY, padX, padY); // Use pre-calculated padding
             layout.setGravity(Gravity.CENTER_VERTICAL);
 
             holder = new ViewHolder();
@@ -50,28 +54,15 @@ public class BrowserItemAdapter extends ArrayAdapter<BrowserItem> {
             layout.addView(holder.titleView);
             layout.addView(holder.urlView);
 
-            // Pack the holder reference into the layout's tag pipeline
             layout.setTag(holder);
         } else {
-            // 2. If convertView exists, recycle the existing container instantly with zero object allocations
             layout = (LinearLayout) convertView;
             holder = (ViewHolder) layout.getTag();
         }
 
-        // 3. Bind data to our recycled view components safely
         if (item != null) {
             holder.titleView.setText(item.title);
-
-            try {
-                // android.net.Uri is fault-tolerant for malformed browser URLs
-                String host = android.net.Uri.parse(item.url).getHost();
-                if (host != null && host.startsWith("www.")) {
-                    host = host.substring(4);
-                }
-                holder.urlView.setText(host != null ? host : item.url);
-            } catch (Exception e) {
-                holder.urlView.setText(item.url);
-            }
+            holder.urlView.setText(item.displayHost); // Instantly bind the pre-computed string
         }
 
         return layout;
