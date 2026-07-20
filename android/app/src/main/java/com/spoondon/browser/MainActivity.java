@@ -1644,15 +1644,12 @@ public class MainActivity extends AppCompatActivity {
         
         if (tabAdapter != null) {
             tabAdapter.notifyItemRemoved(index);
-            tabAdapter.notifyItemRangeChanged(index, tabList.size());
+            tabAdapter.notifyItemRangeChanged(0, tabList.size());
         }
 
-        // --- THE MATH FIX ---
-        // Shift active index left if a background tab to the left was closed
         if (index < currentTabPosition) {
             currentTabPosition--;
         } 
-        // Or clamp it if the very last tab was closed
         else if (currentTabPosition >= tabList.size()) {
             currentTabPosition = tabList.size() - 1;
         }
