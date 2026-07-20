@@ -251,10 +251,8 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // 1. MUST load the filter list data first
         loadSavedData();
 
-        // 2. NOW initialize the engine with the populated lists
         if (backgroundExecutor != null) {
             backgroundExecutor.execute(() -> {
                 AdBlockEngine.init(MainActivity.this, filterLists);
@@ -685,7 +683,6 @@ public class MainActivity extends AppCompatActivity {
                         showFilterListsDialog();
                         return true;
                         
-                    // TOGGLE CLICK LOGIC
                     case "Disable Filterlists":
                     case "Enable Filterlists":
                         boolean currentState = AdBlockEngine.checkIsEngineEnabled(MainActivity.this);
@@ -772,7 +769,7 @@ public class MainActivity extends AppCompatActivity {
         barLayout.setOrientation(android.widget.LinearLayout.HORIZONTAL);
         barLayout.setGravity(android.view.Gravity.CENTER_VERTICAL);
         barLayout.setPadding(20, 10, 20, 10);
-        barLayout.setElevation(10f); // Give it a shadow
+        barLayout.setElevation(10f);
 
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setCornerRadius(24);
@@ -785,7 +782,7 @@ public class MainActivity extends AppCompatActivity {
         input.setSingleLine(true);
         input.setTextColor(android.graphics.Color.WHITE);
         input.setHintTextColor(android.graphics.Color.GRAY);
-        input.setBackground(null); // Remove default underline
+        input.setBackground(null);
         android.widget.LinearLayout.LayoutParams inputParams = new android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         barLayout.addView(input, inputParams);
 
@@ -861,7 +858,6 @@ public class MainActivity extends AppCompatActivity {
         tabIndicator.setLongClickable(false);
         tabIndicator.setOnClickListener(v -> showTabSwitcher());
 
-        // 1. Listen for Android Soft-Keyboards (Gboard, Swiftkey, etc)
         addressBar.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
                 actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
@@ -879,7 +875,6 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        // 2. Listen for Physical Keyboards or Emulators
         addressBar.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
                 
@@ -1139,7 +1134,7 @@ public class MainActivity extends AppCompatActivity {
             int tabCount = (tabList != null) ? tabList.size() : 1;
             tabBadgeButton.setText(String.valueOf(tabCount));
             tabBadgeButton.setTextColor(Color.WHITE);
-            tabBadgeButton.setTextSize(12); // Slightly lowered font size to sit comfortably inside the box
+            tabBadgeButton.setTextSize(12);
             tabBadgeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             tabBadgeButton.setGravity(Gravity.CENTER);
             
@@ -1253,7 +1248,6 @@ public class MainActivity extends AppCompatActivity {
             android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
             cm.setAcceptCookie(true);
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                // VERY IMPORTANT for Cloudflare cross-site verification
                 cm.setAcceptThirdPartyCookies(getCurrentWebView(), true); 
             }
         } catch (Exception ignored) {}
@@ -1354,7 +1348,6 @@ public class MainActivity extends AppCompatActivity {
                     
                     String script = "javascript:(function() {" +
                         "var url = '" + url + "';" +
-                        // 1. Check our secret backup vault first (from SpoonWebViewClient)
                         "var blob = window.spoonBlobStore ? window.spoonBlobStore[url] : null;" +
                         
                         "function processBlob(b) {" +
@@ -1375,10 +1368,8 @@ public class MainActivity extends AppCompatActivity {
                         "}" +
                         
                         "if (blob) {" +
-                            // 2. Instantly extract from our vault if it exists!
                             "processBlob(blob);" + 
                         "} else {" +
-                            // 3. Fallback fetch just in case it bypassed our hooks
                             "fetch(url).then(function(r){return r.blob();}).then(processBlob).catch(function(e) {" +
                                 "alert('Blob download failed. The site bypassed the memory hook.');" +
                             "});" +
@@ -1892,7 +1883,7 @@ public class MainActivity extends AppCompatActivity {
                     String[] domains = domainPart.split(",");
                     for (String domain : domains) {
                         domain = domain.trim().toLowerCase();
-                        if (!domain.isEmpty() && !domain.startsWith("~")) { // Skip exception rules for simplicity
+                        if (!domain.isEmpty() && !domain.startsWith("~")) {
                             siteCosmeticSelectors.computeIfAbsent(domain, k -> new java.util.concurrent.ConcurrentHashMap<>().newKeySet()).add(selector);
                         }
                     }
@@ -2127,7 +2118,7 @@ public class MainActivity extends AppCompatActivity {
                                     String url = input.getText().toString().trim();
                                     if (!url.isEmpty() && !filterLists.contains(url)) {
                                         filterLists.add(url);
-                                        saveFilterLists(); // Save URL to SharedPreferences
+                                        saveFilterLists();
                                         Toast.makeText(this, "Downloading list...", Toast.LENGTH_SHORT).show();
                                         
                                         AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
