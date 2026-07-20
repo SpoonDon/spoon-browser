@@ -134,23 +134,24 @@ public class MainActivity extends AppCompatActivity {
         
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
         exportCsvLauncher = registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"),uri -> {
-        if (uri != null && secureCredentialManager != null) {
-            backgroundExecutor.execute(() -> {
-                try {
-                    java.io.OutputStream os = getContentResolver().openOutputStream(uri);
-                    if (os != null) {
-                        String rawJson = secureCredentialManager.getAllCredentialsAsCsv();
-                        os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                        os.close();
-                        runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Passwords exported successfully", android.widget.Toast.LENGTH_LONG).show());
+            if (uri != null && secureCredentialManager != null) {
+                backgroundExecutor.execute(() -> {
+                    try {
+                        java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                        if (os != null) {
+                            String rawJson = secureCredentialManager.getAllCredentialsAsCsv();
+                            os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                            os.close();
+                            runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Passwords exported successfully", android.widget.Toast.LENGTH_LONG).show());
+                        }
+                    } catch (Exception e) {
+                        runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Export failed", android.widget.Toast.LENGTH_SHORT).show());
                     }
-                } catch (Exception e) {
-                    runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Export failed", android.widget.Toast.LENGTH_SHORT).show());
-                }
-            });
-        }
-    });
+                });
+            }
+        });
         
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
@@ -158,6 +159,9 @@ public class MainActivity extends AppCompatActivity {
 
         secureCredentialManager = new SecureCredentialManager(this);
         dbHelper = BrowserDatabaseHelper.getInstance(this);
+        
+        migrateLegacyBookmarksToDatabase();
+
         AdBlockEngine.init(this, filterLists);
         AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
 
@@ -281,6 +285,39 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void migrateLegacyBookmarksToDatabase() {
+        android.content.SharedPreferences legacyPrefs = getSharedPreferences("spoon_bookmarks", android.content.Context.MODE_PRIVATE);
+        String legacyData = legacyPrefs.getString("bookmarks", null);
+
+        if (legacyData == null || legacyData.equals("[]")) {
+            return;
+        }
+
+        if (backgroundExecutor != null) {
+            backgroundExecutor.execute(() -> {
+                try {
+                    org.json.JSONArray bookmarksArray = new org.json.JSONArray(legacyData);
+                    
+                    for (int i = 0; i < bookmarksArray.length(); i++) {
+                        org.json.JSONObject bookmark = bookmarksArray.optJSONObject(i);
+                        if (bookmark != null) {
+                            String title = bookmark.optString("title", "Untitled");
+                            String url = bookmark.optString("url", "");
+
+                            if (!url.isEmpty() && dbHelper != null) {
+                                dbHelper.addBookmark(url, title);
+                            }
+                        }
+                    }
+
+                    legacyPrefs.edit().clear().apply();
+
+                } catch (Exception ignored) {
+                }
+            });
+        }
     }
 
     public void executeSafely(Runnable task) {
