@@ -162,13 +162,6 @@ public class MainActivity extends AppCompatActivity {
         
         migrateLegacyBookmarksToDatabase();
 
-        if (backgroundExecutor != null) {
-            backgroundExecutor.execute(() -> {
-                AdBlockEngine.init(MainActivity.this, filterLists);
-                AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, false);
-            });
-        }
-
         webPermissionLauncher = registerForActivityResult(
             new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
             result -> {
@@ -209,13 +202,13 @@ public class MainActivity extends AppCompatActivity {
                 if (uri != null) {
                     try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
                         if (secureCredentialManager.importFromCSVStream(is)) {
-                            Toast.makeText(this, "Passwords imported successfully", Toast.LENGTH_SHORT).show();
+                            android.widget.Toast.makeText(this, "Passwords imported successfully", android.widget.Toast.LENGTH_SHORT).show();
                         } else {
-                            Toast.makeText(this, "Failed to parse passwords.csv", Toast.LENGTH_SHORT).show();
+                            android.widget.Toast.makeText(this, "Failed to parse passwords.csv", android.widget.Toast.LENGTH_SHORT).show();
                         }
                     } catch (Exception e) {
                         e.printStackTrace();
-                        Toast.makeText(this, "Error opening file stream", Toast.LENGTH_SHORT).show();
+                        android.widget.Toast.makeText(this, "Error opening file stream", android.widget.Toast.LENGTH_SHORT).show();
                     }
                 }
             }
@@ -250,15 +243,24 @@ public class MainActivity extends AppCompatActivity {
             
             setContentView(root);
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                root.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                root.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 if (browserContainer != null) {
-                    browserContainer.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+                    browserContainer.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 }
             }
         }
 
+        // 1. MUST load the filter list data first
         loadSavedData();
+
+        // 2. NOW initialize the engine with the populated lists
+        if (backgroundExecutor != null) {
+            backgroundExecutor.execute(() -> {
+                AdBlockEngine.init(MainActivity.this, filterLists);
+                AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, false);
+            });
+        }
 
         if (backgroundExecutor != null && dbHelper != null) {
             backgroundExecutor.execute(() -> {
@@ -267,8 +269,6 @@ public class MainActivity extends AppCompatActivity {
                 } catch (Exception ignored) {}
             });
         }
-
-        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
 
         getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
             @Override
@@ -2192,7 +2192,7 @@ public class MainActivity extends AppCompatActivity {
         android.widget.ImageView icon = new android.widget.ImageView(this);
         icon.setImageResource(R.mipmap.ic_launcher); 
         android.widget.LinearLayout.LayoutParams iconParams = new android.widget.LinearLayout.LayoutParams(180, 180);
-        iconParams.setMargins(0, 32, 0, 16);
+        iconParams.setMargins(0, 32, 0, 16); 
         root.addView(icon, iconParams);
 
         android.widget.TextView version = new android.widget.TextView(this);
@@ -2207,7 +2207,7 @@ public class MainActivity extends AppCompatActivity {
 
         android.widget.LinearLayout statsContainer = new android.widget.LinearLayout(this);
         statsContainer.setOrientation(android.widget.LinearLayout.VERTICAL);
-        statsContainer.setBackgroundColor(android.graphics.Color.parseColor("#2C2C2E")); // Slightly lighter container
+        statsContainer.setBackgroundColor(android.graphics.Color.parseColor("#2C2C2E")); 
         
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
@@ -2229,22 +2229,24 @@ public class MainActivity extends AppCompatActivity {
         statsContainer.addView(createStatRow("Tabs Open", String.valueOf(tabList.size()), true));
         statsContainer.addView(createStatRow("Bookmarks Saved", String.valueOf(dbHelper != null ? dbHelper.getBookmarkCount() : 0), true));
         statsContainer.addView(createStatRow("History Items", String.valueOf(dbHelper != null ? dbHelper.getHistoryCount() : 0), true));
-    
-        android.view.View adblockRow = createStatRow("AdBlock Rules", "Loading...", false);    
+        
+        android.view.View adblockRow = createStatRow("AdBlock Rules", "Loading...", false);
         statsContainer.addView(adblockRow);
-    
-        if (backgroundExecutor != null) {        
-            backgroundExecutor.execute(() -> {            
-                String finalSize = String.valueOf(AdBlockEngine.getBlocklistSize());            
-            
-                runOnUiThread(() -> {                
-                    android.widget.TextView txt = adblockRow.findViewWithTag("AdBlock Rules");                
-                    if (txt != null) {                    
-                        txt.setText(finalSize);                
-                    }            
-                });        
-            });    
-        }
+
+        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        Runnable updater = new Runnable() {
+            @Override
+            public void run() {
+                if (bottomSheet.isShowing()) {
+                    android.widget.TextView txt = adblockRow.findViewWithTag("AdBlock Rules");
+                    if (txt != null) {
+                        txt.setText(String.valueOf(AdBlockEngine.getBlocklistSize()));
+                    }
+                    handler.postDelayed(this, 1000); 
+                }
+            }
+        };
+        handler.postDelayed(updater, 1000);
 
         root.addView(statsContainer, statsParams);
 
@@ -2252,7 +2254,7 @@ public class MainActivity extends AppCompatActivity {
         signature.setText("Built one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.");
         signature.setTextSize(13);
         signature.setGravity(android.view.Gravity.CENTER);
-        signature.setTextColor(android.graphics.Color.parseColor("#636366"));
+        signature.setTextColor(android.graphics.Color.parseColor("#636366")); 
         signature.setLineSpacing(0, 1.2f);
         root.addView(signature);
 
@@ -2264,6 +2266,45 @@ public class MainActivity extends AppCompatActivity {
         }
 
         bottomSheet.show();
+    }
+
+    private android.view.View createStatRow(String labelText, String valueText, boolean drawDivider) {
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        row.setPadding(40, 32, 40, 32);
+
+        android.widget.TextView label = new android.widget.TextView(this);
+        label.setText(labelText);
+        label.setTextColor(android.graphics.Color.WHITE);
+        label.setTextSize(15);
+        android.widget.LinearLayout.LayoutParams labelParams = new android.widget.LinearLayout.LayoutParams(
+            0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        row.addView(label, labelParams);
+
+        android.widget.TextView value = new android.widget.TextView(this);
+        value.setText(valueText);
+        value.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
+        value.setTextSize(15);
+        value.setTag(labelText);
+        value.setGravity(android.view.Gravity.END);
+        row.addView(value);
+
+        if (drawDivider) {
+            android.widget.LinearLayout wrapper = new android.widget.LinearLayout(this);
+            wrapper.setOrientation(android.widget.LinearLayout.VERTICAL);
+            wrapper.addView(row);
+            
+            android.view.View divider = new android.view.View(this);
+            divider.setBackgroundColor(android.graphics.Color.parseColor("#3A3A3C"));
+            android.widget.LinearLayout.LayoutParams divParams = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2);
+            divParams.setMargins(40, 0, 0, 0); 
+            wrapper.addView(divider, divParams);
+            
+            return wrapper;
+        }
+
+        return row;
     }
 
     private android.view.View createStatRow(String labelText, String valueText, boolean drawDivider) {
