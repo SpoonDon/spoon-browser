@@ -2176,23 +2176,119 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showAbout() {
+        com.google.android.material.bottomsheet.BottomSheetDialog bottomSheet = 
+            new com.google.android.material.bottomsheet.BottomSheetDialog(this);
+
+        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
+        root.setOrientation(android.widget.LinearLayout.VERTICAL);
+        root.setPadding(64, 64, 64, 80);
+        root.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
+        root.setBackgroundColor(android.graphics.Color.parseColor("#1C1C1E")); 
+
+        android.widget.ImageView icon = new android.widget.ImageView(this);
+        icon.setImageResource(R.mipmap.ic_launcher);
+        android.widget.LinearLayout.LayoutParams iconParams = new android.widget.LinearLayout.LayoutParams(180, 180);
+        iconParams.setMargins(0, 32, 0, 24);
+        root.addView(icon, iconParams);
+
+        android.widget.TextView appName = new android.widget.TextView(this);
+        appName.setText("Spoon Browser");
+        appName.setTextSize(22);
+        appName.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        appName.setTextColor(android.graphics.Color.WHITE);
+        root.addView(appName);
+
+        android.widget.TextView version = new android.widget.TextView(this);
+        version.setText("Version " + getAppVersion());
+        version.setTextSize(14);
+        version.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
+        android.widget.LinearLayout.LayoutParams versionParams = new android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        versionParams.setMargins(0, 4, 0, 48);
+        root.addView(version, versionParams);
+
+        android.widget.LinearLayout statsContainer = new android.widget.LinearLayout(this);
+        statsContainer.setOrientation(android.widget.LinearLayout.VERTICAL);
+        statsContainer.setBackgroundColor(android.graphics.Color.parseColor("#2C2C2E")); // Slightly lighter container
+        
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
+        shape.setCornerRadii(new float[] { 32, 32, 32, 32, 32, 32, 32, 32 });
+        shape.setColor(android.graphics.Color.parseColor("#2C2C2E"));
+        statsContainer.setBackground(shape);
+
+        android.widget.LinearLayout.LayoutParams statsParams = new android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        statsParams.setMargins(32, 0, 32, 48);
+
         String webViewVer = "Unknown";
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
             android.content.pm.PackageInfo pi = android.webkit.WebView.getCurrentWebViewPackage();
             if (pi != null) webViewVer = pi.versionName;
         }
 
-        new AlertDialog.Builder(this)
-                .setTitle("Spoon Browser")
-                .setMessage("Version: " + getAppVersion() + "\n"
-                        + "Engine: WebView " + webViewVer + "\n\n"
-                        + "Tabs Open: " + tabList.size() 
-                        + "\nBookmarks Saved: " + (dbHelper != null ? dbHelper.getBookmarkCount() : 0)
-                        + "\nHistory Items: " + (dbHelper != null ? dbHelper.getHistoryCount() : 0)
-                        + "\nAdblock Rules Loaded: " + AdBlockEngine.getBlocklistSize()
-                        + "\n\nBuilt one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.")
-                .setPositiveButton("OK", null)
-                .show();
+        statsContainer.addView(createStatRow("WebView Engine", webViewVer, true));
+        statsContainer.addView(createStatRow("Tabs Open", String.valueOf(tabList.size()), true));
+        statsContainer.addView(createStatRow("Bookmarks Saved", String.valueOf(dbHelper != null ? dbHelper.getBookmarkCount() : 0), true));
+        statsContainer.addView(createStatRow("History Items", String.valueOf(dbHelper != null ? dbHelper.getHistoryCount() : 0), true));
+        statsContainer.addView(createStatRow("AdBlock Rules", String.valueOf(AdBlockEngine.getBlocklistSize()), false));
+
+        root.addView(statsContainer, statsParams);
+
+        android.widget.TextView signature = new android.widget.TextView(this);
+        signature.setText("Built one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.");
+        signature.setTextSize(13);
+        signature.setGravity(android.view.Gravity.CENTER);
+        signature.setTextColor(android.graphics.Color.parseColor("#636366"));
+        signature.setLineSpacing(0, 1.2f);
+        root.addView(signature);
+
+        bottomSheet.setContentView(root);
+        
+        android.view.View bottomSheetInternal = bottomSheet.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+        if (bottomSheetInternal != null) {
+            bottomSheetInternal.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        }
+
+        bottomSheet.show();
+    }
+
+    private android.view.View createStatRow(String labelText, String valueText, boolean drawDivider) {
+        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        row.setPadding(40, 32, 40, 32);
+
+        android.widget.TextView label = new android.widget.TextView(this);
+        label.setText(labelText);
+        label.setTextColor(android.graphics.Color.WHITE);
+        label.setTextSize(15);
+        android.widget.LinearLayout.LayoutParams labelParams = new android.widget.LinearLayout.LayoutParams(
+            0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        row.addView(label, labelParams);
+
+        android.widget.TextView value = new android.widget.TextView(this);
+        value.setText(valueText);
+        value.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
+        value.setTextSize(15);
+        value.setGravity(android.view.Gravity.END);
+        row.addView(value);
+
+        if (drawDivider) {
+            android.widget.LinearLayout wrapper = new android.widget.LinearLayout(this);
+            wrapper.setOrientation(android.widget.LinearLayout.VERTICAL);
+            wrapper.addView(row);
+            
+            android.view.View divider = new android.view.View(this);
+            divider.setBackgroundColor(android.graphics.Color.parseColor("#3A3A3C"));
+            android.widget.LinearLayout.LayoutParams divParams = new android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2);
+            divParams.setMargins(40, 0, 0, 0);
+            wrapper.addView(divider, divParams);
+            
+            return wrapper;
+        }
+
+        return row;
     }
 
     private void showBookmarks() {
