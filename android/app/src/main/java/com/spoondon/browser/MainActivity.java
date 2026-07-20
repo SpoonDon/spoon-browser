@@ -2229,7 +2229,22 @@ public class MainActivity extends AppCompatActivity {
         statsContainer.addView(createStatRow("Tabs Open", String.valueOf(tabList.size()), true));
         statsContainer.addView(createStatRow("Bookmarks Saved", String.valueOf(dbHelper != null ? dbHelper.getBookmarkCount() : 0), true));
         statsContainer.addView(createStatRow("History Items", String.valueOf(dbHelper != null ? dbHelper.getHistoryCount() : 0), true));
-        statsContainer.addView(createStatRow("AdBlock Rules", String.valueOf(AdBlockEngine.getBlocklistSize()), false));
+    
+        android.view.View adblockRow = createStatRow("AdBlock Rules", "Loading...", false);    
+        statsContainer.addView(adblockRow);
+    
+        if (backgroundExecutor != null) {        
+            backgroundExecutor.execute(() -> {            
+                String finalSize = String.valueOf(AdBlockEngine.getBlocklistSize());            
+            
+                runOnUiThread(() -> {                
+                    android.widget.TextView txt = adblockRow.findViewWithTag("AdBlock Rules");                
+                    if (txt != null) {                    
+                        txt.setText(finalSize);                
+                    }            
+                });        
+            });    
+        }
 
         root.addView(statsContainer, statsParams);
 
@@ -2268,6 +2283,7 @@ public class MainActivity extends AppCompatActivity {
         value.setText(valueText);
         value.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
         value.setTextSize(15);
+        value.setTag(labelText);
         value.setGravity(android.view.Gravity.END);
         row.addView(value);
 
