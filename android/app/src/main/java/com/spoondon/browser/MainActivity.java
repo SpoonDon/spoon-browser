@@ -2298,45 +2298,6 @@ public class MainActivity extends AppCompatActivity {
         return row;
     }
 
-    private android.view.View createStatRow(String labelText, String valueText, boolean drawDivider) {
-        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
-        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        row.setPadding(40, 32, 40, 32);
-
-        android.widget.TextView label = new android.widget.TextView(this);
-        label.setText(labelText);
-        label.setTextColor(android.graphics.Color.WHITE);
-        label.setTextSize(15);
-        android.widget.LinearLayout.LayoutParams labelParams = new android.widget.LinearLayout.LayoutParams(
-            0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        row.addView(label, labelParams);
-
-        android.widget.TextView value = new android.widget.TextView(this);
-        value.setText(valueText);
-        value.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
-        value.setTextSize(15);
-        value.setTag(labelText);
-        value.setGravity(android.view.Gravity.END);
-        row.addView(value);
-
-        if (drawDivider) {
-            android.widget.LinearLayout wrapper = new android.widget.LinearLayout(this);
-            wrapper.setOrientation(android.widget.LinearLayout.VERTICAL);
-            wrapper.addView(row);
-            
-            android.view.View divider = new android.view.View(this);
-            divider.setBackgroundColor(android.graphics.Color.parseColor("#3A3A3C"));
-            android.widget.LinearLayout.LayoutParams divParams = new android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2);
-            divParams.setMargins(40, 0, 0, 0);
-            wrapper.addView(divider, divParams);
-            
-            return wrapper;
-        }
-
-        return row;
-    }
-
     private void showBookmarks() {
         if (dbHelper == null) return;
         
