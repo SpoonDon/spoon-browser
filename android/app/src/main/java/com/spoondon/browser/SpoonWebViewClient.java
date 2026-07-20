@@ -306,6 +306,7 @@ public class SpoonWebViewClient extends WebViewClient {
             android.webkit.CookieManager.getInstance().flush();
         }
 
+        // 1. AdBlock Cosmetic Filtering
         String cosmeticCss = AdBlockEngine.getCosmeticCss(url);
         if (!cosmeticCss.isEmpty()) {
             String cleanCss = cosmeticCss.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"");
@@ -318,6 +319,7 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
 
+        // 2. SpoonVault Credential Extraction
         String script = "javascript:(function() {" +
             "document.addEventListener('submit', function(e) {" +
                 "var passBox = e.target.querySelector('input[type=password]');" +
@@ -365,6 +367,16 @@ public class SpoonWebViewClient extends WebViewClient {
         "})();";
         
         view.evaluateJavascript(script, null);
+
+        // 3. Hardware Acceleration Script for Video Elements (ADDED HERE)
+        String gpuAccelerationScript = "javascript:(function() { " +
+            "var videos = document.getElementsByTagName('video');" +
+            "for(var i=0; i<videos.length; i++) {" +
+            "    videos[i].style.transform = 'translateZ(0)';" +
+            "    videos[i].style.willChange = 'transform';" +
+            "}})()";
+            
+        view.evaluateJavascript(gpuAccelerationScript, null);
     }
 
     @Override
