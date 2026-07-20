@@ -319,16 +319,16 @@ public class MainActivity extends AppCompatActivity {
         super.onNewIntent(intent);
         setIntent(intent);
     }
-    
+
     @Override
-    public void onResume() {
+    public void onResume() {    
         super.onResume();
-        handleIncomingIntent(getIntent());
-        
-        WebView activeWebView = getCurrentWebView();
-        if (activeWebView != null) {
-            activeWebView.onResume();
-            activeWebView.resumeTimers();
+        handleIncomingIntent(getIntent());    
+        setIntent(new android.content.Intent());     
+        WebView activeWebView = getCurrentWebView();            
+        if (activeWebView != null) {        
+            activeWebView.onResume();        
+            activeWebView.resumeTimers();    
         }
     }
     
@@ -388,7 +388,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        
         try {
             if (!clearSessionOnExit) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
@@ -397,10 +396,27 @@ public class MainActivity extends AppCompatActivity {
             }
         } catch (Exception ignored) {}
 
-        super.onDestroy();
         if (backgroundExecutor != null) {
             backgroundExecutor.shutdownNow();
         }
+
+        if (tabList != null) {
+            for (int i = 0; i < tabList.size(); i++) {
+                android.webkit.WebView wv = tabList.get(i).getWebView();
+                if (wv != null) {
+                    if (wv.getParent() instanceof android.view.ViewGroup) {
+                        ((android.view.ViewGroup) wv.getParent()).removeView(wv);
+                    }
+                    wv.stopLoading();
+                    wv.setWebChromeClient(null);
+                    wv.setWebViewClient(null);
+                    wv.destroy();
+                }
+            }
+            tabList.clear();
+        }
+
+        super.onDestroy();
     }
             
     private void setupRootLayout() {
@@ -1494,6 +1510,12 @@ public class MainActivity extends AppCompatActivity {
         }
         webView.setDrawingCacheEnabled(false);
 
+        android.webkit.WebSettings settings = webView.getSettings();
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            settings.setMediaPlaybackRequiresUserGesture(false);
+        }
+        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+
         TabState newTab = new TabState(webView);
         tabList.add(newTab);
         currentTabPosition = tabList.size() - 1;
@@ -1505,7 +1527,6 @@ public class MainActivity extends AppCompatActivity {
             );
             
             webView.setVisibility(View.GONE);
-            if (android.os.Build.VERSION.SDK_INT >= 11) webView.onResume();
             browserContainer.addView(webView, params);
         }
         
@@ -1547,6 +1568,7 @@ public class MainActivity extends AppCompatActivity {
                 if (i == index) {
                     wv.setVisibility(android.view.View.VISIBLE);
                     wv.onResume();
+                    wv.resumeTimers();
                     
                     String url = wv.getUrl();
                     if (addressBar != null) {
