@@ -162,8 +162,12 @@ public class MainActivity extends AppCompatActivity {
         
         migrateLegacyBookmarksToDatabase();
 
-        AdBlockEngine.init(this, filterLists);
-        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, false);
+        if (backgroundExecutor != null) {
+            backgroundExecutor.execute(() -> {
+                AdBlockEngine.init(MainActivity.this, filterLists);
+                AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, false);
+            });
+        }
 
         webPermissionLauncher = registerForActivityResult(
             new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
@@ -2186,25 +2190,19 @@ public class MainActivity extends AppCompatActivity {
         root.setBackgroundColor(android.graphics.Color.parseColor("#1C1C1E")); 
 
         android.widget.ImageView icon = new android.widget.ImageView(this);
-        icon.setImageResource(R.mipmap.ic_launcher);
+        icon.setImageResource(R.mipmap.ic_launcher); 
         android.widget.LinearLayout.LayoutParams iconParams = new android.widget.LinearLayout.LayoutParams(180, 180);
-        iconParams.setMargins(0, 32, 0, 24);
+        iconParams.setMargins(0, 32, 0, 16);
         root.addView(icon, iconParams);
-
-        android.widget.TextView appName = new android.widget.TextView(this);
-        appName.setText("Spoon Browser");
-        appName.setTextSize(22);
-        appName.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        appName.setTextColor(android.graphics.Color.WHITE);
-        root.addView(appName);
 
         android.widget.TextView version = new android.widget.TextView(this);
         version.setText("Version " + getAppVersion());
         version.setTextSize(14);
         version.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
+        version.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
         android.widget.LinearLayout.LayoutParams versionParams = new android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        versionParams.setMargins(0, 4, 0, 48);
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+        versionParams.setMargins(0, 0, 0, 48);
         root.addView(version, versionParams);
 
         android.widget.LinearLayout statsContainer = new android.widget.LinearLayout(this);
