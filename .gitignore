@@ -1,50 +1,28 @@
-# Compiled and build artifacts
-*.pyc
-__pycache__/
-*.class
-*.o
-*.obj
-*.exe
-*.dll
+```
+# Build artifacts
+*.apk
+*.aar
 *.so
-*.a
-*.out
-dist/
-build/
-target/
+*.dex
+*.class
 
-# Dependencies
-node_modules/
-venv/
-.venv/
-.env
-.env.local
-.env.*
-
-# Logs and temp files
-*.log
-*.tmp
-*.swp
-*.swo
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Cache directories
-.mypy_cache/
-.pytest_cache/
+# Gradle
 .gradle/
-.julia/
-zig*/
+build/
+app/build/
+
+# Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Local configuration
+local.properties
+gradle.properties
+```
