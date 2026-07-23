@@ -70,9 +70,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-// Local browser classes
-import com.spoondon.browser.BrowserItem;
-
 public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS_NAME = "spoon_browser";
@@ -84,11 +81,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_OPEN_TABS = "open_tabs";
     private static final String KEY_CURRENT_TAB = "current_tab";
     private static final int MAX_HISTORY = 500;
-    private static final long FILTER_REFRESH_INTERVAL_MS = 24L * 60 * 60 * 1000; // 24 hours
-    private static final int MAX_RESTORED_TABS = 3;
-    private static final String ABOUT_BLANK = "about:blank";
-    private static final String HTTP_PREFIX = "http://";
-    private static final String HTTPS_PREFIX = "https://";
 
     private AutoCompleteTextView addressBar;
     private ArrayAdapter<String> addressBarAdapter;
@@ -251,8 +243,8 @@ public class MainActivity extends AppCompatActivity {
                     continue;
                 }
                 
-                // Cap at MAX_RESTORED_TABS simultaneous tabs to prevent startup OOM crashes
-                if (count >= MAX_RESTORED_TABS) break;
+                // Cap at 3 simultaneous tabs to completely prevent startup OOM crashes
+                if (count >= 3) break;
 
                 try {
                     WebView webView = createConfiguredWebView();
@@ -345,7 +337,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (!filterLists.isEmpty()) {
             long lastRefresh = prefs.getLong(KEY_FILTER_REFRESH_TIME, 0);
-            if (System.currentTimeMillis() - lastRefresh > FILTER_REFRESH_INTERVAL_MS) {
+            if (System.currentTimeMillis() - lastRefresh > 24L * 60 * 60 * 1000) {
                 refreshFilterLists();
             }
         }
