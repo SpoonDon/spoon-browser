@@ -1,7 +1,4 @@
-```
-# Dependencies
-node_modules/
-
-# Package lock files
-.package-lock.json
+```yaml
+# GitHub workflow artifacts
+.github/workflows/main.yml
 ```
