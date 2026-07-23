@@ -2,9 +2,12 @@ name: Android Build
 
 on:
   push:
-    branches: [ main, feature/media-and-passwords, feature/ui-overhaul ]
+    branches: [ main ]
     tags:
       - 'v*'
+
+  pull_request:
+    branches: [ main ]
 
   workflow_dispatch:
 
@@ -37,21 +40,20 @@ jobs:
         run: |
           if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
 
-      - name: Build Release APK
-        env:
-          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          SIGNING_STORE_FILE: "../release.keystore"
+      - name: Build Debug APK (No Signing Required)
         run: |
           set -e
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release.keystore || echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" > android/release.keystore
           cd android
-          ./gradlew clean assembleRelease --no-daemon --stacktrace
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
 
-      - name: Upload Compiled Release APK Artifact
+      - name: Run Unit Tests
+        run: |
+          cd android
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: spoon-browser-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: spoon-browser-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
 
