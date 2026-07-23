@@ -1,59 +1,55 @@
-name: Android Build
+# .github/workflows/android-build.yml
+name: Android Release Build
 
 on:
   push:
-    branches: [ main ]
-    tags:
-      - 'v*'
-
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
-
-  workflow_dispatch:
+    branches: [ main, master ]
+  workflow_dispatch:  # allow manual trigger
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Codebase
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up NodeJS Environment
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Set up Java JDK 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
-      - name: Install Dependencies & Sync Capacitor
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./android/gradlew
+        working-directory: ./android
+
+      - name: Decode and set up keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          npm ci
-          npx cap sync android
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > ./android/keystore.jks
+          else
+            echo "No keystore secret found; skipping signing (debug-only build)."
+          fi
 
-      - name: Make Gradlew Executable
+      - name: Build release APK
+        env:
+          SIGNING_STORE_FILE: ${{ secrets.SIGNING_STORE_FILE || 'keystore.jks' }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          if [ -f ./android/gradlew ]; then chmod +x ./android/gradlew; fi
+          # Build release variant
+          ./android/gradlew assembleRelease
+        working-directory: ./android
 
-      - name: Build Debug APK (No Signing Required)
-        run: |
-          set -e
-          cd android
-          ./gradlew clean assembleDebug --no-daemon --stacktrace
-
-      - name: Run Unit Tests
-        run: |
-          cd android
-          ./gradlew testDebugUnitTest --no-daemon --stacktrace
-
-      - name: Upload Debug APK Artifact
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: spoon-browser-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-
+          name: spoon-browser-release
+          path: android/app/build/outputs/apk/release/*.apk
