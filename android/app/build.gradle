@@ -14,8 +14,8 @@ android {
         applicationId "com.spoondon.browser"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 80
-        versionName "3.2.0 (Ice-Cream)"
+        versionCode 81
+        versionName "3.2.1 (Milk-Choco)"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments clearPackageData: 'true'
         
