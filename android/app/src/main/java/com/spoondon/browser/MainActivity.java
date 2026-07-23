@@ -1461,6 +1461,7 @@ public class MainActivity extends AppCompatActivity {
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
             java.util.Set<String> allowedOrigins = java.util.Collections.singleton("*");
             
+            // WebMessageListener for vault communication
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
                     try {
@@ -1488,6 +1489,32 @@ public class MainActivity extends AppCompatActivity {
                             }
                         }
                     } catch (Exception e) {
+                    }
+                }
+            );
+            
+            // WebMessageListener for navigation from index.html
+            androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonNavMessage", allowedOrigins,
+                (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
+                    try {
+                        String msg = message.getData();
+                        if (msg != null && msg.startsWith("{")) {
+                            org.json.JSONObject obj = new org.json.JSONObject(msg);
+                            String type = obj.optString("type");
+                            
+                            if ("NAVIGATE".equals(type)) {
+                                String url = obj.optString("url");
+                                if (url != null && !url.isEmpty()) {
+                                    runOnUiThread(() -> {
+                                        // Use native loadUrl instead of window.location.href
+                                        // This enables proper tab management and prevents page reloads
+                                        loadUrlOrSearch(url);
+                                    });
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
             );
