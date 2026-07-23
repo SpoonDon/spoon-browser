@@ -1,18 +1,33 @@
 {
   "name": "spoon-browser",
   "version": "1.0.0",
-  "description": "",
+  "description": "A lightweight, high-performance, and privacy-first web browser for Android",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "./run_tests.sh",
+    "build": "npx cap sync android",
+    "android:open": "npx cap open android"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "browser",
+    "android",
+    "privacy",
+    "capacitor"
+  ],
+  "author": "Plaban",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/plaban/spoon-browser.git"
+  },
+  "bugs": {
+    "url": "https://github.com/plaban/spoon-browser/issues"
+  },
   "type": "commonjs",
   "dependencies": {
     "@capacitor/android": "^8.4.0",
     "@capacitor/cli": "^8.4.0",
-    "@capacitor/core": "^8.4.0"
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/storage": "^1.2.4"
   }
 }

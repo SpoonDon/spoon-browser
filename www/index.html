@@ -55,11 +55,17 @@
 
 <div id="status">Ready</div>
 
-<script src="https://unpkg.com/@capacitor/core@latest/dist/capacitor.js"></script>
-<script src="https://unpkg.com/@capacitor/storage@latest/dist/storage.umd.js"></script>
-
-<script>
-  const { Storage } = window.CapacitorStorage;
+  <!-- Capacitor libraries (bundled locally via npm) -->
+  <script src="capacitor.js"></script>
+  <script src="storage.js"></script>
+  
+  <script>
+    // Fallback for Capacitor availability check
+    if (!window.Capacitor || !window.CapacitorStorage) {
+      console.warn('Capacitor not available, running in web mode');
+    }
+    
+    const { Storage } = window.CapacitorStorage || {};
   
   // In-memory cache for performance
   let historyStack = [];
