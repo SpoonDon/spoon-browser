@@ -2,9 +2,6 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
-www/
-
-# Capacitor specific
-capacitor.config.json
+# Package lock files
+.package-lock.json
 ```

@@ -57,15 +57,15 @@
 
   <!-- Capacitor libraries (bundled locally via npm) -->
   <script src="capacitor.js"></script>
-  <script src="storage.js"></script>
+  <script src="preferences.js"></script>
   
   <script>
     // Fallback for Capacitor availability check
-    if (!window.Capacitor || !window.CapacitorStorage) {
+    if (!window.Capacitor || !window.CapacitorPreferences) {
       console.warn('Capacitor not available, running in web mode');
     }
     
-    const { Storage } = window.CapacitorStorage || {};
+    const { Preferences } = window.CapacitorPreferences || {};
   
   // In-memory cache for performance
   let historyStack = [];
@@ -118,7 +118,7 @@
    */
   async function initHistory() {
     try {
-      const stored = await Storage.get({ key: STORAGE_KEY });
+      const stored = await Preferences.get({ key: STORAGE_KEY });
       if (stored && stored.value) {
         const data = JSON.parse(stored.value);
         historyStack = data.stack || [];
@@ -150,7 +150,7 @@
         timestamp: new Date().toISOString()
       };
       
-      await Storage.set({
+      await Preferences.set({
         key: STORAGE_KEY,
         value: JSON.stringify(data)
       });
@@ -165,7 +165,7 @@
    */
   async function clearHistory() {
     try {
-      await Storage.remove({ key: STORAGE_KEY });
+      await Preferences.remove({ key: STORAGE_KEY });
       historyStack = [];
       index = -1;
       document.getElementById("status").innerText = "History cleared";
