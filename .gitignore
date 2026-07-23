@@ -1,48 +1,7 @@
 ```
-# Capacitor build output
-www/
-
 # Dependencies
 node_modules/
 
-# Environment
-.env
-.env.local
-*.env.*
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.swp
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Editors
-.vscode/
-.idea/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Build outputs
-dist/
-build/
-target/
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Cache
-.mypy_cache/
-.pytest_cache/
-.gradle/
+# Package lock files
+.package-lock.json
 ```
