@@ -123,10 +123,6 @@ public class MainActivity extends AppCompatActivity {
             getWindow().setStatusBarColor(android.graphics.Color.BLACK);
         }
 
-        setContentView(R.layout.activity_main);
-        // ... rest of your initialization
-
-
         filePickerLauncher = registerForActivityResult(
            new ActivityResultContracts.GetContent(),
                 uri -> {
@@ -1008,44 +1004,10 @@ private void setupMenuButton() {
 
             @Override
             public void onReceivedSslError(WebView view, final android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
-                // Build a native dialog to warn the user, giving them explicit choice to bypass
-                final androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(MainActivity.this);
-                
-                String message = "The security certificate for this website is invalid or untrusted.\n\n"
-                               + "Error Code: " + error.getPrimaryError() + "\n"
-                               + "URL: " + error.getUrl() + "\n\n"
-                               + "Do you want to proceed anyway at your own risk?";
-                
-                builder.setTitle("Security Certificate Warning");
-                builder.setMessage(message);
-                
-                // If they insist, allow the engine to proceed
-                builder.setPositiveButton("Proceed Anyway", new android.content.DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(android.content.DialogInterface dialog, int which) {
-                        handler.proceed();
-                    }
-                });
-                
-                // If they back out, drop the network line instantly
-                builder.setNegativeButton("Go Back", new android.content.DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(android.content.DialogInterface dialog, int which) {
-                        handler.cancel();
-                    }
-                });
-
-                // Ensure that tapping outside the dialog cancels the request safely
-                builder.setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
-                    @Override
-                    public void onCancel(android.content.DialogInterface dialog) {
-                        handler.cancel();
-                    }
-                });
-
-                // Display the warning overlay contextually on the main thread
-                androidx.appcompat.app.AlertDialog dialog = builder.create();
-                dialog.show();
+                // Security: Always cancel SSL errors to prevent MITM attacks
+                // Do not allow users to bypass certificate validation
+                handler.cancel();
+                android.util.Log.w("SpoonBrowser", "SSL Error cancelled for: " + error.getUrl());
             }
 
 
@@ -1363,7 +1325,16 @@ private void showTabSwitcher() {
     private void showHistoryDialog() {
         if (history.isEmpty()) return;
         ArrayList<BrowserItem> items = buildHistoryItems();
-        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
+        
+        // Create simple list items without custom adapter
+        String[] historyItems = new String[items.size()];
+        for (int i = 0; i < items.size(); i++) {
+            BrowserItem item = items.get(i);
+            String host = getHostFromUrl(item.url);
+            historyItems[i] = item.title + " (" + host + ")";
+        }
+        
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, historyItems);
         ListView listView = new ListView(this);
         listView.setAdapter(adapter);
 
@@ -1657,7 +1628,16 @@ private void showTabSwitcher() {
         }
 
         ArrayList<BrowserItem> items = buildBookmarkItems();
-        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
+        
+        // Create simple list items without custom adapter
+        String[] bookmarkItems = new String[items.size()];
+        for (int i = 0; i < items.size(); i++) {
+            BrowserItem item = items.get(i);
+            String host = getHostFromUrl(item.url);
+            bookmarkItems[i] = item.title + " (" + host + ")";
+        }
+        
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, bookmarkItems);
         ListView listView = new ListView(this);
         listView.setAdapter(adapter);
 
@@ -1679,6 +1659,19 @@ private void showTabSwitcher() {
         });
 
         new AlertDialog.Builder(this).setTitle("Bookmarks").setView(listView).show();
+    }
+
+    private String getHostFromUrl(String url) {
+        try {
+            java.net.URI uri = new java.net.URI(url);
+            String host = uri.getHost();
+            if (host != null && host.startsWith("www.")) {
+                return host.substring(4);
+            }
+            return host != null ? host : url;
+        } catch (Exception e) {
+            return url;
+        }
     }
 
     private void showHome() {

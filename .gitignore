@@ -1,3 +1,44 @@
-spoon-browser.jks
-android/keystore.properties
-spoon-browser.jks.base64
+```
+# Compiled and build artifacts
+*.class
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+target/
+.gradle/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Build directories
+build/
+dist/
+
+# Android specific
+*.apk
+*.aar
+local.properties
+```
