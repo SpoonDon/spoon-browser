@@ -1,3 +1,4 @@
-spoon-browser.jks
-android/keystore.properties
-spoon-browser.jks.base64
+```
+.gradle/
+local.properties
+```
