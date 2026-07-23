@@ -14,8 +14,8 @@ node_modules/
 venv/
 .venv/
 __pycache__/
-dist/
-build/
+.mypy_cache/
+.pytest_cache/
 target/
 .gradle/
 
@@ -33,22 +33,9 @@ target/
 .vscode/
 .idea/
 
-# System files
-.DS_Store
-Thumbs.db
-
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Python specific
-*.pyc
-__pycache__/
-
-# Java specific
-*.class
-target/
+# Build directories
+build/
+dist/
 
 # Android specific
 *.apk
