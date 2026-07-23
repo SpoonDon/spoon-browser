@@ -1,4 +1,3 @@
-# .github/workflows/android-build.yml
 name: Android Release Build
 
 on:
@@ -6,7 +5,7 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # allow manual trigger
+  workflow_dispatch:   # manual trigger
 
 jobs:
   build:
@@ -23,8 +22,9 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      # Corrected: run chmod inside the android directory
       - name: Grant execute permission for gradlew
-        run: chmod +x ./android/gradlew
+        run: chmod +x gradlew
         working-directory: ./android
 
       - name: Decode and set up keystore
@@ -32,10 +32,11 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > ./android/keystore.jks
+            echo "$KEYSTORE_BASE64" | base64 -d > ./keystore.jks
           else
-            echo "No keystore secret found; skipping signing (debug-only build)."
+            echo "⚠️ No keystore secret found; the APK will be unsigned (cannot be installed)."
           fi
+        working-directory: ./android
 
       - name: Build release APK
         env:
@@ -43,9 +44,7 @@ jobs:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-        run: |
-          # Build release variant
-          ./android/gradlew assembleRelease
+        run: ./gradlew assembleRelease
         working-directory: ./android
 
       - name: Upload release APK
