@@ -405,7 +405,8 @@ private void setupMenuButton() {
                         showHome();
                         return true;
                     case "Reload":
-                        if (getCurrentWebView() != null) getCurrentWebView().reload();
+                        WebView reloadWv = getCurrentWebView();
+                        if (reloadWv != null) reloadWv.reload();
                         return true;
                     case "Bookmarks":
                         showBookmarks();
@@ -427,7 +428,8 @@ private void setupMenuButton() {
                         saveHistory();
                         return true;
                     case "Clear Cache":
-                        if (getCurrentWebView() != null) getCurrentWebView().clearCache(true);
+                        WebView cacheWv = getCurrentWebView();
+                        if (cacheWv != null) cacheWv.clearCache(true);
                         Toast.makeText(this, "Cache cleared", Toast.LENGTH_SHORT).show();
                         return true;
                     case "Filter Lists":
@@ -943,7 +945,8 @@ private void setupMenuButton() {
 
             @Override
             public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                if (view == getCurrentWebView() && addressBar != null) {
+                WebView currentWv = getCurrentWebView();
+                if (view == currentWv && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
                 }
 
@@ -963,7 +966,8 @@ private void setupMenuButton() {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 android.webkit.CookieManager.getInstance().flush();
-                if (view == getCurrentWebView() && addressBar != null) {
+                WebView currentWv = getCurrentWebView();
+                if (view == currentWv && addressBar != null) {
                     addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
                     addressBar.dismissDropDown();
                 }
@@ -976,7 +980,9 @@ private void setupMenuButton() {
                 String url = null;
                 try {
                     url = view.getUrl();
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    android.util.Log.w("SpoonBrowser", "Failed to get URL from crashed WebView", e);
+                }
 
                 int index = tabs.indexOf(view);
                 if (index >= 0) {
@@ -1752,7 +1758,9 @@ private void showTabSwitcher() {
                 if (host != null && host.startsWith("www.")) {
                     host = host.substring(4);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                android.util.Log.w("SpoonBrowser", "Failed to parse host from URL: " + url, e);
+            }
 
             boolean matchesUrl = url.toLowerCase().contains(lower);
             boolean matchesHost = host != null && host.toLowerCase().contains(lower);
