@@ -1280,7 +1280,11 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
 
-        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {    
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        } else {    
+            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
 
         android.webkit.WebSettings webSettings = webView.getSettings();
 
