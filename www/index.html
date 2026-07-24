@@ -55,11 +55,17 @@
 
 <div id="status">Ready</div>
 
-<script src="https://unpkg.com/@capacitor/core@latest/dist/capacitor.js"></script>
-<script src="https://unpkg.com/@capacitor/storage@latest/dist/storage.umd.js"></script>
-
-<script>
-  const { Storage } = window.CapacitorStorage;
+  <!-- Capacitor libraries (bundled locally via npm) -->
+  <script src="capacitor.js"></script>
+  <script src="preferences.js"></script>
+  
+  <script>
+    // Fallback for Capacitor availability check
+    if (!window.Capacitor || !window.CapacitorPreferences) {
+      console.warn('Capacitor not available, running in web mode');
+    }
+    
+    const { Preferences } = window.CapacitorPreferences || {};
   
   // In-memory cache for performance
   let historyStack = [];
@@ -112,7 +118,7 @@
    */
   async function initHistory() {
     try {
-      const stored = await Storage.get({ key: STORAGE_KEY });
+      const stored = await Preferences.get({ key: STORAGE_KEY });
       if (stored && stored.value) {
         const data = JSON.parse(stored.value);
         historyStack = data.stack || [];
@@ -144,7 +150,7 @@
         timestamp: new Date().toISOString()
       };
       
-      await Storage.set({
+      await Preferences.set({
         key: STORAGE_KEY,
         value: JSON.stringify(data)
       });
@@ -159,7 +165,7 @@
    */
   async function clearHistory() {
     try {
-      await Storage.remove({ key: STORAGE_KEY });
+      await Preferences.remove({ key: STORAGE_KEY });
       historyStack = [];
       index = -1;
       document.getElementById("status").innerText = "History cleared";
@@ -208,7 +214,31 @@
     }
 
     document.getElementById("status").innerText = "Loading: " + url;
-    window.location.href = url;
+    
+    // Use native WebView communication instead of window.location.href
+    // This prevents full page reloads and enables proper tab management
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      // Send navigation request to native layer via WebMessage
+      try {
+        const message = JSON.stringify({
+          type: 'NAVIGATE',
+          url: url
+        });
+        // Use the spoonNavMessage channel to communicate with native WebView
+        if (window.spoonNavMessage) {
+          window.spoonNavMessage.postMessage(message);
+        } else {
+          // Fallback: try standard postMessage
+          window.postMessage(message, '*');
+        }
+      } catch (e) {
+        console.warn('WebMessage not available, falling back to window.location', e);
+        window.location.href = url;
+      }
+    } else {
+      // Fallback for web testing
+      window.location.href = url;
+    }
   }
 
   function back() {
@@ -227,6 +257,18 @@
 
   // Initialize history from storage when page loads
   document.addEventListener("DOMContentLoaded", initHistory);
+  
+  // Listen for messages from native layer (if needed for future features)
+  window.addEventListener('message', (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === 'NAVIGATION_COMPLETE') {
+        console.log('Navigation completed in native layer');
+      }
+    } catch (e) {
+      // Ignore non-JSON messages
+    }
+  });
 </script>
 
 </body>

@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.TypedValue;
+import android.util.Log;
 
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -60,6 +61,7 @@ import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebMessagePortCompat;
+import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -67,10 +69,11 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.Collections;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements TabManager.TabListener {
     SecureCredentialManager secureCredentialManager;
     public BrowserDatabaseHelper dbHelper;
     private android.view.View findInPageBar = null;
@@ -80,8 +83,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_PAGE_TITLES = "page_titles";
     private static final String KEY_FILTER_LISTS = "filter_lists";
     private static final String KEY_FILTER_REFRESH_TIME = "filter_refresh_time";
-    private static final String KEY_OPEN_TABS = "open_tabs";
-    private static final String KEY_CURRENT_TAB = "current_tab";
     private static final int MAX_HISTORY = 500;
     public android.webkit.PermissionRequest currentPermissionRequest;
     public android.webkit.GeolocationPermissions.Callback currentGeolocationCallback;
@@ -112,6 +113,9 @@ public class MainActivity extends AppCompatActivity {
     public final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);           
     private SharedPreferences prefs;
     
+    // Tab Management
+    private TabManager tabManager;
+
     private boolean suppressSuggestions = false;
     private boolean clearSessionOnExit = false;
     private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
@@ -120,8 +124,6 @@ public class MainActivity extends AppCompatActivity {
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
     private final HashSet<String> blockedDomains = new HashSet<>();
     private final HashSet<String> rawFilterRules = new HashSet<>();
-    private java.util.List<TabState> tabList = new java.util.ArrayList<>();
-    private int currentTabPosition = -1;
     private TabAdapter tabAdapter;
     private android.view.View tabSwitcherOverlay;
     private androidx.recyclerview.widget.RecyclerView tabsRecyclerView;    
@@ -280,8 +282,8 @@ public class MainActivity extends AppCompatActivity {
                     activeWebView.goBack();
                     return;
                 }                
-                if (tabList.size() > 1) {
-                    closeTab(currentTabPosition);
+                if (tabManager.getTabCount() > 1) {
+                    closeTab(tabManager.getCurrentTabPosition());
                 } else {
                     showExitConfirmationDialog();
                 }
@@ -377,7 +379,7 @@ public class MainActivity extends AppCompatActivity {
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             
-            if (tabList.isEmpty()) {
+            if (tabManager.getAllTabs().isEmpty()) {
                 createNewTab();
             }
             
@@ -417,12 +419,15 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
         
         try {
-            if (clearSessionOnExit) {
-                android.webkit.WebStorage.getInstance().deleteAllData();
-                android.webkit.CookieManager.getInstance().removeAllCookies(null);
-                android.webkit.CookieManager.getInstance().flush();
-            }
-        } catch (Exception ignored) {}
+            if (clearSessionOnExit) {    
+                CookieManager cm = CookieManager.getInstance();    
+                if (cm != null) {        
+                    cm.removeAllCookies(null);        
+                    cm.flush();    
+                }    
+                webStorage.deleteAllData();
+            }        
+        } catch (Exception ignored) {}    
     }
 
     @Override
@@ -439,9 +444,9 @@ public class MainActivity extends AppCompatActivity {
             backgroundExecutor.shutdownNow();
         }
 
-        if (tabList != null) {
-            for (int i = 0; i < tabList.size(); i++) {
-                android.webkit.WebView wv = tabList.get(i).getWebView();
+        if (tabManager.getAllTabs() != null) {
+            for (int i = 0; i < tabManager.getTabCount(); i++) {
+                android.webkit.WebView wv = tabManager.getWebViewAt(i);
                 if (wv != null) {
                     if (wv.getParent() instanceof android.view.ViewGroup) {
                         ((android.view.ViewGroup) wv.getParent()).removeView(wv);
@@ -452,7 +457,12 @@ public class MainActivity extends AppCompatActivity {
                     wv.destroy();
                 }
             }
-            tabList.clear();
+        }
+
+        CookieManager cm = CookieManager.getInstance();
+        if (cm != null) {    
+            cm.removeAllCookies(null);    
+            cm.flush();
         }
 
         super.onDestroy();
@@ -607,8 +617,8 @@ public class MainActivity extends AppCompatActivity {
             popup.getMenu().add(isFilterEnabled ? "Disable Filterlists" : "Enable Filterlists");
             
             String currentHost = "";        
-            if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {            
-                android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
+            if (tabManager.getCurrentTabPosition() >= 0 && tabManager.getCurrentTabPosition() < tabManager.getTabCount()) {            
+                android.webkit.WebView activeWebView = tabManager.getCurrentWebView();
                 
                 if (activeWebView != null && activeWebView.getUrl() != null) {
                     currentHost = android.net.Uri.parse(activeWebView.getUrl()).getHost();
@@ -901,19 +911,19 @@ public class MainActivity extends AppCompatActivity {
         });
 
         prevTabButton.setOnClickListener(v -> {
-            if (tabList.size() > 1) {    
-                int previous = currentTabPosition - 1;    
+            if (tabManager.getTabCount() > 1) {    
+                int previous = tabManager.getCurrentTabPosition() - 1;    
                 if (previous < 0) {        
-                    previous = tabList.size() - 1;    
+                    previous = tabManager.getTabCount() - 1;    
                 }
-                switchToTab(previous);
+                tabManager.switchToTab(i);
             }
         });
 
         nextTabButton.setOnClickListener(v -> {
-            if (tabList.size() > 1) {
-                int next = (currentTabPosition + 1) % tabList.size();
-                switchToTab(next);
+            if (tabManager.getTabCount() > 1) {
+                int next = (tabManager.getCurrentTabPosition() + 1) % tabManager.getTabCount();
+                tabManager.switchToTab(i);
             }
         });
     }
@@ -1131,7 +1141,7 @@ public class MainActivity extends AppCompatActivity {
             newTabButton.setVisibility(View.GONE);
 
             tabBadgeButton = new Button(this);
-            int tabCount = (tabList != null) ? tabList.size() : 1;
+            int tabCount = (tabManager.getAllTabs() != null) ? tabManager.getTabCount() : 1;
             tabBadgeButton.setText(String.valueOf(tabCount));
             tabBadgeButton.setTextColor(Color.WHITE);
             tabBadgeButton.setTextSize(12);
@@ -1218,7 +1228,7 @@ public class MainActivity extends AppCompatActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setSaveFormData(true);
-        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
 
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
@@ -1278,7 +1288,11 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         webView.setLayoutParams(webParams);
 
-        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {    
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        } else {    
+            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
 
         android.webkit.WebSettings webSettings = webView.getSettings();
 
@@ -1461,6 +1475,7 @@ public class MainActivity extends AppCompatActivity {
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
             java.util.Set<String> allowedOrigins = java.util.Collections.singleton("*");
             
+            // WebMessageListener for vault communication
             androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
                     try {
@@ -1491,6 +1506,32 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             );
+            
+            // WebMessageListener for navigation from index.html
+            androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonNavMessage", allowedOrigins,
+                (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
+                    try {
+                        String msg = message.getData();
+                        if (msg != null && msg.startsWith("{")) {
+                            org.json.JSONObject obj = new org.json.JSONObject(msg);
+                            String type = obj.optString("type");
+                            
+                            if ("NAVIGATE".equals(type)) {
+                                String url = obj.optString("url");
+                                if (url != null && !url.isEmpty()) {
+                                    runOnUiThread(() -> {
+                                        // Use native loadUrl instead of window.location.href
+                                        // This enables proper tab management and prevents page reloads
+                                        loadUrlOrSearch(url);
+                                    });
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            );
         }
                 
         return webView;
@@ -1499,8 +1540,8 @@ public class MainActivity extends AppCompatActivity {
     public void handleDeadRenderProcess(android.webkit.WebView deadWebView) {
         if (deadWebView == null) return;
         
-        for (int i = 0; i < tabList.size(); i++) {
-            if (tabList.get(i).getWebView() == deadWebView) {
+        for (int i = 0; i < tabManager.getTabCount(); i++) {
+            if (tabManager.getWebViewAt(i) == deadWebView) {
                 if (browserContainer != null) {
                     browserContainer.removeView(deadWebView);
                 }
@@ -1518,11 +1559,15 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+
+        if (level == TRIM_MEMORY_RUNNING_CRITICAL) {    
+            webView.clearCache(true);
+        }
         
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL || 
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             
-            for (TabState tab : tabList) {
+            for (TabState tab : tabManager.getAllTabs()) {
                 if (tab != null && tab.getWebView() != null) {
                     android.webkit.WebView wv = tab.getWebView();
                     if (wv.getVisibility() == android.view.View.GONE) {
@@ -1549,8 +1594,8 @@ public class MainActivity extends AppCompatActivity {
         settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
 
         TabState newTab = new TabState(webView);
-        tabList.add(newTab);
-        currentTabPosition = tabList.size() - 1;
+        tabManager.addTab(newTab);
+        // Handled by TabManager
 
         if (browserContainer != null) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -1562,17 +1607,17 @@ public class MainActivity extends AppCompatActivity {
             browserContainer.addView(webView, params);
         }
         
-        switchToTab(currentTabPosition);
+        tabManager.switchToTab(tabManager.getCurrentTabPosition());
     }
 
     private void updateTabCountersUI() {
-        if (tabList == null || tabList.isEmpty()) {
+        if (tabManager.getAllTabs() == null || tabManager.getAllTabs().isEmpty()) {
             if (tabIndicator != null) tabIndicator.setText("0/0");
             if (tabBadgeButton != null) tabBadgeButton.setText("0/0");
             return;
         }
         
-        String counterText = (currentTabPosition + 1) + "/" + tabList.size();
+        String counterText = (tabManager.getCurrentTabPosition() + 1) + "/" + tabManager.getTabCount();
         
         if (tabIndicator != null) tabIndicator.setText(counterText);
         if (tabBadgeButton != null) tabBadgeButton.setText(counterText);
@@ -1583,7 +1628,7 @@ public class MainActivity extends AppCompatActivity {
             
             createNewTab(); 
             
-            android.webkit.WebView newTab = tabList.get(currentTabPosition).getWebView();
+            android.webkit.WebView newTab = tabManager.getCurrentWebView();
             newTab.loadUrl(url);
             
             android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
@@ -1591,11 +1636,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void switchToTab(int index) {
-        if (index < 0 || index >= tabList.size()) return;
-        currentTabPosition = index;
+        if (index < 0 || index >= tabManager.getTabCount()) return;
+        tabManager.switchToTab(index);
 
-        for (int i = 0; i < tabList.size(); i++) {
-            android.webkit.WebView wv = tabList.get(i).getWebView();
+        for (int i = 0; i < tabManager.getTabCount(); i++) {
+            android.webkit.WebView wv = tabManager.getWebViewAt(i);
             if (wv != null) {
                 if (i == index) {
                     wv.setVisibility(android.view.View.VISIBLE);
@@ -1617,44 +1662,45 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void closeTab(int index) {
-        if (index < 0 || index >= tabList.size()) return;
+        if (index < 0 || index >= tabManager.getTabCount()) return;
 
-        if (tabList.size() == 1) {
+        if (tabManager.getTabCount() == 1) {
             showExitConfirmationDialog();
             return; 
         }
 
-        TabState tabToRemove = tabList.get(index);
+        TabState tabToRemove = tabManager.getTabAt(index);
         android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
 
         if (wvToDestroy != null) {
             if (browserContainer != null) {
+                wvToDestroy.stopLoading();
+                wvToDestroy.clearCache(true);
+                wvToDestroy.removeAllViews();
                 browserContainer.removeView(wvToDestroy);
-            }
-            wvToDestroy.removeAllViews();
-            wvToDestroy.destroy();
+                wvToDestroy.destroy();}                
         }
 
-        tabList.remove(index);
+        tabManager.closeTabAtIndex(index);
         
         if (tabAdapter != null) {
             tabAdapter.notifyItemRemoved(index);
-            tabAdapter.notifyItemRangeChanged(0, tabList.size());
+            tabAdapter.notifyItemRangeChanged(0, tabManager.getTabCount());
         }
 
-        if (index < currentTabPosition) {
-            currentTabPosition--;
+        if (index < tabManager.getCurrentTabPosition()) {
+            // Handled by TabManager
         } 
-        else if (currentTabPosition >= tabList.size()) {
-            currentTabPosition = tabList.size() - 1;
+        else if (tabManager.getCurrentTabPosition() >= tabManager.getTabCount()) {
+            // Handled by TabManager
         }
         
-        switchToTab(currentTabPosition);
+        tabManager.switchToTab(tabManager.getCurrentTabPosition());
     }
     
     private ArrayList<BrowserItem> buildTabItems() {
         ArrayList<BrowserItem> items = new ArrayList<>();
-        for (TabState tabState : tabList) {    
+        for (TabState tabState : tabManager.getAllTabs()) {    
             WebView webView = tabState.getWebView();
             if (webView == null) continue;
             String url = webView.getUrl();
@@ -1673,8 +1719,8 @@ public class MainActivity extends AppCompatActivity {
             currentWv.pauseTimers(); 
         }
         
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-            TabState currentTab = tabList.get(currentTabPosition);
+        if (tabManager.getCurrentTabPosition() >= 0 && tabManager.getCurrentTabPosition() < tabManager.getTabCount()) {
+            TabState currentTab = tabManager.getCurrentTab();
             android.webkit.WebView tabWv = currentTab.getWebView();
             
             if (tabWv != null) {
@@ -1684,7 +1730,7 @@ public class MainActivity extends AppCompatActivity {
                 captureWebViewSnapshotAsync(tabWv, bitmap -> {
                     currentTab.setThumbnail(bitmap);
                     if (tabAdapter != null) {
-                        tabAdapter.notifyItemChanged(currentTabPosition);
+                        tabAdapter.notifyItemChanged(tabManager.getCurrentTabPosition());
                     }
                 });
             }
@@ -1725,10 +1771,10 @@ public class MainActivity extends AppCompatActivity {
             tabSwitcherOverlay.findViewById(R.id.btnBackToBrowser).setOnClickListener(v -> hideTabSwitcher());
         }
 
-        tabAdapter = new TabAdapter(tabList, new TabAdapter.OnTabActionListener() {
+        tabAdapter = new TabAdapter(tabManager.getAllTabs(), new TabAdapter.OnTabActionListener() {
             @Override
             public void onTabSelected(int position) {
-                switchToTab(position);
+                tabManager.switchToTab(i);
                 hideTabSwitcher();
             }
 
@@ -1743,7 +1789,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 
-                if (tabList.isEmpty()) {
+                if (tabManager.getAllTabs().isEmpty()) {
                     createNewTab();
                     showHome();
                     hideTabSwitcher();
@@ -1764,7 +1810,7 @@ public class MainActivity extends AppCompatActivity {
         });
         tabsViewPager.setPageTransformer(transformer);
 
-        tabsViewPager.setCurrentItem(currentTabPosition, false);
+        tabsViewPager.setCurrentItem(tabManager.getCurrentTabPosition(), false);
 
         if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
         tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
@@ -2061,7 +2107,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void saveOpenTabs() {
         ArrayList<String> safeUrls = new ArrayList<>();
-        for (TabState tabState : tabList) {    
+        for (TabState tabState : tabManager.getAllTabs()) {    
             WebView webView = tabState.getWebView();
             String url = webView.getUrl();
             if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
@@ -2075,7 +2121,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveCurrentTab() {
-        prefs.edit().putInt(KEY_CURRENT_TAB, currentTabPosition).apply();
+        prefs.edit().putInt(KEY_CURRENT_TAB, tabManager.getCurrentTabPosition()).apply();
     }
 
     private void showFilterListsDialog() {
@@ -2217,7 +2263,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         statsContainer.addView(createStatRow("WebView Engine", webViewVer, true));
-        statsContainer.addView(createStatRow("Tabs Open", String.valueOf(tabList.size()), true));
+        statsContainer.addView(createStatRow("Tabs Open", String.valueOf(tabManager.getTabCount()), true));
         statsContainer.addView(createStatRow("Bookmarks Saved", String.valueOf(dbHelper != null ? dbHelper.getBookmarkCount() : 0), true));
         statsContainer.addView(createStatRow("History Items", String.valueOf(dbHelper != null ? dbHelper.getHistoryCount() : 0), true));
         
@@ -2381,17 +2427,17 @@ public class MainActivity extends AppCompatActivity {
     }
     
     public WebView getCurrentWebView() {
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-            return tabList.get(currentTabPosition).getWebView();
+        if (tabManager.getCurrentTabPosition() >= 0 && tabManager.getCurrentTabPosition() < tabManager.getTabCount()) {
+            return tabManager.getCurrentWebView();
         }
         return null;
     }
 
     public void updateTabBadgeCount() {
-        if (tabBadgeButton != null && tabList != null) {
+        if (tabBadgeButton != null && tabManager.getAllTabs() != null) {
            
             runOnUiThread(() -> {
-                tabBadgeButton.setText(String.valueOf(tabList.size()));
+                tabBadgeButton.setText(String.valueOf(tabManager.getTabCount()));
             });
         }
     }
@@ -2688,7 +2734,7 @@ public class MainActivity extends AppCompatActivity {
         if (webViewContainer != null) {
             webViewContainer.setVisibility(android.view.View.VISIBLE);
         }
-        switchToTab(currentTabPosition);
+        tabManager.switchToTab(tabManager.getCurrentTabPosition());
         WebView currentWv = getCurrentWebView();
         if (currentWv != null) {
             currentWv.resumeTimers(); 
@@ -2757,8 +2803,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleDesktopMode() {        
-        if (currentTabPosition < 0 || currentTabPosition >= tabList.size()) return;
-        android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
+        if (tabManager.getCurrentTabPosition() < 0 || tabManager.getCurrentTabPosition() >= tabManager.getTabCount()) return;
+        android.webkit.WebView activeWebView = tabManager.getCurrentWebView();
         
         if (activeWebView == null || activeWebView.getUrl() == null) return;
 
@@ -2859,8 +2905,8 @@ public class MainActivity extends AppCompatActivity {
                 if (secureCredentialManager != null) {
                     
                     String currentUrl = "";
-                    if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {    
-                        android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
+                    if (tabManager.getCurrentTabPosition() >= 0 && tabManager.getCurrentTabPosition() < tabManager.getTabCount()) {    
+                        android.webkit.WebView activeWebView = tabManager.getCurrentWebView();
                         if (activeWebView != null && activeWebView.getUrl() != null) {
                             currentUrl = activeWebView.getUrl();
                         }

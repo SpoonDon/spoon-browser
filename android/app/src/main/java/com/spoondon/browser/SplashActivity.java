@@ -11,6 +11,9 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.splashscreen.SplashScreen;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
+import androidx.webkit.WebViewStartUpConfig;
 
 public class SplashActivity extends AppCompatActivity {
 
@@ -18,6 +21,17 @@ public class SplashActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
+
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {    
+            WebViewStartUpConfig config = new WebViewStartUpConfig.Builder()        
+                .setBackgroundThreadExecutor(/* use app's background executor */)        
+                .build();    
+            WebViewCompat.startUpWebView(        
+                getApplicationContext(),        
+                config,        
+                (result, error) -> { /* startup complete */ }    
+            );
+        }
 
         Looper.myQueue().addIdleHandler(() -> {
             try {

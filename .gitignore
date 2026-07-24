@@ -1,3 +1,28 @@
-spoon-browser.jks
-android/keystore.properties
-spoon-browser.jks.base64
+```
+# Build artifacts
+*.apk
+*.aar
+*.so
+*.dex
+*.class
+
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Local configuration
+local.properties
+gradle.properties
+```

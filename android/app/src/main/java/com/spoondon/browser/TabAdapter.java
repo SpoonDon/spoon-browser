@@ -39,6 +39,13 @@ public class TabAdapter extends RecyclerView.Adapter<TabAdapter.TabViewHolder> {
         
         String dynamicTitle = "[" + (position + 1) + "/" + tabList.size() + "] " + tab.getTitle();
         holder.txtTitle.setText(dynamicTitle);
+
+        Bitmap oldBitmap = holder.imgThumbnail.getDrawable() != null    
+            ? ((BitmapDrawable) holder.imgThumbnail.getDrawable()).getBitmap()     
+            : null;
+        if (oldBitmap != null && !oldBitmap.isRecycled()) {            
+        }
+        holder.imgThumbnail.setImageBitmap(null);
         
         Bitmap thumbnail = tab.getThumbnail();
         if (thumbnail != null && !thumbnail.isRecycled()) {

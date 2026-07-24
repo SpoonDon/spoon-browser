@@ -14,12 +14,17 @@ android {
         applicationId "com.spoondon.browser"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 80
-        versionName "3.2.0 (Ice-Cream)"
+        versionCode 81
+        versionName "3.2.1 (Milk-Choco)"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments clearPackageData: 'true'
+        
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+        
+        // Enable multidex for testing
+        multiDexEnabled true
     }
 
     signingConfigs {
@@ -47,11 +52,22 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            debuggable true
+        }
     }
 
 }
 
 dependencies {
+    // Test dependencies
+    androidTestImplementation "androidx.test:runner:$androidxJunitVersion"
+    androidTestImplementation "androidx.test:rules:$androidxJunitVersion"
+    
+    // Multidex support for testing
+    debugImplementation 'androidx.multidex:multidex-instrumentation:2.0.0'
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.viewpager2:viewpager2:1.1.0"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
