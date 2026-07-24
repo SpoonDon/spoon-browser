@@ -6,22 +6,20 @@
 *.aar
 *.apk
 *.jar
-obj/
-gen/
-bin/
 # Dependencies
-node_modules/
-.gradle/
+libs/
+# Build outputs
 build/
+.gradle/
 # Logs and temp files
 *.log
 *.tmp
+*.swp
+# Environment
+.env
+.env.local
+*.env.*
 # Editors
 .vscode/
 .idea/
-*.iml
-*.iws
-# Android specific
-*.keystore
-local.properties
 ```

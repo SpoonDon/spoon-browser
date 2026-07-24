@@ -2776,7 +2776,6 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
             super.onActivityResult(requestCode, resultCode, data);
         }
     }
-}
 
     class Suggestion {
         public String title;
