@@ -98,42 +98,42 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_PERMISSIONS = 2;
     private ValueCallback<Uri[]> filePathCallback;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+    // Lines 101-136: Updated onCreate method
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_main);
 
-        initializeViews();
-        
-        // Initialize Tab Manager (after views are initialized)
-        tabManager = new TabManager(this, browserContainer);
-        
-        setupToolbar();
-        setupFindInPage();
-        
-        // Initialize Filter Engine (Singleton usage)
-        filterEngine = ContentFilterEngine.getInstance();
-        filterEngine.loadFilters(this);
+    // Step 1: Initialize all views first
+    initializeViews();
+    
+    // Step 2: Setup toolbar and find-in-page (depends on views)
+    setupToolbar();
+    setupFindInPage();
+    
+    // Step 3: Initialize Tab Manager AFTER views are ready
+    tabManager = new TabManager(this, browserContainer);
+    
+    // Step 4: Initialize Filter Engine
+    filterEngine = ContentFilterEngine.getInstance();
+    filterEngine.loadFilters(this);
 
-        // WebView Pre-initialization (Startup optimization)
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {
-            WebViewStartUpConfig config = new WebViewStartUpConfig.Builder()
-                .setBackgroundThreadExecutor(backgroundExecutor)
-                .build();
-            // Note: WebViewCompat.startUpWebView requires specific setup, 
-            // usually done in Application class, but included here for completeness
-            // if strictly required in Activity context for this snippet.
-        }
-
-        // Restore or Create Tab
-        if (savedInstanceState != null) {
-            tabManager.restoreState(savedInstanceState);
-        } else {
-            tabManager.createNewTab("https://www.google.com");
-        }
-
-        updateAddressBarSuggestions();
+    // Step 5: WebView Pre-initialization
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {
+        WebViewStartUpConfig config = new WebViewStartUpConfig.Builder()
+            .setBackgroundThreadExecutor(backgroundExecutor)
+            .build();
     }
+
+    // Step 6: Restore or Create Tab (now safe, all views initialized)
+    if (savedInstanceState != null) {
+        tabManager.restoreState(savedInstanceState);
+    } else {
+        tabManager.createNewTab("https://www.google.com");
+    }
+
+    updateAddressBarSuggestions();
+}
 
     private void initializeViews() {
         toolbar = findViewById(R.id.toolbar);
