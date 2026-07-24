@@ -26,7 +26,7 @@ public class SplashActivity extends AppCompatActivity {
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_VIEW_STARTUP)) {    
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {    
             WebViewStartUpConfig config = new WebViewStartUpConfig.Builder(WEBVIEW_EXECUTOR)        
                 .build();    
             WebViewCompat.startUpWebView(        
