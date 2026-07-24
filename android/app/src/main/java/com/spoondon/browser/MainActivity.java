@@ -1674,10 +1674,11 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
 
         if (wvToDestroy != null) {
             if (browserContainer != null) {
+                wvToDestroy.stopLoading();
+                wvToDestroy.clearCache(true);
+                wvToDestroy.removeAllViews();
                 browserContainer.removeView(wvToDestroy);
-            }
-            wvToDestroy.removeAllViews();
-            wvToDestroy.destroy();
+                wvToDestroy.destroy();}                
         }
 
         tabManager.closeTabAtIndex(index);
