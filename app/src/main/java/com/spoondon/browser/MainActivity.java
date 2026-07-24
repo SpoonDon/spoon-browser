@@ -104,11 +104,12 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         initializeViews();
+        
+        // Initialize Tab Manager (after views are initialized)
+        tabManager = new TabManager(this, browserContainer);
+        
         setupToolbar();
         setupFindInPage();
-        
-        // Initialize Tab Manager
-        tabManager = new TabManager(this, browserContainer);
         
         // Initialize Filter Engine (Singleton usage)
         filterEngine = ContentFilterEngine.getInstance();
@@ -258,7 +259,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private android.webkit.WebView createConfiguredWebView() {
+    public /* package */ android.webkit.WebView createConfiguredWebView() {
         android.webkit.WebView webView = new android.webkit.WebView(this);
         WebSettings settings = webView.getSettings();
         
