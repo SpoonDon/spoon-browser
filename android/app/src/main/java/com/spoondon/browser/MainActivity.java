@@ -419,12 +419,15 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         super.onStop();
         
         try {
-            if (clearSessionOnExit) {
-                android.webkit.WebStorage.getInstance().deleteAllData();
-                android.webkit.CookieManager.getInstance().removeAllCookies(null);
-                android.webkit.CookieManager.getInstance().flush();
-            }
-        } catch (Exception ignored) {}
+            if (clearSessionOnExit) {    
+                CookieManager cm = CookieManager.getInstance();    
+                if (cm != null) {        
+                    cm.removeAllCookies(null);        
+                    cm.flush();    
+                }    
+                webStorage.deleteAllData();
+            }        
+        } catch (Exception ignored) {}    
     }
 
     @Override
@@ -454,7 +457,12 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
                     wv.destroy();
                 }
             }
-            // Handled by TabManager
+        }
+
+        CookieManager cm = CookieManager.getInstance();
+        if (cm != null) {    
+            cm.removeAllCookies(null);    
+            cm.flush();
         }
 
         super.onDestroy();
@@ -1220,7 +1228,7 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setSaveFormData(true);
-        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
 
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
@@ -1551,6 +1559,10 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
+
+        if (level == TRIM_MEMORY_RUNNING_CRITICAL) {    
+            webView.clearCache(true);
+        }
         
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL || 
             level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
