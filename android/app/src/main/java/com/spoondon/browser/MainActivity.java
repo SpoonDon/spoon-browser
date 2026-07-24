@@ -14,6 +14,7 @@ import android.util.Log;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.ContextThemeWrapper;
@@ -38,6 +39,7 @@ import android.widget.Toast;
 import android.text.TextUtils;
 import android.app.AlertDialog;
 
+import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.SafeBrowsingResponse;
@@ -46,6 +48,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebView.WebViewTransport;
@@ -2829,3 +2832,41 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
             };
         }
     }
+
+    //region TabManager.TabListener Implementation
+
+    @Override
+    public void onTabChanged(int position) {
+        updateTabCountersUI();
+    }
+
+    @Override
+    public void onTabAdded(int position) {
+        if (tabAdapter != null) {
+            tabAdapter.notifyItemInserted(position);
+            tabAdapter.notifyItemRangeChanged(0, tabManager.getTabCount());
+        }
+        updateTabCountersUI();
+    }
+
+    @Override
+    public void onTabRemoved(int position) {
+        if (tabAdapter != null) {
+            tabAdapter.notifyItemRemoved(position);
+            tabAdapter.notifyItemRangeChanged(0, tabManager.getTabCount());
+        }
+        updateTabCountersUI();
+    }
+
+    @Override
+    public void onTabCountChanged(int count) {
+        updateTabCountersUI();
+    }
+
+    @Override
+    public void requestTabThumbnail(TabState tab) {
+        // Thumbnail generation can be implemented here if needed
+    }
+
+    //endregion
+}

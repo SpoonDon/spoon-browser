@@ -204,6 +204,16 @@ public class TabManager {
     }
 
     /**
+     * Gets the tab at the specified index.
+     */
+    public TabState getTabAt(int index) {
+        if (index >= 0 && index < tabList.size()) {
+            return tabList.get(index);
+        }
+        return null;
+    }
+
+    /**
      * Checks if there are any tabs open.
      */
     public boolean hasTabs() {

@@ -4,31 +4,24 @@
 *.dex
 *.so
 *.aar
+*.apk
 *.jar
 obj/
-bin/
 gen/
-
+bin/
 # Dependencies
 node_modules/
 .gradle/
 build/
-
 # Logs and temp files
 *.log
 *.tmp
-*.swp
-
-# Environment
-.env
-.env.local
-*.env.*
-
 # Editors
 .vscode/
 .idea/
-
-# OS specific
-.DS_Store
-Thumbs.db
+*.iml
+*.iws
+# Android specific
+*.keystore
+local.properties
 ```
