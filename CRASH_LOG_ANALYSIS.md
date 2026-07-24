@@ -3,15 +3,15 @@
 ## Error Summary
 ```
 AndroidRuntime: FATAL EXCEPTION: main
-Process: com.spoondon.browser, PID: 17863
-java.lang.RuntimeException: Unable to start activity ComponentInfo{com.spoondon.browser/com.spoondon.browser.MainActivity}: 
+Process: com.spoondon.browser, PID: 22303
+java.lang.RuntimeException: Unable to start activity ComponentInfo{com.spoondon.browser/com.spoondon.browser.MainActivity}:
 java.lang.NullPointerException: Attempt to invoke virtual method 'java.util.ArrayList m.q.j()' on a null object reference
 ```
 
 ## Stack Trace Analysis
 
 ### Root Cause
-The crash occurs in `MainActivity.onCreate()` at line 247 (obfuscated), specifically when calling a method on a null object. The obfuscated stack trace shows:
+The crash occurs in `MainActivity.onCreate()` during activity startup. The obfuscated stack trace shows:
 
 ```
 at com.spoondon.browser.MainActivity.J(SourceFile:3)
@@ -23,59 +23,94 @@ at com.spoondon.browser.MainActivity.onCreate(SourceFile:247)
 ### Problem Identification
 The error `Attempt to invoke virtual method 'java.util.ArrayList m.q.j()' on a null object reference` indicates that:
 
-1. A class (obfuscated as `m.q`) is being initialized during `MainActivity.onCreate()`
-2. During its initialization (`<init>`), it calls a method `j()` that returns `ArrayList`
-3. The object on which `j()` is called is null
+1. A class (obfuscated as `m.q`, which is `AdBlockEngine`) is being accessed during WebView creation
+2. A method returning `ArrayList` is called on a null static field
+3. This happens because `AdBlockEngine.init()` hasn't been called yet when the WebView tries to use it
 
-### Most Likely Culprit
-Based on the code structure, this is likely caused by **initialization order issues** where:
+### Actual Culprit Identified
 
-1. `TabManager` is created before `ContentFilterEngine` is fully initialized
-2. When `TabManager.createNewTab()` creates a new WebView, the WebView configuration may try to access filter engine data
-3. The filter engine's internal lists (`domainFilters` or `cosmeticFilters`) are null or not yet populated
+The crash is caused by **initialization order issues** in `MainActivity.onCreate()`:
+
+1. `TabManager` was created before `AdBlockEngine.init()` was called
+2. When `TabManager` constructor runs `loadSavedTabs()` → `createNewTab()` → `createWebView()`, it creates a WebView
+3. The WebView uses `SpoonWebViewClient` which intercepts requests
+4. `SpoonWebViewClient.shouldInterceptRequest()` calls `AdBlockEngine.hasRules()` and `AdBlockEngine.shouldBlock()`
+5. These methods access static fields like `blockedDomains`, `scopedPathRules` which are null until `AdBlockEngine.init()` is called
+6. **CRASH**: NullPointerException when trying to call methods on these null collections
+
+### Call Chain Leading to Crash
+
+```
+MainActivity.onCreate()
+  └─> new TabManager(...)
+       └─> loadSavedTabs()
+            └─> createNewTab()
+                 └─> createWebView()
+                      └─> new WebView()
+                           └─> setWebViewClient(new SpoonWebViewClient())
+                                └─> (later) shouldInterceptRequest()
+                                     └─> AdBlockEngine.hasRules()  ← CRASH! Static fields are null
+```
 
 ## Fix Applied
 
-### Changes in MainActivity.java
+### Changes in MainActivity.java (android/app/src/main/java/com/spoondon/browser/MainActivity.java)
 
 **Before:**
 ```java
-// Step 3: Initialize Tab Manager AFTER views are ready
-tabManager = new TabManager(this, browserContainer);
+prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-// Step 4: Initialize Filter Engine
-filterEngine = ContentFilterEngine.getInstance();
-filterEngine.loadFilters(this);
+isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+setupRootLayout();
+tabManager = new TabManager(this, prefs, browserContainer, this);  // Created too early!
+// ...
+if (backgroundExecutor != null) {
+    backgroundExecutor.execute(() -> {
+        AdBlockEngine.init(MainActivity.this, filterLists);  // Happens in background - too late!
+        AdBlockEngine.checkAndRefreshFilters(...);
+    });
+}
 ```
 
 **After:**
 ```java
-// Step 3: Initialize Filter Engine BEFORE Tab Manager
-// This ensures filterEngine is ready when WebView is created
-filterEngine = ContentFilterEngine.getInstance();
-filterEngine.loadFilters(this);
+prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-// Step 4: Initialize Tab Manager AFTER views and filterEngine are ready
-tabManager = new TabManager(this, browserContainer);
+isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+
+// Initialize AdBlockEngine BEFORE TabManager to prevent NullPointerException
+// when WebView tries to access filter rules during creation
+AdBlockEngine.init(this, filterLists);  // Now called first on main thread
+
+setupRootLayout();
+tabManager = new TabManager(this, prefs, browserContainer, this);  // Safe now!
+// ...
+if (backgroundExecutor != null) {
+    backgroundExecutor.execute(() -> {
+        AdBlockEngine.checkAndRefreshFilters(...);  // Only refresh needed in background
+    });
+}
 ```
 
 ### Why This Fixes the Issue
 
-1. **Initialization Order**: The `ContentFilterEngine` singleton must be instantiated and have its filters loaded BEFORE any WebView is created
-2. **Thread Safety**: The singleton pattern in `ContentFilterEngine` uses synchronization, but the `loadFilters()` call must complete before any other code accesses the instance
-3. **WebView Creation Chain**: When `TabManager` is created and `createNewTab()` is called immediately, it triggers WebView creation which may depend on filter data
+1. **Initialization Order**: `AdBlockEngine.init()` now runs synchronously on the main thread BEFORE any WebView is created
+2. **Static Fields Ready**: All static collections (`blockedDomains`, `scopedPathRules`, `whitelistedDomains`, `cosmeticRules`) are properly initialized
+3. **Thread Safety**: `AdBlockEngine.init()` is idempotent and thread-safe, so calling it on main thread is safe
+4. **No Race Condition**: WebView creation can safely call `AdBlockEngine.hasRules()` and `AdBlockEngine.shouldBlock()` immediately
 
 ## Verification Steps
 
 To verify this fix works:
 
-1. Clean build the project
-2. Install on device/emulator
+1. Clean build the project: `./gradlew clean`
+2. Install on device/emulator: `adb install app-debug.apk`
 3. Launch the app - it should no longer crash on startup
-4. Check logcat for any remaining NullPointerException errors
+4. Check logcat for any remaining errors: `adb logcat | grep -i "spoondon"`
+5. Test tab creation and ad blocking functionality
 
 ## Additional Recommendations
 
-1. **Add Null Checks**: In `ContentFilterEngine`, add defensive null checks in `shouldBlockRequest()`
-2. **Lazy Initialization**: Consider lazy-loading filters only when first needed
-3. **Logging**: Add logging in `ContentFilterEngine.loadFilters()` to confirm it's called before WebView creation
+1. **Defensive Null Checks**: Consider adding null checks in `AdBlockEngine.hasRules()` and `shouldBlock()` as extra safety
+2. **Logging**: Add logging in `AdBlockEngine.init()` to confirm initialization timing
+3. **Unit Tests**: Add tests to verify initialization order dependencies

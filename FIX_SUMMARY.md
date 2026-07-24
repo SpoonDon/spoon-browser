@@ -12,39 +12,55 @@ at com.spoondon.browser.MainActivity.onCreate(SourceFile:247)
 
 ## Root Cause
 Initialization order bug in `MainActivity.onCreate()`:
-- `TabManager` was being initialized before `ContentFilterEngine` was fully set up
-- When `TabManager.createNewTab()` creates a WebView, it may access filter engine data
-- The filter engine singleton existed but its filters weren't loaded yet, causing null pointer exceptions
+- `TabManager` was being initialized before `AdBlockEngine` was initialized
+- When `TabManager` constructor calls `loadSavedTabs()` → `createNewTab()` → `createWebView()`, it triggers WebView creation
+- The newly created WebView uses `SpoonWebViewClient`, which calls `AdBlockEngine.hasRules()` and `AdBlockEngine.shouldBlock()` during request interception
+- Since `AdBlockEngine.init()` hadn't been called yet, its static collections (`blockedDomains`, `scopedPathRules`, etc.) were null, causing the NPE
 
 ## Solution
-Reordered initialization in `MainActivity.onCreate()` to ensure `ContentFilterEngine` is fully initialized before `TabManager` creates any WebViews.
+Moved `AdBlockEngine.init(this, filterLists)` to be called **before** `TabManager` is instantiated. This ensures all static collections in `AdBlockEngine` are properly initialized before any WebView tries to access them.
 
 ## Files Changed
-- `app/src/main/java/com/spoondon/browser/MainActivity.java`
+- `android/app/src/main/java/com/spoondon/browser/MainActivity.java`
 
 ## Code Changes
 
-### MainActivity.java (lines 114-120)
+### MainActivity.java (lines 232-270)
 
 **Before:**
 ```java
-// Step 3: Initialize Tab Manager AFTER views are ready
-tabManager = new TabManager(this, browserContainer);
+prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-// Step 4: Initialize Filter Engine
-filterEngine = ContentFilterEngine.getInstance();
-filterEngine.loadFilters(this);
+isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+setupRootLayout();
+tabManager = new TabManager(this, prefs, browserContainer, this);
+// ...
+if (backgroundExecutor != null) {
+    backgroundExecutor.execute(() -> {
+        AdBlockEngine.init(MainActivity.this, filterLists);  // Too late!
+        AdBlockEngine.checkAndRefreshFilters(...);
+    });
+}
 ```
 
 **After:**
 ```java
-// Step 3: Initialize Filter Engine BEFORE Tab Manager
-// This ensures filterEngine is ready when WebView is created
-filterEngine = ContentFilterEngine.getInstance();
-filterEngine.loadFilters(this);
+prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-// Step 4: Initialize Tab Manager AFTER views and filterEngine are ready
-tabManager = new TabManager(this, browserContainer);
+isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+
+// Initialize AdBlockEngine BEFORE TabManager to prevent NullPointerException
+// when WebView tries to access filter rules during creation
+AdBlockEngine.init(this, filterLists);
+
+setupRootLayout();
+tabManager = new TabManager(this, prefs, browserContainer, this);  // Now safe!
+// ...
+if (backgroundExecutor != null) {
+    backgroundExecutor.execute(() -> {
+        AdBlockEngine.checkAndRefreshFilters(...);  // Only refresh needed
+    });
+}
 ```
 
 ## Testing

@@ -232,6 +232,11 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         
         isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+        
+        // Initialize AdBlockEngine BEFORE TabManager to prevent NullPointerException
+        // when WebView tries to access filter rules during creation
+        AdBlockEngine.init(this, filterLists);
+        
         setupRootLayout();
         tabManager = new TabManager(this, prefs, browserContainer, this);
         createToolbarViews();
@@ -261,7 +266,6 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
 
         if (backgroundExecutor != null) {
             backgroundExecutor.execute(() -> {
-                AdBlockEngine.init(MainActivity.this, filterLists);
                 AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, false);
             });
         }
