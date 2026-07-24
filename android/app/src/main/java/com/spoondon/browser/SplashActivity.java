@@ -14,22 +14,25 @@ import androidx.core.splashscreen.SplashScreen;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import androidx.webkit.WebViewStartUpConfig;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 public class SplashActivity extends AppCompatActivity {
+
+    private static final Executor WEBVIEW_EXECUTOR = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {    
-            WebViewStartUpConfig config = new WebViewStartUpConfig.Builder()        
-                .setBackgroundThreadExecutor(/* use app's background executor */)        
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_VIEW_STARTUP)) {    
+            WebViewStartUpConfig config = new WebViewStartUpConfig.Builder(WEBVIEW_EXECUTOR)        
                 .build();    
             WebViewCompat.startUpWebView(        
                 getApplicationContext(),        
                 config,        
-                (result, error) -> { /* startup complete */ }    
+                (result) -> { /* startup complete */ }    
             );
         }
 

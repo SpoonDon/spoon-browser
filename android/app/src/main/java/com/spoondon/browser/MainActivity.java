@@ -420,12 +420,15 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         
         try {
             if (clearSessionOnExit) {    
-                CookieManager cm = CookieManager.getInstance();    
+                android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();    
                 if (cm != null) {        
                     cm.removeAllCookies(null);        
                     cm.flush();    
                 }    
-                webStorage.deleteAllData();
+                android.webkit.WebStorage webStorage = android.webkit.WebStorage.getInstance();
+                if (webStorage != null) {
+                    webStorage.deleteAllData();
+                }
             }        
         } catch (Exception ignored) {}    
     }
@@ -446,20 +449,23 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
 
         if (tabManager.getAllTabs() != null) {
             for (int i = 0; i < tabManager.getTabCount(); i++) {
-                android.webkit.WebView wv = tabManager.getWebViewAt(i);
-                if (wv != null) {
-                    if (wv.getParent() instanceof android.view.ViewGroup) {
-                        ((android.view.ViewGroup) wv.getParent()).removeView(wv);
+                TabState tab = tabManager.getTabAt(i);
+                if (tab != null) {
+                    android.webkit.WebView wv = tab.getWebView();
+                    if (wv != null) {
+                        if (wv.getParent() instanceof android.view.ViewGroup) {
+                            ((android.view.ViewGroup) wv.getParent()).removeView(wv);
+                        }
+                        wv.stopLoading();
+                        wv.setWebChromeClient(null);
+                        wv.setWebViewClient(null);
+                        wv.destroy();
                     }
-                    wv.stopLoading();
-                    wv.setWebChromeClient(null);
-                    wv.setWebViewClient(null);
-                    wv.destroy();
                 }
             }
         }
 
-        CookieManager cm = CookieManager.getInstance();
+        android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
         if (cm != null) {    
             cm.removeAllCookies(null);    
             cm.flush();
@@ -916,14 +922,14 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
                 if (previous < 0) {        
                     previous = tabManager.getTabCount() - 1;    
                 }
-                tabManager.switchToTab(i);
+                tabManager.switchToTab(previous);
             }
         });
 
         nextTabButton.setOnClickListener(v -> {
             if (tabManager.getTabCount() > 1) {
                 int next = (tabManager.getCurrentTabPosition() + 1) % tabManager.getTabCount();
-                tabManager.switchToTab(i);
+                tabManager.switchToTab(next);
             }
         });
     }
@@ -1541,7 +1547,8 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         if (deadWebView == null) return;
         
         for (int i = 0; i < tabManager.getTabCount(); i++) {
-            if (tabManager.getWebViewAt(i) == deadWebView) {
+            TabState tab = tabManager.getTabAt(i);
+            if (tab != null && tab.getWebView() == deadWebView) {
                 if (browserContainer != null) {
                     browserContainer.removeView(deadWebView);
                 }
@@ -1561,7 +1568,10 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         super.onTrimMemory(level);
 
         if (level == TRIM_MEMORY_RUNNING_CRITICAL) {    
-            webView.clearCache(true);
+            TabState currentTab = tabManager.getCurrentTab();
+            if (currentTab != null && currentTab.getWebView() != null) {
+                currentTab.getWebView().clearCache(true);
+            }
         }
         
         if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL || 
@@ -1594,8 +1604,7 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
 
         TabState newTab = new TabState(webView);
-        tabManager.addTab(newTab);
-        // Handled by TabManager
+        tabManager.createNewTab(); // Use TabManager's method which handles adding and switching
 
         if (browserContainer != null) {
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -1639,21 +1648,26 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         if (index < 0 || index >= tabManager.getTabCount()) return;
         tabManager.switchToTab(index);
 
+        TabState currentTab = tabManager.getCurrentTab();
+        if (currentTab != null && currentTab.getWebView() != null) {
+            android.webkit.WebView wv = currentTab.getWebView();
+            wv.setVisibility(android.view.View.VISIBLE);
+            wv.onResume();
+            wv.resumeTimers();
+            
+            String url = wv.getUrl();
+            if (addressBar != null) {
+                addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
+            }
+        }
+        
+        // Hide other tabs
         for (int i = 0; i < tabManager.getTabCount(); i++) {
-            android.webkit.WebView wv = tabManager.getWebViewAt(i);
-            if (wv != null) {
-                if (i == index) {
-                    wv.setVisibility(android.view.View.VISIBLE);
-                    wv.onResume();
-                    wv.resumeTimers();
-                    
-                    String url = wv.getUrl();
-                    if (addressBar != null) {
-                        addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
-                    }
-                } else {
-                    wv.setVisibility(android.view.View.GONE);
-                    wv.onPause();
+            if (i != index) {
+                TabState otherTab = tabManager.getTabAt(i);
+                if (otherTab != null && otherTab.getWebView() != null) {
+                    otherTab.getWebView().setVisibility(android.view.View.GONE);
+                    otherTab.getWebView().onPause();
                 }
             }
         }
@@ -1670,32 +1684,28 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         }
 
         TabState tabToRemove = tabManager.getTabAt(index);
-        android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
+        if (tabToRemove != null) {
+            android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
 
-        if (wvToDestroy != null) {
-            if (browserContainer != null) {
-                wvToDestroy.stopLoading();
-                wvToDestroy.clearCache(true);
-                wvToDestroy.removeAllViews();
-                browserContainer.removeView(wvToDestroy);
-                wvToDestroy.destroy();}                
+            if (wvToDestroy != null) {
+                if (browserContainer != null) {
+                    wvToDestroy.stopLoading();
+                    wvToDestroy.clearCache(true);
+                    wvToDestroy.removeAllViews();
+                    browserContainer.removeView(wvToDestroy);
+                    wvToDestroy.destroy();
+                }                
+            }
         }
 
-        tabManager.closeTabAtIndex(index);
+        tabManager.closeTab(index); // Use TabManager's method
         
         if (tabAdapter != null) {
             tabAdapter.notifyItemRemoved(index);
             tabAdapter.notifyItemRangeChanged(0, tabManager.getTabCount());
         }
-
-        if (index < tabManager.getCurrentTabPosition()) {
-            // Handled by TabManager
-        } 
-        else if (tabManager.getCurrentTabPosition() >= tabManager.getTabCount()) {
-            // Handled by TabManager
-        }
         
-        tabManager.switchToTab(tabManager.getCurrentTabPosition());
+        updateTabCountersUI();
     }
     
     private ArrayList<BrowserItem> buildTabItems() {
@@ -1774,7 +1784,7 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         tabAdapter = new TabAdapter(tabManager.getAllTabs(), new TabAdapter.OnTabActionListener() {
             @Override
             public void onTabSelected(int position) {
-                tabManager.switchToTab(i);
+                tabManager.switchToTab(position);
                 hideTabSwitcher();
             }
 
@@ -1910,22 +1920,11 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
     }
 
     private void saveOpenTabs() {
-        ArrayList<String> safeUrls = new ArrayList<>();
-        for (TabState tabState : tabManager.getAllTabs()) {    
-            WebView webView = tabState.getWebView();
-            String url = webView.getUrl();
-            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
-                safeUrls.add(url);
-            }
-        }
-
-        backgroundExecutor.execute(() -> {
-            prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", safeUrls)).apply();
-        });
+        // TabManager handles saving tabs now
     }
 
     private void saveCurrentTab() {
-        prefs.edit().putInt(KEY_CURRENT_TAB, tabManager.getCurrentTabPosition()).apply();
+        // TabManager handles saving current tab position now
     }
 
     private void showFilterListsDialog() {
