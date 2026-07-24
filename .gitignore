@@ -1,78 +1,47 @@
 ```
+# Compiled and build artifacts
+*.class
+*.dex
+*.so
+*.aar
+*.apk
+*.jar
+
 # Dependencies
 node_modules/
-.gradle/
-target/
+.libs/
 
 # Build outputs
 build/
 dist/
 out/
+target/
 
-# IDE files
-.vscode/
+# Gradle
+.gradle/
+!gradle.properties
+
+# Android specific
+*.iml
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
 .idea/
-*.swp
-*.swo
+*.keystore
+debug.keystore
 
-# Logs
+# Logs and temp files
 *.log
+*.tmp
+*.swp
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Python specific
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.venv/
-venv/
-.Python
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Coverage reports
-coverage/
-htmlcov/
-.coverage
-
-# Testing
-.pytest_cache/
-.mypy_cache/
-
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-
-# Archives
-*.zip
-*.gz
-*.tar
-*.tgz
-*.bz2
-*.xz
-*.7z
-*.rar
-*.zst
-*.lz4
-*.lzh
-*.cab
-*.arj
-*.rpm
-*.deb
-*.Z
-*.lz
-*.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 ```
