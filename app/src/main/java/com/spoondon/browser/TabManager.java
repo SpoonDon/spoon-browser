@@ -22,42 +22,41 @@ public class TabManager {
         this.tabs = new ArrayList<>();
     }
 
-    public void createNewTab(String url) {
-        WebView webView = ((MainActivity) activity).createConfiguredWebView(); // Access via interface or cast
-        // Note: In real implementation, createConfiguredWebView should be accessible or passed in
-        // For this snippet, assuming access to the method in MainActivity
-        
-        WebViewTab tab = new WebViewTab(webView, url);
-        tabs.add(tab);
-        switchToTab(tabs.size() - 1);
+    // Lines 25-58: Updated createNewTab and switchToTab methods
+public void createNewTab(String url) {
+    WebView webView = ((MainActivity) activity).createConfiguredWebView();
+    
+    WebViewTab tab = new WebViewTab(webView, url);
+    tabs.add(tab);
+    switchToTab(tabs.size() - 1);
+}
+
+public void switchToTab(int index) {
+    if (index < 0 || index >= tabs.size()) return;
+
+    // Hide current
+    if (currentTabIndex >= 0 && currentTabIndex < tabs.size()) {
+        tabs.get(currentTabIndex).getWebView().setVisibility(android.view.View.GONE);
     }
 
-    public void switchToTab(int index) {
-        if (index < 0 || index >= tabs.size()) return;
-
-        // Hide current
-        if (currentTabIndex >= 0 && currentTabIndex < tabs.size()) {
-            tabs.get(currentTabIndex).getWebView().setVisibility(android.view.View.GONE);
-        }
-
-        currentTabIndex = index;
-        WebView currentWebView = tabs.get(currentTabIndex).getWebView();
-        currentWebView.setVisibility(android.view.View.VISIBLE);
-        
-        // Ensure it's attached
-        if (currentWebView.getParent() == null) {
-            container.addView(currentWebView, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ));
-        }
-        
-        // Update URL bar
-        String url = currentWebView.getUrl();
-        if (url != null && activity.addressBar != null) {
-            activity.addressBar.setText(url);
-        }
+    currentTabIndex = index;
+    WebView currentWebView = tabs.get(currentTabIndex).getWebView();
+    currentWebView.setVisibility(android.view.View.VISIBLE);
+    
+    // Ensure it's attached
+    if (currentWebView.getParent() == null) {
+        container.addView(currentWebView, new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
     }
+    
+    // Update URL bar with defensive null check
+    String url = currentWebView.getUrl();
+    if (url != null && activity.addressBar != null) {
+        activity.addressBar.setText(url);
+    }
+}
 
     public void closeTab(int index) {
         if (index < 0 || index >= tabs.size()) return;
