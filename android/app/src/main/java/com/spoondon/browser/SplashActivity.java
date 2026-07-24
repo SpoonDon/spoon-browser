@@ -22,18 +22,17 @@ public class SplashActivity extends AppCompatActivity {
     private static final Executor WEBVIEW_EXECUTOR = Executors.newSingleThreadExecutor();
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+    protected void onCreate(Bundle savedInstanceState) {    
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);    
         super.onCreate(savedInstanceState);
-
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {    
-            WebViewStartUpConfig config = new WebViewStartUpConfig.Builder(executor).build();    
-            WebViewCompat.startUpWebView(        
-                getApplicationContext(),        
-                config,        
-                (result) -> { /* startup complete */ }    
-            );
-        }
+    
+        java.util.concurrent.Executor startupExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();    
+        WebViewStartUpConfig config = new WebViewStartUpConfig.Builder(startupExecutor).build();    
+        WebViewCompat.startUpWebView(        
+            getApplicationContext(),        
+            config,        
+            (result) -> { /* startup complete */ }    
+        );        
 
         Looper.myQueue().addIdleHandler(() -> {
             try {
