@@ -111,13 +111,14 @@ protected void onCreate(Bundle savedInstanceState) {
     setupToolbar();
     setupFindInPage();
     
-    // Step 3: Initialize Tab Manager AFTER views are ready
-    tabManager = new TabManager(this, browserContainer);
-    
-    // Step 4: Initialize Filter Engine
+    // Step 3: Initialize Filter Engine BEFORE Tab Manager
+    // This ensures filterEngine is ready when WebView is created
     filterEngine = ContentFilterEngine.getInstance();
     filterEngine.loadFilters(this);
-
+    
+    // Step 4: Initialize Tab Manager AFTER views and filterEngine are ready
+    tabManager = new TabManager(this, browserContainer);
+    
     // Step 5: WebView Pre-initialization
     if (WebViewFeature.isFeatureSupported(WebViewFeature.START_UP_WEB_VIEW)) {
         WebViewStartUpConfig config = new WebViewStartUpConfig.Builder()
