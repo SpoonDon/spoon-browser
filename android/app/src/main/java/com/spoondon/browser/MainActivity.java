@@ -233,6 +233,7 @@ public class MainActivity extends AppCompatActivity implements TabManager.TabLis
         
         isDesktopMode = prefs.getBoolean("isDesktopMode", false);
         setupRootLayout();
+        tabManager = new TabManager(this, prefs, browserContainer, this);
         createToolbarViews();
         setupToolbarListeners();
         setupMenuButton();
