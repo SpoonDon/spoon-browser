@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.LruCache;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -24,7 +25,7 @@ public class AdBlockEngine {
     private static volatile HashSet<String> whitelistedDomains = new HashSet<>();
     private static volatile boolean isEngineEnabled = true;
     private static volatile HashMap<String, ArrayList<String>> cosmeticRules = new HashMap<>();
-    
+
     private static final AtomicBoolean isUpdating = new AtomicBoolean(false);
     private static final String PREFS_NAME = "SpoonAdBlockPrefs";
     private static final String KEY_ENABLED = "adblock_enabled";
@@ -33,18 +34,18 @@ public class AdBlockEngine {
 
     private static final int DECISION_CACHE_MAX = 2000;
     private static final long DECISION_CACHE_TTL_MS = 10 * 60 * 1000L;
-
     private static final LruCache<String, CacheEntry> decisionCache = new LruCache<>(DECISION_CACHE_MAX);
 
     public static boolean hasRules() {
-        return isEngineEnabled && 
-              ((blockedDomains != null && !blockedDomains.isEmpty()) || 
-               (scopedPathRules != null && !scopedPathRules.isEmpty()));
+        return isEngineEnabled &&
+                ((blockedDomains != null && !blockedDomains.isEmpty()) ||
+                        (scopedPathRules != null && !scopedPathRules.isEmpty()));
     }
 
     private static final class CacheEntry {
         final boolean blocked;
         final long timestampMs;
+
         CacheEntry(boolean blocked, long timestampMs) {
             this.blocked = blocked;
             this.timestampMs = timestampMs;
@@ -55,7 +56,7 @@ public class AdBlockEngine {
         checkIsEngineEnabled(context);
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         isEngineEnabled = prefs.getBoolean(KEY_ENABLED, true);
-        
+
         String savedWhitelist = prefs.getString(KEY_WHITELIST, "");
         HashSet<String> whiteSet = new HashSet<>();
         if (!savedWhitelist.isEmpty()) {
@@ -67,10 +68,11 @@ public class AdBlockEngine {
 
         // If we successfully load the compiled binary, skip the text parsing!
         if (loadEngineFromCache(context)) {
-            return; 
+            return;
         }
 
         if (filterLists == null || filterLists.isEmpty()) return;
+
         HashSet<String> initialDomains = new HashSet<>();
         HashMap<String, ArrayList<String>> initialPaths = new HashMap<>();
         HashMap<String, ArrayList<String>> initialCosmetic = new HashMap<>();
@@ -85,6 +87,7 @@ public class AdBlockEngine {
                 } catch (Exception ignored) {}
             }
         }
+
         blockedDomains = initialDomains;
         scopedPathRules = initialPaths;
         cosmeticRules = initialCosmetic;
@@ -99,7 +102,6 @@ public class AdBlockEngine {
         if (!isEngineEnabled || url == null) return false;
 
         String key = url.toLowerCase();
-
         synchronized (decisionCache) {
             CacheEntry cached = decisionCache.get(key);
             if (cached != null) {
@@ -112,7 +114,6 @@ public class AdBlockEngine {
         }
 
         boolean blocked = false;
-
         try {
             Uri uri = Uri.parse(url);
             String host = uri.getHost();
@@ -120,7 +121,6 @@ public class AdBlockEngine {
                 blocked = false;
             } else {
                 host = host.toLowerCase();
-
                 if (whitelistedDomains.contains(host)) {
                     blocked = false;
                 } else if (blockedDomains.contains(host)) {
@@ -164,7 +164,6 @@ public class AdBlockEngine {
         synchronized (decisionCache) {
             decisionCache.put(key, new CacheEntry(blocked, System.currentTimeMillis()));
         }
-
         return blocked;
     }
 
@@ -186,7 +185,7 @@ public class AdBlockEngine {
         if (!isUpdating.compareAndSet(false, true)) return;
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        
+
         executor.execute(() -> {
             boolean allDownloadsSucceeded = true;
             HashSet<String> newDomains = new HashSet<>();
@@ -194,9 +193,15 @@ public class AdBlockEngine {
             HashMap<String, ArrayList<String>> newCosmetic = new HashMap<>();
 
             for (String filterUrl : filterLists) {
+                // --- SECURITY FIX: Enforce HTTPS to prevent MITM on filter lists ---
+                if (!filterUrl.toLowerCase().startsWith("https://")) {
+                    allDownloadsSucceeded = false;
+                    continue;
+                }
+                // -------------------------------------------------------------------
+
                 String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
                 File localFile = new File(context.getFilesDir(), filename);
-                
                 try {
                     InputStream inputStream;
                     if (!forceRefresh && localFile.exists()) {
@@ -220,7 +225,7 @@ public class AdBlockEngine {
                 blockedDomains = newDomains;
                 scopedPathRules = newPaths;
                 cosmeticRules = newCosmetic;
-                
+
                 synchronized (decisionCache) {
                     decisionCache.evictAll();
                 }
@@ -230,7 +235,6 @@ public class AdBlockEngine {
             if (allDownloadsSucceeded) {
                 prefs.edit().putLong(KEY_REFRESH_TIME, System.currentTimeMillis()).apply();
             }
-
             isUpdating.set(false);
         });
     }
@@ -302,7 +306,6 @@ public class AdBlockEngine {
         String line;
         while ((line = reader.readLine()) != null) {
             line = line.trim().toLowerCase();
-            
             if (line.isEmpty() || line.startsWith("!") || line.startsWith("[") || line.startsWith("@@")) {
                 continue;
             }
@@ -315,22 +318,20 @@ public class AdBlockEngine {
                 if (!domainPart.isEmpty() && !cssSelector.isEmpty() && !domainPart.contains("*")) {
                     String[] domains = domainPart.split(",");
                     for (String d : domains) {
-                        if (d.startsWith("~")) continue; 
+                        if (d.startsWith("~")) continue;
                         if (!cosmeticMap.containsKey(d)) {
                             cosmeticMap.put(d, new ArrayList<>());
                         }
                         cosmeticMap.get(d).add(cssSelector);
                     }
                 }
-                continue; 
+                continue;
             }
 
             if (line.startsWith("||")) {
                 line = line.substring(2);
-                
                 int cutIndex = line.indexOf('^');
                 if (cutIndex != -1) line = line.substring(0, cutIndex);
-                
                 cutIndex = line.indexOf('$');
                 if (cutIndex != -1) line = line.substring(0, cutIndex);
 
@@ -340,7 +341,7 @@ public class AdBlockEngine {
                 if (slashIndex != -1) {
                     String host = line.substring(0, slashIndex).trim();
                     String pathRule = line.substring(slashIndex).trim();
-                    
+
                     if (!host.isEmpty() && !pathRule.isEmpty() && host.contains(".") && !host.contains("*")) {
                         if (!pathMap.containsKey(host)) {
                             pathMap.put(host, new ArrayList<>());
@@ -369,10 +370,10 @@ public class AdBlockEngine {
     public static void setEngineEnabled(android.content.Context context, boolean enabled) {
         isEngineEnabled = enabled;
         context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
-               .edit().putBoolean(KEY_ENABLED, enabled).apply();
-        
+                .edit().putBoolean(KEY_ENABLED, enabled).apply();
+
         if (!enabled && decisionCache != null) {
-            decisionCache.evictAll(); 
+            decisionCache.evictAll();
         }
     }
 
@@ -391,6 +392,7 @@ public class AdBlockEngine {
             host = host.toLowerCase();
 
             java.util.ArrayList<String> selectors = new java.util.ArrayList<>();
+
             if (cosmeticRules.containsKey(host)) {
                 selectors.addAll(cosmeticRules.get(host));
             }
@@ -407,7 +409,6 @@ public class AdBlockEngine {
             if (selectors.isEmpty()) return "";
 
             return android.text.TextUtils.join(", ", selectors) + " { display: none !important; }";
-
         } catch (Exception e) {
             return "";
         }
@@ -426,6 +427,7 @@ public class AdBlockEngine {
     private static boolean loadEngineFromCache(Context context) {
         java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
         if (!cacheFile.exists()) return false;
+
         try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(cacheFile))) {
             Object[] data = (Object[]) ois.readObject();
             blockedDomains = (java.util.HashSet<String>) data[0];
