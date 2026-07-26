@@ -472,6 +472,15 @@ public class MainActivity extends AppCompatActivity {
             android.webkit.WebView wv = getCurrentWebView();    
             if (wv != null) wv.reload();    
             else swipeRefresh.setRefreshing(false);
+        });
+        swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {    
+            android.webkit.WebView wv = getCurrentWebView();    
+            if (wv != null) {
+        // If scrollY > 0, the page is scrolled down. 
+        // Return TRUE to tell SwipeRefreshLayout: "The child can scroll up, DO NOT intercept the swipe!"                        
+                return wv.getScrollY() > 0;    
+            }    
+            return true;                    
         });    
     }
 
@@ -1508,8 +1517,8 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             );
-        }
-                
+        }                
+        androidx.core.view.ViewCompat.setNestedScrollingEnabled(webView, true);
         return webView;
     }
 
