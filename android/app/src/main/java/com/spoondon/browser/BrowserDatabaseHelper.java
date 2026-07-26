@@ -5,27 +5,24 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class BrowserDatabaseHelper extends SQLiteOpenHelper {
-
     private static BrowserDatabaseHelper instance;
-
     private static final String DATABASE_NAME = "SpoonBrowser.db";
     private static final int DATABASE_VERSION = 2;
-
     private static final String TABLE_HISTORY = "history";
     private static final String COLUMN_ID = "id";
     private static final String COLUMN_URL = "url";
     private static final String COLUMN_TITLE = "title";
     private static final String COLUMN_TIMESTAMP = "timestamp";
-
     private static final String TABLE_BOOKMARKS = "bookmarks";
-    
     private static final String TABLE_TABS = "tabs";
     private static final String COLUMN_TAB_ORDER = "tab_order";
+    private static final String TAG = "SpoonBrowser_DB";
 
     private BrowserDatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -48,19 +45,16 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                 COLUMN_URL + " TEXT NOT NULL, " +
                 COLUMN_TITLE + " TEXT, " +
                 COLUMN_TIMESTAMP + " DATETIME DEFAULT CURRENT_TIMESTAMP)";
-        
         String createBookmarksTable = "CREATE TABLE " + TABLE_BOOKMARKS + " (" +
                 COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 COLUMN_URL + " TEXT NOT NULL UNIQUE, " +
                 COLUMN_TITLE + " TEXT, " +
                 COLUMN_TIMESTAMP + " DATETIME DEFAULT CURRENT_TIMESTAMP)";
-                
         String createTabsTable = "CREATE TABLE " + TABLE_TABS + " (" +
                 COLUMN_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 COLUMN_TAB_ORDER + " INTEGER NOT NULL, " +
                 COLUMN_URL + " TEXT NOT NULL, " +
                 COLUMN_TITLE + " TEXT)";
-
         db.execSQL(createHistoryTable);
         db.execSQL(createBookmarksTable);
         db.execSQL(createTabsTable);
@@ -84,63 +78,67 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
             db.enableWriteAheadLogging();
         }
-        
         try {
             db.execSQL("PRAGMA synchronous = NORMAL;");
             db.execSQL("PRAGMA journal_size_limit = 524288;");
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Error configuring DB pragmas", e);
+        }
     }
 
     public void addHistory(String url, String title) {
         if (url == null || url.isEmpty() || url.equals("about:blank")) return;
         SQLiteDatabase db = this.getWritableDatabase();
         if (db == null || !db.isOpen()) return;
-        
         try {
             ContentValues values = new ContentValues();
             values.put(COLUMN_URL, url);
             values.put(COLUMN_TITLE, title != null ? title : url);
             db.insert(TABLE_HISTORY, null, values);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding history", e);
+        }
     }
 
     public void clearHistory() {
         SQLiteDatabase db = this.getWritableDatabase();
         if (db == null || !db.isOpen()) return;
-        
         try {
             db.delete(TABLE_HISTORY, null, null);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Error clearing history", e);
+        }
     }
 
     public void addBookmark(String url, String title) {
         if (url == null || url.isEmpty() || url.equals("about:blank")) return;
         SQLiteDatabase db = this.getWritableDatabase();
         if (db == null || !db.isOpen()) return;
-        
         try {
             ContentValues values = new ContentValues();
             values.put(COLUMN_URL, url);
             values.put(COLUMN_TITLE, title != null ? title : url);
             db.insertWithOnConflict(TABLE_BOOKMARKS, null, values, SQLiteDatabase.CONFLICT_IGNORE);
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding bookmark", e);
+        }
     }
 
     public void removeBookmark(String url) {
         if (url == null || url.isEmpty()) return;
         SQLiteDatabase db = this.getWritableDatabase();
         if (db == null || !db.isOpen()) return;
-        
         try {
             db.delete(TABLE_BOOKMARKS, COLUMN_URL + " = ?", new String[]{url});
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "Error removing bookmark", e);
+        }
     }
 
     public List<String[]> getAllHistory() {
         List<String[]> historyList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         if (db == null || !db.isOpen()) return historyList;
-        
         Cursor cursor = null;
         try {
             cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_HISTORY + " ORDER BY id DESC LIMIT 500", null);
@@ -149,8 +147,8 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                     historyList.add(new String[]{cursor.getString(0), cursor.getString(1)});
                 } while (cursor.moveToNext());
             }
-        } catch (IllegalStateException e) {
-            return historyList;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting all history", e);
         } finally {
             if (cursor != null && !cursor.isClosed()) {
                 cursor.close();
@@ -163,20 +161,18 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         List<String[]> historyList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         if (db == null || !db.isOpen()) return historyList;
-        
         Cursor cursor = null;
         try {
-            cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_HISTORY + 
-                " WHERE " + COLUMN_URL + " LIKE ? OR " + COLUMN_TITLE + " LIKE ? ORDER BY id DESC LIMIT 30", 
-                new String[]{"%" + query + "%", "%" + query + "%"});
-
+            cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_HISTORY +
+                            " WHERE " + COLUMN_URL + " LIKE ? OR " + COLUMN_TITLE + " LIKE ? ORDER BY id DESC LIMIT 30",
+                    new String[]{"%" + query + "%", "%" + query + "%"});
             if (cursor.moveToFirst()) {
                 do {
                     historyList.add(new String[]{cursor.getString(0), cursor.getString(1)});
                 } while (cursor.moveToNext());
             }
-        } catch (IllegalStateException e) {
-            return historyList;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting matching history", e);
         } finally {
             if (cursor != null && !cursor.isClosed()) {
                 cursor.close();
@@ -189,7 +185,6 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         List<String> bookmarkUrls = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         if (db == null || !db.isOpen()) return bookmarkUrls;
-        
         Cursor cursor = null;
         try {
             cursor = db.rawQuery("SELECT " + COLUMN_URL + " FROM " + TABLE_BOOKMARKS + " ORDER BY " + COLUMN_TIMESTAMP + " DESC", null);
@@ -198,8 +193,8 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                     bookmarkUrls.add(cursor.getString(0));
                 } while (cursor.moveToNext());
             }
-        } catch (IllegalStateException e) {
-            return bookmarkUrls;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting all bookmarks", e);
         } finally {
             if (cursor != null && !cursor.isClosed()) {
                 cursor.close();
@@ -207,18 +202,17 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         }
         return bookmarkUrls;
     }
-    
+
     public int getHistoryCount() {
         SQLiteDatabase db = this.getReadableDatabase();
         if (db == null || !db.isOpen()) return 0;
-        
         Cursor cursor = null;
         int count = 0;
         try {
             cursor = db.rawQuery("SELECT COUNT(*) FROM " + TABLE_HISTORY, null);
             if (cursor.moveToFirst()) count = cursor.getInt(0);
-        } catch (IllegalStateException e) {
-            return 0;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting history count", e);
         } finally {
             if (cursor != null && !cursor.isClosed()) {
                 cursor.close();
@@ -230,14 +224,13 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
     public int getBookmarkCount() {
         SQLiteDatabase db = this.getReadableDatabase();
         if (db == null || !db.isOpen()) return 0;
-        
         Cursor cursor = null;
         int count = 0;
         try {
             cursor = db.rawQuery("SELECT COUNT(*) FROM " + TABLE_BOOKMARKS, null);
             if (cursor.moveToFirst()) count = cursor.getInt(0);
-        } catch (IllegalStateException e) {
-            return 0;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting bookmark count", e);
         } finally {
             if (cursor != null && !cursor.isClosed()) {
                 cursor.close();
@@ -249,11 +242,9 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
     public void saveAllTabs(List<String[]> tabsData) {
         SQLiteDatabase db = this.getWritableDatabase();
         if (db == null || !db.isOpen()) return;
-        
         try {
             db.beginTransaction();
             db.delete(TABLE_TABS, null, null);
-            
             for (int i = 0; i < tabsData.size(); i++) {
                 String[] tab = tabsData.get(i);
                 ContentValues values = new ContentValues();
@@ -263,7 +254,8 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                 db.insert(TABLE_TABS, null, values);
             }
             db.setTransactionSuccessful();
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            Log.e(TAG, "Error saving tabs", e);
         } finally {
             if (db.isOpen() && db.inTransaction()) {
                 db.endTransaction();
@@ -275,7 +267,6 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         List<String[]> tabsList = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
         if (db == null || !db.isOpen()) return tabsList;
-        
         Cursor cursor = null;
         try {
             cursor = db.rawQuery("SELECT " + COLUMN_URL + ", " + COLUMN_TITLE + " FROM " + TABLE_TABS + " ORDER BY " + COLUMN_TAB_ORDER + " ASC", null);
@@ -284,8 +275,8 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                     tabsList.add(new String[]{cursor.getString(0), cursor.getString(1)});
                 } while (cursor.moveToNext());
             }
-        } catch (IllegalStateException e) {
-            return tabsList;
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting all tabs", e);
         } finally {
             if (cursor != null && !cursor.isClosed()) {
                 cursor.close();
@@ -297,10 +288,11 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
     public void cleanupOldHistory(int daysToKeep) {
         SQLiteDatabase db = this.getWritableDatabase();
         if (db == null || !db.isOpen()) return;
-        
         try {
-            db.execSQL("DELETE FROM " + TABLE_HISTORY + 
-                       " WHERE " + COLUMN_TIMESTAMP + " <= datetime('now', '-" + daysToKeep + " days')");
-        } catch (Exception ignored) {}
+            db.execSQL("DELETE FROM " + TABLE_HISTORY +
+                    " WHERE " + COLUMN_TIMESTAMP + " <= datetime('now', '-" + daysToKeep + " days')");
+        } catch (Exception e) {
+            Log.e(TAG, "Error cleaning up old history", e);
+        }
     }
 }
