@@ -175,6 +175,17 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
+        if (activity.swipeRefresh != null && url != null) {    
+            String lowerUrl = url.toLowerCase();
+            
+            boolean isSpaSite = lowerUrl.contains("youtube.com") || 
+                        lowerUrl.contains("twitter.com") || 
+                        lowerUrl.contains("x.com") || 
+                        lowerUrl.contains("reddit.com") ||
+                        lowerUrl.contains("instagram.com");
+    
+            activity.swipeRefresh.setEnabled(!isSpaSite);
+        }
         injectBlobHook(view);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
