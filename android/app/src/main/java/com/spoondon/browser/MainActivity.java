@@ -914,10 +914,19 @@ public class MainActivity extends AppCompatActivity {
         toolbar.setBackgroundColor(Color.parseColor("#141414"));
         
         forwardButton = makeButton("→");
+        forwardButton.setContentDescription("Go Forward");
+
         prevTabButton = makeButton("◀");
+        prevTabButton.setContentDescription("Previous Tab");
+
         nextTabButton = makeButton("▶");
+        nextTabButton.setContentDescription("Next Tab");
+
         newTabButton = makeButton("+");
+        newTabButton.setContentDescription("New Tab");
+
         menuButton = makeButton("☰");
+        menuButton.setContentDescription("Open Menu");
         
         menuButton.setOnClickListener(view -> {
             android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(MainActivity.this, menuButton);
@@ -1119,6 +1128,7 @@ public class MainActivity extends AppCompatActivity {
             newTabButton.setVisibility(View.GONE);
 
             tabBadgeButton = new Button(this);
+            tabBadgeButton.setContentDescription("Open Tab Switcher");            
             int tabCount = (tabList != null) ? tabList.size() : 1;
             tabBadgeButton.setText(String.valueOf(tabCount));
             tabBadgeButton.setTextColor(Color.WHITE);
