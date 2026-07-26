@@ -130,11 +130,10 @@ public class SpoonWebViewClient extends WebViewClient {
                 android.content.Context context = view.getContext();
                 android.content.Intent intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
-                    // --- SECURITY FIX: Block self-targeting intents ---
+                    // SECURITY FIX: Block self-targeting intents
                     if (intent.getPackage() != null && intent.getPackage().equals(context.getPackageName())) {
                         return true; 
                     }
-                    // --------------------------------------------------
 
                     android.content.pm.PackageManager packageManager = context.getPackageManager();
                     android.content.pm.ResolveInfo info = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
@@ -144,7 +143,8 @@ public class SpoonWebViewClient extends WebViewClient {
                         context.startActivity(intent);
                     } else {
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
-                        if (fallbackUrl != null) {
+                        // SECURITY FIX: Validate fallback URL to prevent JS/File execution
+                        if (fallbackUrl != null && (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://"))) {
                             view.loadUrl(fallbackUrl);
                         }
                     }
@@ -252,7 +252,6 @@ public class SpoonWebViewClient extends WebViewClient {
         }
     }
 
-    // Makes a secret backup of memory files before the website can delete them
     public void injectBlobHook(android.webkit.WebView view) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
             view.evaluateJavascript(
@@ -260,14 +259,12 @@ public class SpoonWebViewClient extends WebViewClient {
                             "   if (window.spoonBlobHooked) return;" +
                             "   window.spoonBlobHooked = true;" +
                             "   window.spoonBlobStore = {};" +
-                            // 1. Hook the Blob Engine to make a backup
                             "   var origCreate = window.URL.createObjectURL;" +
                             "   window.URL.createObjectURL = function(blob) {" +
                             "       var url = origCreate.call(window.URL, blob);" +
                             "       window.spoonBlobStore[url] = blob;" +
                             "       return url;" +
                             "   };" +
-                            // 2. Hook programmatic hidden clicks
                             "   var origClick = HTMLAnchorElement.prototype.click;" +
                             "   HTMLAnchorElement.prototype.click = function() {" +
                             "       if (this.href && this.href.startsWith('blob:')) {" +
@@ -280,7 +277,7 @@ public class SpoonWebViewClient extends WebViewClient {
                             "               reader.onloadend = function() {" +
                             "                   AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
                             "               };" +
-                            "               return;" + // Stop the browser from attempting a normal download
+                            "               return;" +
                             "           }" +
                             "       }" +
                             "       return origClick.apply(this, arguments);" +
@@ -297,7 +294,6 @@ public class SpoonWebViewClient extends WebViewClient {
             android.webkit.CookieManager.getInstance().flush();
         }
 
-        // 1. AdBlock Cosmetic Filtering
         String cosmeticCss = AdBlockEngine.getCosmeticCss(url);
         if (!cosmeticCss.isEmpty()) {
             String cleanCss = cosmeticCss.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"");
@@ -310,7 +306,6 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
 
-        // 2. SpoonVault Credential Extraction
         String script = "javascript:(function() {" +
                 "document.addEventListener('submit', function(e) {" +
                 "var passBox = e.target.querySelector('input[type=password]');" +
@@ -358,7 +353,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "})();";
         view.evaluateJavascript(script, null);
 
-        // 3. Hardware Acceleration Script for Video Elements (ADDED HERE)
         String gpuAccelerationScript = "javascript:(function() { " +
                 "var videos = document.getElementsByTagName('video');" +
                 "for(var i=0; i<videos.length; i++) {" +
@@ -397,12 +391,15 @@ public class SpoonWebViewClient extends WebViewClient {
 
     private void handleNetworkError(android.webkit.WebView view, int errorCode) {
         if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
+            // UX FIX: Added a Retry button
             String errorHtml = "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;background-color:#202124;font-family:sans-serif;color:#e8eaed;text-align:center;padding:20px;'>" +
                     "<div><svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#e8eaed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" +
                     "<path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>" +
                     "<line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>" +
                     "<h2 style='margin-top:20px;margin-bottom:10px;'>No Connection</h2>" +
-                    "<p style='color:#9aa0a6;'>Check your internet connection or the IP address and try again.</p></div>" +
+                    "<p style='color:#9aa0a6;'>Check your internet connection or the IP address and try again.</p>" +
+                    "<button onclick='window.location.reload()' style='margin-top:20px;padding:12px 24px;background:#8ab4f8;color:#202124;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;'>Retry</button>" +
+                    "</div>" +
                     "</body></html>";
             view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
             android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
