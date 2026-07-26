@@ -308,6 +308,7 @@ public class SpoonWebViewClient extends WebViewClient {
             "})();";
         view.evaluateJavascript(webrtcSanitizer, null);
         super.onPageFinished(view, url);
+        if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             android.webkit.CookieManager.getInstance().flush();
@@ -409,21 +410,37 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     private void handleNetworkError(android.webkit.WebView view, int errorCode) {
-        if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
-            // UX FIX: Added a Retry button
-            String errorHtml = "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;background-color:#202124;font-family:sans-serif;color:#e8eaed;text-align:center;padding:20px;'>" +
-                    "<div><svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#e8eaed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" +
-                    "<path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>" +
-                    "<line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>" +
-                    "<h2 style='margin-top:20px;margin-bottom:10px;'>No Connection</h2>" +
-                    "<p style='color:#9aa0a6;'>Check your internet connection or the IP address and try again.</p>" +
-                    "<button onclick='window.location.reload()' style='margin-top:20px;padding:12px 24px;background:#8ab4f8;color:#202124;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;'>Retry</button>" +
-                    "</div>" +
-                    "</body></html>";
-            view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
-            android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
+    if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
+        
+        // 1. Capture the original URL before we overwrite the WebView with the error page
+        String originalUrl = view.getUrl();
+        String retryJs = "window.location.reload()"; // Fallback
+        
+        // 2. If we have a valid original URL, navigate to it instead of reloading the data: URI
+        if (originalUrl != null && !originalUrl.startsWith("data:")) {
+            // Escape single quotes so it doesn't break the JavaScript string
+            String safeUrl = originalUrl.replace("'", "\\'");
+            retryJs = "window.location.href='" + safeUrl + "'";
         }
+
+        // UX FIX: Added a Retry button that actually retries the original URL
+        String errorHtml = "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;background-color:#202124;font-family:sans-serif;color:#e8eaed;text-align:center;padding:20px;'>" +
+                "<div><svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#e8eaed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" +
+                "<path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>" +
+                "<line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>" +
+                "<h2 style='margin-top:20px;margin-bottom:10px;'>No Connection</h2>" +
+                "<p style='color:#9aa0a6;'>Check your internet connection or the IP address and try again.</p>" +
+                "<button onclick='" + retryJs + "' style='margin-top:20px;padding:12px 24px;background:#8ab4f8;color:#202124;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;'>Retry</button>" +
+                "</div>" +
+                "</body></html>";
+                
+        view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
+        android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
     }
+    
+    // Stop the pull-to-refresh spinner for ANY network error, not just the 3 listed above
+    if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
+}
 
     @Override
     public void onReceivedSslError(android.webkit.WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
