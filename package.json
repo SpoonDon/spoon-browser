@@ -1,15 +1,17 @@
 {
   "name": "spoon-browser",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Native Android WebView bridge for Spoon Browser. Web assets are minimal placeholders.",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "android",
+    "capacitor",
+    "browser"
+  ],
+  "author": "Plaban",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "@capacitor/android": "^8.4.0",
     "@capacitor/cli": "^8.4.0",
