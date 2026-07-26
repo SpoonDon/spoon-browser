@@ -70,6 +70,7 @@ public class SpoonWebViewClient extends WebViewClient {
 
     private boolean handleUrlLoading(android.webkit.WebView view, String url) {
         if (url == null) return false;
+        url = cleanUrl(url);
 
         if (url.startsWith("spoonsearch://")) {
             try {
@@ -251,7 +252,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 lastRecordedHistoryUrl = url;
                 lastRecordedHistoryTime = currentTime;
 
-                final String finalUrl = url;
+                final String finalUrl = cleanUrl(url);
                 final String finalTitle = view.getTitle();
 
                 activity.backgroundExecutor.execute(() -> {
@@ -481,4 +482,58 @@ public class SpoonWebViewClient extends WebViewClient {
         handler.cancel();
         android.widget.Toast.makeText(view.getContext(), "SSL Certificate Error Blocked", android.widget.Toast.LENGTH_SHORT).show();
     }
+
+    // --- TRACKER STRIPPING ENGINE ---
+private static final java.util.Set<String> EXACT_TRACKERS = new java.util.HashSet<>(java.util.Arrays.asList(
+    "fbclid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "msclkid", "twclid",
+    "igshid", "si", "mc_cid", "mc_eid", "zanpid", "yclid", "utm_source", "utm_medium",
+    "utm_campaign", "utm_term", "utm_content", "utm_id"
+));
+
+private static boolean isTracker(String key) {
+    if (key == null) return false;
+    String lowerKey = key.toLowerCase();
+    if (lowerKey.startsWith("utm_") || lowerKey.startsWith("oly_") || lowerKey.startsWith("vero_") || lowerKey.startsWith("trk_")) return true;
+    return EXACT_TRACKERS.contains(lowerKey);
+}
+
+public static String cleanUrl(String url) {
+    if (url == null || !url.contains("?")) return url;
+    try {
+        int queryStart = url.indexOf('?');
+        String baseUrl = url.substring(0, queryStart);
+        String queryAndFragment = url.substring(queryStart + 1);
+        
+        String fragment = "";
+        int fragmentStart = queryAndFragment.indexOf('#');
+        if (fragmentStart != -1) {
+            fragment = queryAndFragment.substring(fragmentStart);
+            queryAndFragment = queryAndFragment.substring(0, fragmentStart);
+        }
+        
+        if (queryAndFragment.isEmpty()) return url;
+        
+        String[] pairs = queryAndFragment.split("&");
+        StringBuilder cleanQuery = new StringBuilder();
+        
+        for (String pair : pairs) {
+            int idx = pair.indexOf("=");
+            String key = (idx > 0) ? pair.substring(0, idx) : pair;
+            
+            if (!isTracker(key)) {
+                if (cleanQuery.length() > 0) cleanQuery.append("&");
+                cleanQuery.append(pair);
+            }
+        }
+        
+        if (cleanQuery.length() == 0) {
+            return baseUrl + fragment;
+        } else {
+            return baseUrl + "?" + cleanQuery.toString() + fragment;
+        }
+    } catch (Exception e) {
+        return url; // Fallback to original on any parsing error to prevent breakage
+    }
+}
+    
 }
