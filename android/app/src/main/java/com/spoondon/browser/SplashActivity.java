@@ -18,16 +18,14 @@ public class SplashActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
-
-        // Pre-warm WebView on a background thread to prevent Main Thread blocking
-// This works even if the splash screen is disabled and the Activity finishes instantly
-android.os.HandlerThread preWarmThread = new android.os.HandlerThread("WebViewPreWarm");
-preWarmThread.start();
-new android.os.Handler(preWarmThread.getLooper()).post(() -> {
-    try {
-        new android.webkit.WebView(getApplicationContext());
-    } catch (Exception ignored) {}
-});
+        // Pre-warm WebView safely on the Main UI Thread
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+        // Instantiating a WebView initializes the Chromium engine.
+        // This MUST be done on the Main UI thread.        
+                new android.webkit.WebView(getApplicationContext());    
+            } catch (Exception ignored) {}
+        });
 
         SharedPreferences prefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
         boolean showSplash = prefs.getBoolean("show_splash_screen", true);
