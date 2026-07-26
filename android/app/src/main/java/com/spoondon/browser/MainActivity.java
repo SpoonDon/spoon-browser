@@ -105,8 +105,6 @@ public class MainActivity extends AppCompatActivity {
     private Button tabBadgeButton;
     View customView;
     WebChromeClient.CustomViewCallback customViewCallback;
-    private ValueCallback<Uri[]> fileChooserCallback;
-    private ActivityResultLauncher<String> filePickerLauncher;
     private ActivityResultLauncher<String> passwordImportLauncher;    
     private androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher;
     public final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);           
@@ -212,16 +210,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }
-        );
-
-        filePickerLauncher = registerForActivityResult(
-           new ActivityResultContracts.GetContent(),
-                uri -> {
-                    if (fileChooserCallback != null) {
-                        fileChooserCallback.onReceiveValue(uri != null ? new Uri[]{uri} : null);
-                        fileChooserCallback = null;
-                    }
-                }
         );
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -1222,8 +1210,8 @@ public class MainActivity extends AppCompatActivity {
 
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
             settings.setLayoutAlgorithm(android.webkit.WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
@@ -1843,214 +1831,6 @@ public class MainActivity extends AppCompatActivity {
 
     public void saveHistory() {
         
-    }
-    
-    static class ContentFilterEngine {
-        
-        public final java.util.Set<String> blockDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
-        public final java.util.Set<String> whitelistDomains = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
-
-        public final java.util.List<String> blockPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
-        public final java.util.List<String> whitelistPatterns = new java.util.concurrent.CopyOnWriteArrayList<>();
-
-        public final java.util.Set<String> globalCosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>().newKeySet();
-        public final java.util.Map<String, java.util.Set<String>> siteCosmeticSelectors = new java.util.concurrent.ConcurrentHashMap<>();
-
-        public void clear() {
-            blockDomains.clear();
-            whitelistDomains.clear();
-            blockPatterns.clear();
-            whitelistPatterns.clear();
-            globalCosmeticSelectors.clear();
-            siteCosmeticSelectors.clear();
-        }
-
-        public void addRule(String rule) {
-            if (rule == null || rule.isEmpty()) return;
-            
-            if (rule.contains("##")) {
-                int index = rule.indexOf("##");
-                String domainPart = rule.substring(0, index).trim();
-                String selector = rule.substring(index + 2).trim();
-                
-                if (selector.isEmpty() || selector.contains("{") || selector.contains("(")) return;
-
-                if (domainPart.isEmpty()) {
-                    
-                    globalCosmeticSelectors.add(selector);
-                } else {
-                    
-                    String[] domains = domainPart.split(",");
-                    for (String domain : domains) {
-                        domain = domain.trim().toLowerCase();
-                        if (!domain.isEmpty() && !domain.startsWith("~")) {
-                            siteCosmeticSelectors.computeIfAbsent(domain, k -> new java.util.concurrent.ConcurrentHashMap<>().newKeySet()).add(selector);
-                        }
-                    }
-                }
-                return;
-            }
-
-            boolean isWhitelist = rule.startsWith("@@");
-            String pattern = isWhitelist ? rule.substring(2) : rule;
-
-            int optionIdx = pattern.indexOf('$');
-            if (optionIdx != -1) {
-                pattern = pattern.substring(0, optionIdx);
-            }
-
-            pattern = pattern.replace("||", "").replace("^", "").trim().toLowerCase();
-            if (pattern.isEmpty()) return;
-
-            if (isWhitelist) {
-                if (!pattern.contains("*") && !pattern.contains("/") && !pattern.contains("?")) {
-                    whitelistDomains.add(pattern);
-                } else {
-                    whitelistPatterns.add(pattern);
-                }
-            } else {
-                if (!pattern.contains("*") && !pattern.contains("/") && !pattern.contains("?")) {
-                    blockDomains.add(pattern);
-                } else {
-                    blockPatterns.add(pattern);
-                }
-            }
-        }
-
-        public String compileCosmeticJavascript() {
-            return "javascript:(function() {" +
-                    "var id = 'spoon-cosmetic-sheets';" +
-                    "var style = document.getElementById(id);" +
-                    "if (!style) {" +
-                    "  style = document.createElement('style');" +
-                    "  style.id = id;" +
-                    "  document.head.appendChild(style);" +
-                    "}" +
-                    "})()";
-        }
-
-        public java.util.List<String> getCosmeticStyleBatches(String urlString) {
-            java.util.List<String> batches = new java.util.ArrayList<>();
-            java.util.Set<String> activeSelectors = new java.util.HashSet<>(globalCosmeticSelectors);
-
-            String host = null;
-            if (urlString != null) {
-                try {
-                    android.net.Uri uri = android.net.Uri.parse(urlString.toLowerCase());
-                    host = uri.getHost();
-                } catch (Exception ignored) {}
-            }
-
-            if (host != null) {
-                String tempHost = host;
-                while (tempHost != null && tempHost.contains(".")) {
-                    java.util.Set<String> siteRules = siteCosmeticSelectors.get(tempHost);
-                    if (siteRules != null) {
-                        activeSelectors.addAll(siteRules);
-                    }
-                    int nextDot = tempHost.indexOf('.');
-                    if (nextDot != -1 && nextDot < tempHost.length() - 1) {
-                        tempHost = tempHost.substring(nextDot + 1);
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            if (activeSelectors.isEmpty()) {
-                batches.add(".ad-box, .ad-banner, .adsbygoogle, [id^=\"google_ads_\"], .ad-container, #carbonads { display: none !important; height: 0px !important; }");
-                return batches;
-            }
-
-            StringBuilder currentBatch = new StringBuilder();
-            int ruleCount = 0;
-
-            for (String selector : activeSelectors) {
-                String cleanSelector = selector.replace("'", "\\'").replace("\n", "").trim();
-                if (cleanSelector.isEmpty()) continue;
-
-                if (ruleCount > 0) currentBatch.append(", ");
-                currentBatch.append(cleanSelector);
-                ruleCount++;
-
-                if (ruleCount >= 250) {
-                    currentBatch.append(" { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }");
-                    batches.add(currentBatch.toString());
-                    currentBatch = new StringBuilder();
-                    ruleCount = 0;
-                }
-            }
-
-            if (ruleCount > 0) {
-                currentBatch.append(" { display: none !important; height: 0px !important; margin: 0px !important; padding: 0px !important; }");
-                batches.add(currentBatch.toString());
-            }
-
-            return batches;
-        }
-
-        public boolean shouldBlock(String urlString) {
-            if (urlString == null) return false;
-            String lowerUrl = urlString.toLowerCase();
-
-            String host = null;
-            try {
-                android.net.Uri uri = android.net.Uri.parse(lowerUrl);
-                host = uri.getHost();
-            } catch (Exception ignored) {}
-
-            if (host != null && whitelistDomains.contains(host)) return false;
-
-            for (String pattern : whitelistPatterns) {
-                if (matchPattern(lowerUrl, pattern)) return false;
-            }
-
-            if (host != null) {
-                String tempHost = host;
-                while (tempHost != null && tempHost.contains(".")) {
-                    if (blockDomains.contains(tempHost)) return true;
-                    int nextDot = tempHost.indexOf('.');
-                    if (nextDot != -1 && nextDot < tempHost.length() - 1) {
-                        tempHost = tempHost.substring(nextDot + 1);
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            for (String pattern : blockPatterns) {
-                if (matchPattern(lowerUrl, pattern)) return true;
-            }
-
-            return false;
-        }
-
-        private boolean matchPattern(String url, String pattern) {
-            if (pattern.contains("*")) {
-                String[] parts = pattern.split("\\*");
-                int lastIdx = 0;
-                for (String part : parts) {
-                    if (part.isEmpty()) continue;
-                    int idx = url.indexOf(part, lastIdx);
-                    if (idx == -1) return false;
-                    lastIdx = idx + part.length();
-                }
-                return true;
-            }
-            return url.contains(pattern);
-        }
-    }
-
-    final ContentFilterEngine filterEngine = new ContentFilterEngine();
-    private final java.util.concurrent.atomic.AtomicBoolean isFilterUpdating = new java.util.concurrent.atomic.AtomicBoolean(false);
-
-    public void recordPageVisit(String url, String title) {
-        
-        runOnUiThread(() -> {
-            if (addressBarAdapter != null) {
-                addressBarAdapter.notifyDataSetChanged();
-            }
-        });
     }
     
     private void saveFilterLists() {
@@ -2810,45 +2590,7 @@ public class MainActivity extends AppCompatActivity {
                 activeWebView.reload();
             }
         }
-    }
-    
-    private boolean isPhishingRisk(String host) {
-        if (host == null) return false;
-        String clean = host.toLowerCase().trim();
-        if (clean.startsWith("www.")) clean = clean.substring(4);
-
-        String[] protectedDomains = {"google.com", "paypal.com", "facebook.com", "amazon.com", "netflix.com", "github.com"};
-        
-        for (String target : protectedDomains) {
-            if (clean.equals(target)) return false;
-
-            int distance = getLevenshteinDistance(clean, target);
-            if (distance > 0 && distance <= 2) {
-                return true;
-            }
-
-            if (clean.contains(target.replace(".com", "")) && !clean.endsWith("." + target) && !clean.equals(target)) {
-                return true; 
-            }
-        }
-        return false;
-    }
-    
-    private int getLevenshteinDistance(String s, String t) {
-        if (s == null || t == null) return 0;
-        int[] p = new int[s.length() + 1];
-        int[] d = new int[s.length() + 1];
-        for (int i = 0; i <= s.length(); i++) p[i] = i;
-        for (int j = 1; j <= t.length(); j++) {
-            d[0] = j;
-            for (int i = 1; i <= s.length(); i++) {
-                int match = (s.charAt(i - 1) == t.charAt(j - 1)) ? 0 : 1;
-                d[i] = Math.min(Math.min(d[i - 1] + 1, p[i] + 1), p[i - 1] + match);
-            }
-            int[] placeholder = p; p = d; d = placeholder;
-        }
-        return p[s.length()];
-    }
+    }    
 
     public class PasswordAutosaveBridge {
         @android.webkit.JavascriptInterface
