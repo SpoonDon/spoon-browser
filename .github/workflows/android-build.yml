@@ -30,7 +30,7 @@ jobs:
 
       - name: Install Dependencies & Sync Capacitor
         run: |
-          npm ci
+          npm install
           npx cap sync android
 
       - name: Make Gradlew Executable
