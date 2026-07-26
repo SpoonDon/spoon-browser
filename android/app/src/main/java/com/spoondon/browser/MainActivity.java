@@ -1,5 +1,8 @@
 package com.spoondon.browser;
 
+import android.content.ClipboardManager;
+import android.content.ClipData;
+import android.view.WindowManager;
 import android.annotation.SuppressLint;
 import android.os.Bundle;
 import android.os.Build;
@@ -125,6 +128,10 @@ public class MainActivity extends AppCompatActivity {
     private android.view.View tabSwitcherOverlay;
     private androidx.recyclerview.widget.RecyclerView tabsRecyclerView;    
     private android.view.ViewGroup webViewContainer;
+    private ClipboardManager clipboardManager;
+    private android.os.Handler clipboardHandler;
+    private Runnable clipboardClearRunnable;
+    private ClipboardManager.OnPrimaryClipChangedListener clipChangedListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -157,6 +164,32 @@ public class MainActivity extends AppCompatActivity {
 
         secureCredentialManager = new SecureCredentialManager(this);
         dbHelper = BrowserDatabaseHelper.getInstance(this);
+        // --- SCREEN SHIELD & CLIPBOARD AUTO-CLEAR INIT ---
+        clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        clipboardHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+        
+        clipboardClearRunnable = () -> {
+            if (clipboardManager != null) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    clipboardManager.clearPrimaryClip();
+                } else {
+                    clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
+                }
+            }
+        };
+
+        clipChangedListener = () -> {
+            // Only schedule a wipe if the user copied something while the Vault was active
+            if (isVaultActive()) {
+                clipboardHandler.removeCallbacks(clipboardClearRunnable);
+                clipboardHandler.postDelayed(clipboardClearRunnable, 60000); // 60 seconds
+            }
+        };
+        
+        if (clipboardManager != null) {
+            clipboardManager.addPrimaryClipChangedListener(clipChangedListener);
+        }
+        // ---------------------------------------------------
         
         migrateLegacyBookmarksToDatabase();
 
@@ -275,6 +308,19 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    public boolean isVaultActive() {
+        android.webkit.WebView wv = getCurrentWebView();
+        return wv != null && wv.getUrl() != null && wv.getUrl().startsWith("file:///android_asset/vault.html");
+    }
+
+    public void updateScreenShield() {
+        if (isVaultActive()) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
     }
 
     private void migrateLegacyBookmarksToDatabase() {
@@ -442,7 +488,14 @@ public class MainActivity extends AppCompatActivity {
             }
             tabList.clear();
         }
-
+        // --- CLIPBOARD LISTENER CLEANUP ---
+        if (clipboardManager != null && clipChangedListener != null) {
+            clipboardManager.removePrimaryClipChangedListener(clipChangedListener);
+        }
+        if (clipboardHandler != null) {
+            clipboardHandler.removeCallbacks(clipboardClearRunnable);
+        }
+        // ----------------------------------
         super.onDestroy();
     }
             
@@ -1640,6 +1693,7 @@ public class MainActivity extends AppCompatActivity {
         }
         
         updateTabCountersUI();
+        updateScreenShield(); // Toggle shield based on the newly active tab
     }
 
     public void closeTab(int index) {
