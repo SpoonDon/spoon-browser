@@ -1315,7 +1315,7 @@ public class MainActivity extends AppCompatActivity {
         android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(webView, true);
+            cookieManager.setAcceptThirdPartyCookies(webView, false);
         }
 
         webView.setOnLongClickListener(createImageLongClickListener(webView));
