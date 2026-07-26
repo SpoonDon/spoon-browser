@@ -5,16 +5,22 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.LruCache;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -66,7 +72,6 @@ public class AdBlockEngine {
         }
         whitelistedDomains = whiteSet;
 
-        // If we successfully load the compiled binary, skip the text parsing!
         if (loadEngineFromCache(context)) {
             return;
         }
@@ -193,12 +198,11 @@ public class AdBlockEngine {
             HashMap<String, ArrayList<String>> newCosmetic = new HashMap<>();
 
             for (String filterUrl : filterLists) {
-                // --- SECURITY FIX: Enforce HTTPS to prevent MITM on filter lists ---
+                // SECURITY FIX: Enforce HTTPS to prevent MITM on filter lists
                 if (!filterUrl.toLowerCase().startsWith("https://")) {
                     allDownloadsSucceeded = false;
                     continue;
                 }
-                // -------------------------------------------------------------------
 
                 String filename = "filter_" + Math.abs(filterUrl.hashCode()) + ".txt";
                 File localFile = new File(context.getFilesDir(), filename);
@@ -296,9 +300,13 @@ public class AdBlockEngine {
             synchronized (decisionCache) {
                 decisionCache.evictAll();
             }
-
-            java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
+            
+            File cacheFile = new File(context.getFilesDir(), "adblock_cache.json");
             if (cacheFile.exists()) cacheFile.delete();
+            
+            // Cleanup old insecure cache
+            File oldCacheFile = new File(context.getFilesDir(), "adblock_bin_cache.dat");
+            if (oldCacheFile.exists()) oldCacheFile.delete();
         });
     }
 
@@ -414,25 +422,80 @@ public class AdBlockEngine {
         }
     }
 
+    // --- SECURE JSON CACHE IMPLEMENTATION ---
     private static void saveEngineToCache(Context context) {
         try {
-            java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
-            try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream(cacheFile))) {
-                oos.writeObject(new Object[]{blockedDomains, scopedPathRules, cosmeticRules});
+            File cacheFile = new File(context.getFilesDir(), "adblock_cache.json");
+            JSONObject root = new JSONObject();
+            
+            JSONArray domainsArr = new JSONArray();
+            for (String d : blockedDomains) domainsArr.put(d);
+            root.put("domains", domainsArr);
+            
+            JSONObject pathsObj = new JSONObject();
+            for (java.util.Map.Entry<String, ArrayList<String>> entry : scopedPathRules.entrySet()) {
+                JSONArray arr = new JSONArray();
+                for (String p : entry.getValue()) arr.put(p);
+                pathsObj.put(entry.getKey(), arr);
+            }
+            root.put("paths", pathsObj);
+            
+            JSONObject cosmeticObj = new JSONObject();
+            for (java.util.Map.Entry<String, ArrayList<String>> entry : cosmeticRules.entrySet()) {
+                JSONArray arr = new JSONArray();
+                for (String c : entry.getValue()) arr.put(c);
+                cosmeticObj.put(entry.getKey(), arr);
+            }
+            root.put("cosmetic", cosmeticObj);
+
+            try (FileOutputStream fos = new FileOutputStream(cacheFile)) {
+                fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
             }
         } catch (Exception ignored) {}
     }
 
-    @SuppressWarnings("unchecked")
     private static boolean loadEngineFromCache(Context context) {
-        java.io.File cacheFile = new java.io.File(context.getFilesDir(), "adblock_bin_cache.dat");
+        File cacheFile = new File(context.getFilesDir(), "adblock_cache.json");
         if (!cacheFile.exists()) return false;
 
-        try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(cacheFile))) {
-            Object[] data = (Object[]) ois.readObject();
-            blockedDomains = (java.util.HashSet<String>) data[0];
-            scopedPathRules = (java.util.HashMap<String, java.util.ArrayList<String>>) data[1];
-            cosmeticRules = (java.util.HashMap<String, java.util.ArrayList<String>>) data[2];
+        try {
+            StringBuilder sb = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(cacheFile), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+            }
+            
+            JSONObject root = new JSONObject(sb.toString());
+            
+            HashSet<String> newDomains = new HashSet<>();
+            JSONArray domainsArr = root.getJSONArray("domains");
+            for (int i = 0; i < domainsArr.length(); i++) newDomains.add(domainsArr.getString(i));
+            blockedDomains = newDomains;
+            
+            HashMap<String, ArrayList<String>> newPaths = new HashMap<>();
+            JSONObject pathsObj = root.getJSONObject("paths");
+            Iterator<String> pathKeys = pathsObj.keys();
+            while(pathKeys.hasNext()) {
+                String key = pathKeys.next();
+                JSONArray arr = pathsObj.getJSONArray(key);
+                ArrayList<String> list = new ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) list.add(arr.getString(i));
+                newPaths.put(key, list);
+            }
+            scopedPathRules = newPaths;
+            
+            HashMap<String, ArrayList<String>> newCosmetic = new HashMap<>();
+            JSONObject cosmeticObj = root.getJSONObject("cosmetic");
+            Iterator<String> cosmeticKeys = cosmeticObj.keys();
+            while(cosmeticKeys.hasNext()) {
+                String key = cosmeticKeys.next();
+                JSONArray arr = cosmeticObj.getJSONArray(key);
+                ArrayList<String> list = new ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) list.add(arr.getString(i));
+                newCosmetic.put(key, list);
+            }
+            cosmeticRules = newCosmetic;
+            
             return true;
         } catch (Exception e) {
             return false;
