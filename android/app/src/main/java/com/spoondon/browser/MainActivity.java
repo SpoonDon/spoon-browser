@@ -1226,9 +1226,8 @@ public class MainActivity extends AppCompatActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setSaveFormData(true);
-        // Smart Data Saver: Block images and use cache on metered networks
-        android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (cm != null && cm.isActiveNetworkMetered()) {    
+        android.net.ConnectivityManager connMgr = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connMgr != null && connMgr.isActiveNetworkMetered()) {    
             settings.setBlockNetworkImage(true);    
             settings.setCacheMode(android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK);
         } else {    
@@ -1340,11 +1339,13 @@ public class MainActivity extends AppCompatActivity {
             webSettings.setUserAgentString(currentUserAgent);
         }
 
-        android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
-        cookieManager.setAcceptCookie(true);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            cookieManager.setAcceptThirdPartyCookies(webView, false);
-        }
+        try {    
+            android.webkit.CookieManager cookieMgr = android.webkit.CookieManager.getInstance();    
+            cookieMgr.setAcceptCookie(true);    
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {        
+                cookieMgr.setAcceptThirdPartyCookies(getCurrentWebView(), false);    
+            }
+        } catch (Exception ignored) {}
 
         webView.setOnLongClickListener(createImageLongClickListener(webView));
         webView.setWebViewClient(new SpoonWebViewClient(this));
