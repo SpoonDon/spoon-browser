@@ -288,6 +288,25 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @Override
     public void onPageFinished(android.webkit.WebView view, String url) {
+        String webrtcSanitizer = "javascript:(function() {" +    
+            "if (window.RTCPeerConnection) {" +    
+            "  var OrigPC = window.RTCPeerConnection;" +    
+            "  window.RTCPeerConnection = function(config, constraints) {" +    
+            "    var pc = new OrigPC(config, constraints);" +    
+            "    var origCreateOffer = pc.createOffer;" +    
+            "    pc.createOffer = function(opts) {" +    
+            "      return origCreateOffer.call(pc, opts).then(function(offer) {" +    
+            "        var ipRegex = new RegExp('([0-9]{1,3}\\\\.){3}[0-9]{1,3}', 'g');" +    
+            "        offer.sdp = offer.sdp.replace(ipRegex, '0.0.0.0');" +    
+            "        return offer;" +    
+            "      });" +    
+            "    };" +    
+            "    return pc;" +    
+            "  };" +    
+            "  window.RTCPeerConnection.prototype = OrigPC.prototype;" +    
+            "}" +    
+            "})();";
+        view.evaluateJavascript(webrtcSanitizer, null);
         super.onPageFinished(view, url);
 
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
