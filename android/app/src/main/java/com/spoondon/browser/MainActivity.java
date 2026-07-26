@@ -94,7 +94,8 @@ public class MainActivity extends AppCompatActivity {
     private SuggestionAdapter addressBarAdapter;
     private String cachedHomeHtml = null;
     LinearLayout root;
-    LinearLayout browserContainer;
+    LinearLayout browserContainer;    
+    public androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
     private TextView tabIndicator;
     LinearLayout toolbar;
     private Button forwardButton;
@@ -128,7 +129,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-        android.webkit.WebView.enableSlowWholeDocumentDraw();
         
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
@@ -222,7 +222,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (root != null) {
             if (toolbar != null) root.addView(toolbar);
-            if (browserContainer != null) root.addView(browserContainer);
+            if (swipeRefresh != null) root.addView(swipeRefresh);
             
             getWindow().setFlags(
                 android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -463,6 +463,16 @@ public class MainActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f
         );
         browserContainer.setLayoutParams(browserParams);
+
+        swipeRefresh = new androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this);
+        swipeRefresh.setColorSchemeColors(android.graphics.Color.parseColor("#8ab4f8"));
+        swipeRefresh.setProgressBackgroundColorSchemeColor(android.graphics.Color.parseColor("#202124"));
+        swipeRefresh.addView(browserContainer);
+        swipeRefresh.setOnRefreshListener(() -> {    
+            android.webkit.WebView wv = getCurrentWebView();    
+            if (wv != null) wv.reload();    
+            else swipeRefresh.setRefreshing(false);
+        });    
     }
 
     private void loadSavedData() {
@@ -1216,7 +1226,15 @@ public class MainActivity extends AppCompatActivity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setSaveFormData(true);
-        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+        // Smart Data Saver: Block images and use cache on metered networks
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm != null && cm.isActiveNetworkMetered()) {    
+            settings.setBlockNetworkImage(true);    
+            settings.setCacheMode(android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        } else {    
+            settings.setBlockNetworkImage(false);    
+            settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+        }
 
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
@@ -2460,7 +2478,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void fallbackCanvasCapture(android.webkit.WebView webView, int width, int height, android.webkit.ValueCallback<android.graphics.Bitmap> callback) {
         try {
-            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.RGB_565);
             android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
             canvas.scale(0.3f, 0.3f);
             webView.draw(canvas);
