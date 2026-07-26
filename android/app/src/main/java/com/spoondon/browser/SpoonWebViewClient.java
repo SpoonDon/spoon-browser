@@ -224,6 +224,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 }
             }
         }
+        activity.updateScreenShield();
     }
 
     @Override
