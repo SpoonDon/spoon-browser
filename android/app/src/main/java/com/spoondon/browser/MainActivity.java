@@ -92,6 +92,9 @@ public class MainActivity extends AppCompatActivity {
     private androidx.activity.result.ActivityResultLauncher<String[]> webPermissionLauncher;
     public android.webkit.ValueCallback<android.net.Uri[]> mFilePathCallback;
     public static final int FILECHOOSER_RESULTCODE = 100;
+    public android.widget.ProgressBar progressBar;
+    public android.widget.LinearLayout addressContainer;
+    public android.widget.TextView securityIcon;
 
     AutoCompleteTextView addressBar;
     private SuggestionAdapter addressBarAdapter;
@@ -255,7 +258,28 @@ public class MainActivity extends AppCompatActivity {
 
         if (root != null) {
             if (toolbar != null) root.addView(toolbar);
-            if (swipeRefresh != null) root.addView(swipeRefresh);
+            
+            android.widget.FrameLayout browserWrapper = new android.widget.FrameLayout(this);        
+            android.widget.LinearLayout.LayoutParams wrapperParams = new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);        
+            browserWrapper.setLayoutParams(wrapperParams);
+        
+            if (swipeRefresh != null) browserWrapper.addView(swipeRefresh);
+        
+            progressBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            android.widget.FrameLayout.LayoutParams progressParams = new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 8);        
+            progressParams.gravity = android.view.Gravity.TOP;        
+            progressBar.setLayoutParams(progressParams);        
+            progressBar.setIndeterminate(false);        
+            progressBar.setMax(100);        
+            progressBar.setVisibility(android.view.View.GONE);        
+        
+            android.graphics.drawable.Drawable progressDrawable = progressBar.getProgressDrawable();        
+            if (progressDrawable != null) {            
+                progressDrawable.setColorFilter(new android.graphics.PorterDuffColorFilter(android.graphics.Color.parseColor("#8ab4f8"), android.graphics.PorterDuff.Mode.SRC_IN));
+            }        
+        
+            browserWrapper.addView(progressBar);            
+            root.addView(browserWrapper);
             
             getWindow().setFlags(
                 android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
