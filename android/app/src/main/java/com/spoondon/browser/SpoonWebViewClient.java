@@ -242,9 +242,13 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @Override
     public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
-        super.doUpdateVisitedHistory(view, url, isReload);
+        super.doUpdateVisitedHistory(view, url, isReload);    
         injectBlobHook(view);
-
+    
+        if (activity.getCurrentTabState() != null && activity.getCurrentTabState().isIncognito()) {
+        return;    
+        }
+    
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
             long currentTime = System.currentTimeMillis();
             android.net.Uri currentUri = android.net.Uri.parse(url);
