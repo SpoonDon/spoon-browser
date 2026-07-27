@@ -385,14 +385,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "});" +
                 "})();";
         view.evaluateJavascript(script, null);
-
-        String gpuAccelerationScript = "javascript:(function() { " +
-                "var videos = document.getElementsByTagName('video');" +
-                "for(var i=0; i<videos.length; i++) {" +
-                "    videos[i].style.transform = 'translateZ(0)';" +
-                "    videos[i].style.willChange = 'transform';" +
-                "}})()";
-        view.evaluateJavascript(gpuAccelerationScript, null);
     }
 
     @Override
