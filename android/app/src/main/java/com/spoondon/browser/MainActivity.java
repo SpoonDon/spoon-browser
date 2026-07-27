@@ -653,6 +653,7 @@ public class MainActivity extends AppCompatActivity {
             android.widget.PopupMenu popup = new android.widget.PopupMenu(wrapper, menuButton, android.view.Gravity.END);
             
             popup.getMenu().add("New Tab");
+            popup.getMenu().add("New Incognito Tab");
             popup.getMenu().add("Reload");
             popup.getMenu().add("Downloads");
             popup.getMenu().add("Find in Page");
@@ -691,14 +692,17 @@ public class MainActivity extends AppCompatActivity {
             popup.setOnMenuItemClickListener(item -> {
                 String title = item.getTitle().toString();
                 switch (title) {
-                    case "New Tab":
-                        createNewTab();
-                        showHome();
+                    case "New Tab":    
+                        createNewTab(false);    
+                        showHome();    
+                        return true;
+                    case "New Incognito Tab":    
+                        createNewTab(true);    
+                        showHome();    
                         return true;
                     case "Reload":
                         if (getCurrentWebView() != null) getCurrentWebView().reload();
-                        return true;
-                                        
+                        return true;                                        
                     case "Downloads":
                         try {
                             android.content.Intent intent = new android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
@@ -1620,22 +1624,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
         
-    private void createNewTab() {
-        WebView webView = createConfiguredWebView();
-        webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
+    private void createNewTab() {    
+        createNewTab(false);
+    }
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        }
-        webView.setDrawingCacheEnabled(false);
-
-        android.webkit.WebSettings settings = webView.getSettings();
+    public void createNewTab(boolean isIncognito) {    
+        WebView webView = createConfiguredWebView();    
+        webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");    
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {        
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);    
+        }    
+        webView.setDrawingCacheEnabled(false);    
+        android.webkit.WebSettings settings = webView.getSettings();    
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setMediaPlaybackRequiresUserGesture(false);    
         }
-        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
-
-        TabState newTab = new TabState(webView);
+    
+        if (isIncognito) {        
+            settings.setSaveFormData(false);        
+            settings.setDomStorageEnabled(false);        
+            settings.setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);    
+        } else {        
+            settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);    
+        }
+        
+        TabState newTab = new TabState(webView, isIncognito);
         tabList.add(newTab);
         currentTabPosition = tabList.size() - 1;
 
@@ -1684,14 +1697,21 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < tabList.size(); i++) {
             android.webkit.WebView wv = tabList.get(i).getWebView();
             if (wv != null) {
-                if (i == index) {
-                    wv.setVisibility(android.view.View.VISIBLE);
-                    wv.onResume();
-                    wv.resumeTimers();
-                    
-                    String url = wv.getUrl();
-                    if (addressBar != null) {
+                if (i == index) {    
+                    wv.setVisibility(android.view.View.VISIBLE);    
+                    wv.onResume();    
+                    wv.resumeTimers();    
+                    String url = wv.getUrl();    
+                    if (addressBar != null) {        
                         addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
+        
+                        if (tabList.get(i).isIncognito()) {            
+                            addressBar.setBackgroundColor(android.graphics.Color.parseColor("#3c1f40"));
+                            addressBar.setHint("Incognito Search or URL");        
+                        } else {            
+                            addressBar.setBackgroundColor(android.graphics.Color.parseColor("#222222"));            
+                            addressBar.setHint("Search or enter address");        
+                        }    
                     }
                 } else {
                     wv.setVisibility(android.view.View.GONE);
@@ -1715,11 +1735,22 @@ public class MainActivity extends AppCompatActivity {
         TabState tabToRemove = tabList.get(index);
         android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
 
-        if (wvToDestroy != null) {
-            if (browserContainer != null) {
-                browserContainer.removeView(wvToDestroy);
-            }
-            wvToDestroy.removeAllViews();
+        if (tabToRemove.isIncognito()) {    
+            if (wvToDestroy != null) {        
+                wvToDestroy.clearCache(true);        
+                wvToDestroy.clearFormData();        
+                wvToDestroy.clearHistory();        
+                android.webkit.WebStorage.getInstance().deleteAllData();    
+            }    
+            android.webkit.CookieManager.getInstance().removeAllCookies(null);    
+            android.webkit.CookieManager.getInstance().flush();            
+        }
+
+        if (wvToDestroy != null) {    
+            if (browserContainer != null) {        
+                browserContainer.removeView(wvToDestroy);                    
+            }    
+            wvToDestroy.removeAllViews();    
             wvToDestroy.destroy();
         }
 
@@ -1939,14 +1970,17 @@ public class MainActivity extends AppCompatActivity {
         AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
     }
 
-    private void saveOpenTabs() {
-        ArrayList<String> safeUrls = new ArrayList<>();
-        for (TabState tabState : tabList) {    
-            WebView webView = tabState.getWebView();
-            String url = webView.getUrl();
-            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
-                safeUrls.add(url);
-            }
+    private void saveOpenTabs() {    
+        ArrayList<String> safeUrls = new ArrayList<>();    
+        for (TabState tabState : tabList) {
+        
+            if (tabState.isIncognito()) continue;        
+        
+            WebView webView = tabState.getWebView();        
+            String url = webView.getUrl();        
+            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {            
+                safeUrls.add(url);        
+            }    
         }
 
         backgroundExecutor.execute(() -> {
@@ -2264,6 +2298,13 @@ public class MainActivity extends AppCompatActivity {
         if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
             return tabList.get(currentTabPosition).getWebView();
         }
+        return null;
+    }
+
+    public TabState getCurrentTabState() {    
+        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {        
+            return tabList.get(currentTabPosition);    
+        }    
         return null;
     }
 
