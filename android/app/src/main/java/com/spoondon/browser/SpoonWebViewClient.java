@@ -189,6 +189,19 @@ public class SpoonWebViewClient extends WebViewClient {
         }
         injectBlobHook(view);
 
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+            String gpcScript = "javascript:(function() { " +
+                "try { " +
+                "  Object.defineProperty(navigator, 'globalPrivacyControl', { " +
+                "    get: function() { return true; }, " +
+                "    configurable: false, " +
+                "    enumerable: true " +
+                "  }); " +
+                "} catch(e) {} " +
+                "})();";
+            view.evaluateJavascript(gpcScript, null);
+        }
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
             android.webkit.CookieManager.getInstance().flush();
         }
