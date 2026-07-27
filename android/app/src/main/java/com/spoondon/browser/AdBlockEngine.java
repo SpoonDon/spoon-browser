@@ -198,7 +198,7 @@ public class AdBlockEngine {
             HashMap<String, ArrayList<String>> newCosmetic = new HashMap<>();
 
             for (String filterUrl : filterLists) {
-                // SECURITY FIX: Enforce HTTPS to prevent MITM on filter lists
+                
                 if (!filterUrl.toLowerCase().startsWith("https://")) {
                     allDownloadsSucceeded = false;
                     continue;
