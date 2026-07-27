@@ -1332,6 +1332,14 @@ public class MainActivity extends AppCompatActivity {
         settings.setUserAgentString(MOBILE_UA);
         settings.setUseWideViewPort(false);
         settings.setLoadWithOverviewMode(false);
+
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
+            androidx.webkit.WebSettingsCompat.setForceDark(settings, androidx.webkit.WebSettingsCompat.FORCE_DARK_ON);
+        }
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK_STRATEGY)) {
+            androidx.webkit.WebSettingsCompat.setForceDarkStrategy(settings, 
+                androidx.webkit.WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING);
+        }
     }
     
     private View.OnLongClickListener createImageLongClickListener(WebView webView) {
