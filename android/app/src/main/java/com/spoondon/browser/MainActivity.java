@@ -1325,7 +1325,7 @@ public class MainActivity extends AppCompatActivity {
             android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
             cm.setAcceptCookie(true);
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                cm.setAcceptThirdPartyCookies(getCurrentWebView(), true); 
+                cm.setAcceptThirdPartyCookies(getCurrentWebView(), false); 
             }
         } catch (Exception ignored) {}
         
