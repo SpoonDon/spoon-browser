@@ -10,12 +10,22 @@ public class TabState {
     private String url;
     private String title;
     private Bitmap thumbnail;
+    private boolean isIncognito;
 
     public TabState(WebView webView) {
+        this(webView, false);
+    }
+
+    public TabState(WebView webView, boolean isIncognito) {
         this.id = UUID.randomUUID().toString();
         this.webView = webView;
+        this.isIncognito = isIncognito;
         this.url = "about:blank";
-        this.title = "New Tab";
+        this.title = isIncognito ? "Incognito" : "New Tab";
+    }
+
+    public boolean isIncognito() {
+        return isIncognito;
     }
 
     public String getId() {
