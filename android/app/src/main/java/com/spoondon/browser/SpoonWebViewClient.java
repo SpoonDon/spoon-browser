@@ -75,7 +75,7 @@ public class SpoonWebViewClient extends WebViewClient {
         if (url.startsWith("spoonsearch://")) {
             try {
                 String query = java.net.URLDecoder.decode(url.substring(14), "UTF-8");
-                view.loadUrl("https://search.brave.com/search?q=" + android.net.Uri.encode(query));
+                view.loadUrl(activity.getSearchUrlFor(query));
             } catch (Exception ignored) {}
             return true;
         }
@@ -354,7 +354,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 "var passBox = e.target.querySelector('input[type=password]');" +
                 "var userBox = e.target.querySelector('input[type=text], input[type=email], input[name=username], input[name=login]');" +
                 "if (passBox && passBox.value && userBox && userBox.value) {" +
-                "SpoonVault.saveCredentials(userBox.value, passBox.value);" +
+                "SpoonVault.saveCredentials(window.location.hostname, userBox.value, passBox.value);" +
                 "}" +
                 "});" +
                 "var lastKnownUser = '';" +
@@ -378,7 +378,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 "if (profileDiv) finalUser = profileDiv.innerText.trim();" +
                 "}" +
                 "if (finalUser && passBox.value) {" +
-                "SpoonVault.saveCredentials(finalUser, passBox.value);" +
+                "SpoonVault.saveCredentials(window.location.hostname, finalUser, passBox.value);" +
                 "}" +
                 "}" +
                 "}" +

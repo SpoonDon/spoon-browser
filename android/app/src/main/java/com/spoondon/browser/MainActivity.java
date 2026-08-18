@@ -86,6 +86,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_FILTER_REFRESH_TIME = "filter_refresh_time";
     private static final String KEY_OPEN_TABS = "open_tabs";
     private static final String KEY_CURRENT_TAB = "current_tab";
+    private static final String KEY_SEARCH_ENGINE = "search_engine";
     private static final int MAX_HISTORY = 500;
     public android.webkit.PermissionRequest currentPermissionRequest;
     public android.webkit.GeolocationPermissions.Callback currentGeolocationCallback;
@@ -702,6 +703,7 @@ public class MainActivity extends AppCompatActivity {
             popup.getMenu().add(isCurrentSiteDesktop ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("Passwords");
             popup.getMenu().add("🔑 Vault (Copy)");
+            popup.getMenu().add("Search Engine");
             popup.getMenu().add("About");
             popup.getMenu().add("Startup Animation");
             popup.getMenu().add("Exit");
@@ -805,6 +807,10 @@ public class MainActivity extends AppCompatActivity {
                         showVaultForCurrentSite();
                         return true;
 
+                    case "Search Engine":
+                        showSearchEngineDialog();
+                        return true;
+
                     case "Startup Animation":
                         android.content.SharedPreferences splashPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
                         boolean isCurrentlyEnabled = splashPrefs.getBoolean("show_splash_screen", true);
@@ -836,6 +842,44 @@ public class MainActivity extends AppCompatActivity {
             });
             popup.show();
         });
+    }
+
+    private void showSearchEngineDialog() {
+        String current = prefs != null ? prefs.getString(KEY_SEARCH_ENGINE, "brave") : "brave";
+        final String[] engines = {"Brave", "Google", "DuckDuckGo"};
+        final String[] values = {"brave", "google", "duckduckgo"};
+
+        int checked = 0;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i].equals(current)) {
+                checked = i;
+                break;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Search Engine")
+                .setSingleChoiceItems(engines, checked, (dialog, which) -> {
+                    prefs.edit().putString(KEY_SEARCH_ENGINE, values[which]).apply();
+                    dialog.dismiss();
+                    Toast.makeText(this, engines[which] + " set as default", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    public String getSearchUrlFor(String query) {
+        String engine = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(KEY_SEARCH_ENGINE, "brave");
+        String encoded = android.net.Uri.encode(query == null ? "" : query);
+        switch (engine) {
+            case "google":
+                return "https://www.google.com/search?q=" + encoded;
+            case "duckduckgo":
+                return "https://duckduckgo.com/?q=" + encoded;
+            case "brave":
+            default:
+                return "https://search.brave.com/search?q=" + encoded;
+        }
     }
 
     private void showFindInPageDialog() {
@@ -1972,7 +2016,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 wv.loadUrl(query);
             } else {
-                String searchUrl = "https://www.google.com/search?q=" + android.net.Uri.encode(query);
+                String searchUrl = getSearchUrlFor(query);
                 wv.loadUrl(searchUrl);
             }
         }
@@ -2510,150 +2554,150 @@ public class MainActivity extends AppCompatActivity {
         addressBar.clearFocus();
     }
 
-    private void showVaultForCurrentSite() {    
-        WebView wv = getCurrentWebView();    
-        if (wv == null || wv.getUrl() == null) {        
-            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();        
-            return;    
+    private void showVaultForCurrentSite() {
+        WebView wv = getCurrentWebView();
+        if (wv == null || wv.getUrl() == null) {
+            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
+            return;
         }
 
-    String host = Uri.parse(wv.getUrl()).getHost();
-    if (host == null || host.isEmpty()) {
-        Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
-        return;
+        String host = Uri.parse(wv.getUrl()).getHost();
+        if (host == null || host.isEmpty()) {
+            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        java.util.List<String[]> accounts = parseAccountsForHost(host);
+
+        if (accounts.isEmpty()) {
+            Toast.makeText(this, "No saved password for " + host, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        ListView listView = new ListView(this);
+        listView.setDivider(new ColorDrawable(Color.parseColor("#333333")));
+        listView.setDividerHeight(1);
+        listView.setAdapter(new CredentialAdapter(accounts, host));
+
+        new AlertDialog.Builder(this)
+                .setTitle("Saved accounts for " + host)
+                .setView(listView)
+                .setNegativeButton("Close", null)
+                .show();
     }
 
-    java.util.List<String[]> accounts = parseAccountsForHost(host);
+    private java.util.List<String[]> parseAccountsForHost(String host) {
+        java.util.List<String[]> accounts = new java.util.ArrayList<>();
+        if (secureCredentialManager == null) return accounts;
 
-    if (accounts.isEmpty()) {
-        Toast.makeText(this, "No saved password for " + host, Toast.LENGTH_SHORT).show();
-        return;
-    }
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        java.util.List<String> variants = new java.util.ArrayList<>();
+        variants.add(host);
+        variants.add(host.startsWith("www.") ? host.substring(4) : "www." + host);
 
-    ListView listView = new ListView(this);
-    listView.setDivider(new ColorDrawable(Color.parseColor("#333333")));
-    listView.setDividerHeight(1);
-    listView.setAdapter(new CredentialAdapter(accounts, host));
-
-    new AlertDialog.Builder(this)
-            .setTitle("Saved accounts for " + host)
-            .setView(listView)
-            .setNegativeButton("Close", null)
-            .show();
-}
-
-private java.util.List<String[]> parseAccountsForHost(String host) {
-    java.util.List<String[]> accounts = new java.util.ArrayList<>();
-    if (secureCredentialManager == null) return accounts;
-
-    java.util.Set<String> seen = new java.util.LinkedHashSet<>();
-    java.util.List<String> variants = new java.util.ArrayList<>();
-    variants.add(host);
-    variants.add(host.startsWith("www.") ? host.substring(4) : "www." + host);
-
-    for (String variant : variants) {
-        try {
-            org.json.JSONArray arr = new org.json.JSONArray(
-                    secureCredentialManager.getAllAccountsForHost(variant));
-            for (int i = 0; i < arr.length(); i++) {
-                org.json.JSONObject obj = arr.getJSONObject(i);
-                String username = obj.optString("username", "");
-                String password = obj.optString("password", "");
-                if (!username.isEmpty() && seen.add(variant + "\u0001" + username)) {
-                    accounts.add(new String[]{username, password});
+        for (String variant : variants) {
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray(
+                        secureCredentialManager.getAllAccountsForHost(variant));
+                for (int i = 0; i < arr.length(); i++) {
+                    org.json.JSONObject obj = arr.getJSONObject(i);
+                    String username = obj.optString("username", "");
+                    String password = obj.optString("password", "");
+                    if (!username.isEmpty() && seen.add(variant + "\u0001" + username)) {
+                        accounts.add(new String[]{username, password});
+                    }
                 }
-            }
-        } catch (Exception ignored) {}
+            } catch (Exception ignored) {}
+        }
+
+        return accounts;
     }
 
-    return accounts;
-}
-
-private void copyTextToClipboard(String value, String message) {
-    if (value == null) value = "";
-    if (clipboardManager != null) {
-        clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_copy", value));
-    }
-    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-}
-
-private Button makeSmallButton(String text) {
-    Button button = new Button(this);
-    button.setText(text);
-    button.setTextColor(Color.WHITE);
-    button.setAllCaps(false);
-    button.setTextSize(12);
-
-    GradientDrawable bg = new GradientDrawable();
-    bg.setColor(Color.parseColor("#2a2a2a"));
-    bg.setCornerRadius(dp(8));
-    button.setBackground(bg);
-
-    LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(56), dp(40));
-    params.setMargins(dp(4), 0, 0, 0);
-    button.setLayoutParams(params);
-    return button;
-}
-
-private class CredentialAdapter extends android.widget.BaseAdapter {
-    private final java.util.List<String[]> accounts;
-    private final String host;
-
-    CredentialAdapter(java.util.List<String[]> accounts, String host) {
-        this.accounts = accounts;
-        this.host = host;
+    private void copyTextToClipboard(String value, String message) {
+        if (value == null) value = "";
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_copy", value));
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
-    @Override
-    public int getCount() {
-        return accounts.size();
+    private Button makeSmallButton(String text) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(Color.WHITE);
+        button.setAllCaps(false);
+        button.setTextSize(12);
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor("#2a2a2a"));
+        bg.setCornerRadius(dp(8));
+        button.setBackground(bg);
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(56), dp(40));
+        params.setMargins(dp(4), 0, 0, 0);
+        button.setLayoutParams(params);
+        return button;
     }
 
-    @Override
-    public Object getItem(int position) {
-        return accounts.get(position);
+    private class CredentialAdapter extends android.widget.BaseAdapter {
+        private final java.util.List<String[]> accounts;
+        private final String host;
+
+        CredentialAdapter(java.util.List<String[]> accounts, String host) {
+            this.accounts = accounts;
+            this.host = host;
+        }
+
+        @Override
+        public int getCount() {
+            return accounts.size();
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return accounts.get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            String[] account = accounts.get(position);
+            String username = account[0];
+            String password = account[1];
+
+            LinearLayout row = new LinearLayout(MainActivity.this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(16), dp(8), dp(16), dp(8));
+
+            TextView userView = new TextView(MainActivity.this);
+            userView.setText(username);
+            userView.setTextColor(Color.WHITE);
+            userView.setTextSize(15);
+            LinearLayout.LayoutParams userParams = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            row.addView(userView, userParams);
+
+            Button copyId = makeSmallButton("ID");
+            copyId.setOnClickListener(v ->
+                    copyTextToClipboard(username, "Username copied for " + host));
+            row.addView(copyId);
+
+            Button copyPass = makeSmallButton("Pass");
+            copyPass.setOnClickListener(v ->
+                    copyTextToClipboard(password, "Password copied for " + host));
+            row.addView(copyPass);
+
+            return row;
+        }
     }
 
-    @Override
-    public long getItemId(int position) {
-        return position;
-    }
-
-    @Override
-    public View getView(int position, View convertView, ViewGroup parent) {
-        String[] account = accounts.get(position);
-        String username = account[0];
-        String password = account[1];
-
-        LinearLayout row = new LinearLayout(MainActivity.this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(16), dp(8), dp(16), dp(8));
-
-        TextView userView = new TextView(MainActivity.this);
-        userView.setText(username);
-        userView.setTextColor(Color.WHITE);
-        userView.setTextSize(15);
-        LinearLayout.LayoutParams userParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        row.addView(userView, userParams);
-
-        Button copyId = makeSmallButton("ID");
-        copyId.setOnClickListener(v ->
-                copyTextToClipboard(username, "Username copied for " + host));
-        row.addView(copyId);
-
-        Button copyPass = makeSmallButton("Pass");
-        copyPass.setOnClickListener(v ->
-                copyTextToClipboard(password, "Password copied for " + host));
-        row.addView(copyPass);
-
-        return row;
-    }
-}
-    
-    private void triggerExternalDownload(String url, String mime) {        
-        triggerManualDownload(url, mime);    
+    private void triggerExternalDownload(String url, String mime) {
+        triggerManualDownload(url, mime);
     }
 
     private void captureWebViewSnapshotAsync(WebView webView, Consumer<Bitmap> callback) {
