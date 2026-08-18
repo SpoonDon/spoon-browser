@@ -2510,33 +2510,78 @@ public class MainActivity extends AppCompatActivity {
         addressBar.clearFocus();
     }
 
-    private void showVaultForCurrentSite() {
-        WebView wv = getCurrentWebView();
-        if (wv == null || wv.getUrl() == null) {
-            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
-            return;
+    private void showVaultForCurrentSite() {    
+        WebView wv = getCurrentWebView();    
+        if (wv == null || wv.getUrl() == null) {        
+            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();        
+            return;    
         }
-
-        String host = Uri.parse(wv.getUrl()).getHost();
-        if (host == null || host.isEmpty()) {
-            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String user = secureCredentialManager != null ? secureCredentialManager.getUsername(host) : null;
-        String pass = secureCredentialManager != null ? secureCredentialManager.getPassword(host) : null;
-
-        if (pass == null || pass.isEmpty()) {
-            Toast.makeText(this, "No saved password for " + host, Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_pass", pass));
-        Toast.makeText(this, "Password copied for " + host, Toast.LENGTH_LONG).show();
+        
+        String host = Uri.parse(wv.getUrl()).getHost();    
+        if (host == null || host.isEmpty()) {        
+            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();        
+            return;    
+        }    
+        java.util.List<String[]> accounts = parseAccountsForHost(host);    
+        if (accounts.isEmpty()) {        
+            Toast.makeText(this, "No saved password for " + host, Toast.LENGTH_SHORT).show();        
+            return;    
+        }    
+        if (accounts.size() == 1) {        
+            copyPasswordToClipboard(accounts.get(0)[1], host);        
+            return;    
+        }    
+        CharSequence[] usernames = new CharSequence[accounts.size()];    
+        for (int i = 0; i < accounts.size(); i++) {        
+            usernames[i] = accounts.get(i)[0];    
+        }    
+        new AlertDialog.Builder(this)            
+            .setTitle("Select account for " + host)
+            .setItems(usernames, (dialog, which) -> {
+                if (which >= 0 && which < accounts.size()) {
+                    copyPasswordToClipboard(accounts.get(which)[1], host);
+                }            
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
     }
 
-    private void triggerExternalDownload(String url, String mime) {
-        triggerManualDownload(url, mime);
+    private java.util.List<String[]> parseAccountsForHost(String host) {    
+        java.util.List<String[]> accounts = new java.util.ArrayList<>();    
+        if (secureCredentialManager == null) return accounts;
+    
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();    
+        java.util.List<String> variants = new java.util.ArrayList<>();    
+        variants.add(host);    
+        variants.add(host.startsWith("www.") ? host.substring(4) : "www." + host);
+    
+        for (String variant : variants) {        
+            try {            
+                org.json.JSONArray arr = new org.json.JSONArray(                    
+                    secureCredentialManager.getAllAccountsForHost(variant));            
+                for (int i = 0; i < arr.length(); i++) {                
+                    org.json.JSONObject obj = arr.getJSONObject(i);                
+                    String username = obj.optString("username", "");                
+                    String password = obj.optString("password", "");                
+                    if (!username.isEmpty() && seen.add(variant + "\u0001" + username)) {                    
+                        accounts.add(new String[]{username, password});                
+                    }            
+                }        
+            } catch (Exception ignored) {}    
+        }    
+        return accounts;
+    }
+
+    private void copyPasswordToClipboard(String password, String host) {    
+        if (password == null) password = "";    
+        if (clipboardManager != null) {        
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_pass", password));    
+        }    
+        Toast.makeText(this, "Password copied for " + host, Toast.LENGTH_LONG).show();
+    }
+    
+    private void triggerExternalDownload(String url, String mime) {        
+        triggerManualDownload(url, mime);    
     }
 
     private void captureWebViewSnapshotAsync(WebView webView, Consumer<Bitmap> callback) {
