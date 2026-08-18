@@ -2422,11 +2422,30 @@ public class MainActivity extends AppCompatActivity {
                 || host.equalsIgnoreCase("m.youtube.com");
 
         if (isYoutube) {
-            CookieManager.getInstance().removeAllCookies(null);
-            CookieManager.getInstance().flush();
+            android.webkit.CookieManager.getInstance().removeAllCookies(null);
+            android.webkit.CookieManager.getInstance().flush();
         }
 
         applyDesktopModeForCurrentSite();
+    }
+
+    public void requestWebPermissions(String[] permissions) {
+        if (webPermissionLauncher != null) {
+            webPermissionLauncher.launch(permissions);
+        }
+    }
+
+    public void triggerManualDownload(String url, String mime) {
+        try {
+            android.content.Intent intent = new android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url)
+            );
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Exception e) {
+            android.widget.Toast.makeText(this, "No external app found", android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void updateAddressBarSuggestions(String query) {
@@ -2534,13 +2553,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void triggerExternalDownload(String url, String mime) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        } catch (Exception e) {
-            Toast.makeText(this, "No external app found", Toast.LENGTH_SHORT).show();
-        }
+        triggerManualDownload(url, mime);
     }
 
     private void captureWebViewSnapshotAsync(WebView webView, Consumer<Bitmap> callback) {
