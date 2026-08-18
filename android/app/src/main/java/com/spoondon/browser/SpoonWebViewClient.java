@@ -131,20 +131,18 @@ public class SpoonWebViewClient extends WebViewClient {
                 android.content.Context context = view.getContext();
                 android.content.Intent intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
-                    // SECURITY FIX: Block self-targeting intents
                     if (intent.getPackage() != null && intent.getPackage().equals(context.getPackageName())) {
-                        return true; 
+                        return true;
                     }
 
                     android.content.pm.PackageManager packageManager = context.getPackageManager();
                     android.content.pm.ResolveInfo info = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
-                    
+
                     if (info != null) {
                         intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
                     } else {
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
-                        // SECURITY FIX: Validate fallback URL to prevent JS/File execution
                         if (fallbackUrl != null && (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://"))) {
                             view.loadUrl(fallbackUrl);
                         }
@@ -176,15 +174,15 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
-        if (activity.swipeRefresh != null && url != null) {    
+        if (activity.swipeRefresh != null && url != null) {
             String lowerUrl = url.toLowerCase();
-            
-            boolean isSpaSite = lowerUrl.contains("youtube.com") || 
-                        lowerUrl.contains("twitter.com") || 
-                        lowerUrl.contains("x.com") || 
+
+            boolean isSpaSite = lowerUrl.contains("youtube.com") ||
+                        lowerUrl.contains("twitter.com") ||
+                        lowerUrl.contains("x.com") ||
                         lowerUrl.contains("reddit.com") ||
                         lowerUrl.contains("instagram.com");
-    
+
             activity.swipeRefresh.setEnabled(!isSpaSite);
         }
         injectBlobHook(view);
@@ -213,18 +211,13 @@ public class SpoonWebViewClient extends WebViewClient {
         if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
             String host = android.net.Uri.parse(url).getHost();
             if (host != null) {
-                android.content.SharedPreferences prefs = activity.getSharedPreferences("browser_prefs", android.content.Context.MODE_PRIVATE);
-                java.util.Set<String> desktopSites = prefs.getStringSet("desktop_sites", new java.util.HashSet<>());
+                boolean desktop = activity.isDesktopHostEnabled(host);
 
-                if (desktopSites.contains(host)) {
+                if (desktop) {
                     view.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
                     view.getSettings().setLoadWithOverviewMode(true);
                     view.getSettings().setUseWideViewPort(true);
                 } else {
-                    if (url.contains("youtube.com") && url.contains("app=desktop")) {
-                        view.loadUrl(url.replace("app=desktop", "app=m"));
-                        return;
-                    }
                     String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(activity);
                     if (defaultUA != null) {
                         defaultUA = defaultUA.replace("; wv", "").replaceFirst("Version/[0-9.]+\\s", "");
@@ -242,13 +235,13 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @Override
     public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
-        super.doUpdateVisitedHistory(view, url, isReload);    
+        super.doUpdateVisitedHistory(view, url, isReload);
         injectBlobHook(view);
-    
+
         if (activity.getCurrentTabState() != null && activity.getCurrentTabState().isIncognito()) {
-        return;    
+            return;
         }
-    
+
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
             long currentTime = System.currentTimeMillis();
             android.net.Uri currentUri = android.net.Uri.parse(url);
@@ -318,23 +311,23 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @Override
     public void onPageFinished(android.webkit.WebView view, String url) {
-        String webrtcSanitizer = "javascript:(function() {" +    
-            "if (window.RTCPeerConnection) {" +    
-            "  var OrigPC = window.RTCPeerConnection;" +    
-            "  window.RTCPeerConnection = function(config, constraints) {" +    
-            "    var pc = new OrigPC(config, constraints);" +    
-            "    var origCreateOffer = pc.createOffer;" +    
-            "    pc.createOffer = function(opts) {" +    
-            "      return origCreateOffer.call(pc, opts).then(function(offer) {" +    
-            "        var ipRegex = new RegExp('([0-9]{1,3}\\\\.){3}[0-9]{1,3}', 'g');" +    
-            "        offer.sdp = offer.sdp.replace(ipRegex, '0.0.0.0');" +    
-            "        return offer;" +    
-            "      });" +    
-            "    };" +    
-            "    return pc;" +    
-            "  };" +    
-            "  window.RTCPeerConnection.prototype = OrigPC.prototype;" +    
-            "}" +    
+        String webrtcSanitizer = "javascript:(function() {" +
+            "if (window.RTCPeerConnection) {" +
+            "  var OrigPC = window.RTCPeerConnection;" +
+            "  window.RTCPeerConnection = function(config, constraints) {" +
+            "    var pc = new OrigPC(config, constraints);" +
+            "    var origCreateOffer = pc.createOffer;" +
+            "    pc.createOffer = function(opts) {" +
+            "      return origCreateOffer.call(pc, opts).then(function(offer) {" +
+            "        var ipRegex = new RegExp('([0-9]{1,3}\\\\.){3}[0-9]{1,3}', 'g');" +
+            "        offer.sdp = offer.sdp.replace(ipRegex, '0.0.0.0');" +
+            "        return offer;" +
+            "      });" +
+            "    };" +
+            "    return pc;" +
+            "  };" +
+            "  window.RTCPeerConnection.prototype = OrigPC.prototype;" +
+            "}" +
             "})();";
         view.evaluateJavascript(webrtcSanitizer, null);
         super.onPageFinished(view, url);
@@ -432,37 +425,32 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     private void handleNetworkError(android.webkit.WebView view, int errorCode) {
-    if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
-        
-        // 1. Capture the original URL before we overwrite the WebView with the error page
-        String originalUrl = view.getUrl();
-        String retryJs = "window.location.reload()"; // Fallback
-        
-        // 2. If we have a valid original URL, navigate to it instead of reloading the data: URI
-        if (originalUrl != null && !originalUrl.startsWith("data:")) {
-            // Escape single quotes so it doesn't break the JavaScript string
-            String safeUrl = originalUrl.replace("'", "\\'");
-            retryJs = "window.location.href='" + safeUrl + "'";
+        if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
+
+            String originalUrl = view.getUrl();
+            String retryJs = "window.location.reload()";
+
+            if (originalUrl != null && !originalUrl.startsWith("data:")) {
+                String safeUrl = originalUrl.replace("'", "\\'");
+                retryJs = "window.location.href='" + safeUrl + "'";
+            }
+
+            String errorHtml = "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;background-color:#202124;font-family:sans-serif;color:#e8eaed;text-align:center;padding:20px;'>" +
+                    "<div><svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#e8eaed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" +
+                    "<path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>" +
+                    "<line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>" +
+                    "<h2 style='margin-top:20px;margin-bottom:10px;'>No Connection</h2>" +
+                    "<p style='color:#9aa0a6;'>Check your internet connection or the IP address and try again.</p>" +
+                    "<button onclick='" + retryJs + "' style='margin-top:20px;padding:12px 24px;background:#8ab4f8;color:#202124;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;'>Retry</button>" +
+                    "</div>" +
+                    "</body></html>";
+
+            view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
+            android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
         }
 
-        // UX FIX: Added a Retry button that actually retries the original URL
-        String errorHtml = "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;background-color:#202124;font-family:sans-serif;color:#e8eaed;text-align:center;padding:20px;'>" +
-                "<div><svg width='64' height='64' viewBox='0 0 24 24' fill='none' stroke='#e8eaed' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" +
-                "<path d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/>" +
-                "<line x1='12' y1='9' x2='12' y2='13'/><line x1='12' y1='17' x2='12.01' y2='17'/></svg>" +
-                "<h2 style='margin-top:20px;margin-bottom:10px;'>No Connection</h2>" +
-                "<p style='color:#9aa0a6;'>Check your internet connection or the IP address and try again.</p>" +
-                "<button onclick='" + retryJs + "' style='margin-top:20px;padding:12px 24px;background:#8ab4f8;color:#202124;border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;'>Retry</button>" +
-                "</div>" +
-                "</body></html>";
-                
-        view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
-        android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
+        if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
     }
-    
-    // Stop the pull-to-refresh spinner for ANY network error, not just the 3 listed above
-    if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
-}
 
     @Override
     public void onReceivedSslError(android.webkit.WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
@@ -493,57 +481,55 @@ public class SpoonWebViewClient extends WebViewClient {
         android.widget.Toast.makeText(view.getContext(), "SSL Certificate Error Blocked", android.widget.Toast.LENGTH_SHORT).show();
     }
 
-    // --- TRACKER STRIPPING ENGINE ---
-private static final java.util.Set<String> EXACT_TRACKERS = new java.util.HashSet<>(java.util.Arrays.asList(
-    "fbclid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "msclkid", "twclid",
-    "igshid", "si", "mc_cid", "mc_eid", "zanpid", "yclid", "utm_source", "utm_medium",
-    "utm_campaign", "utm_term", "utm_content", "utm_id"
-));
+    private static final java.util.Set<String> EXACT_TRACKERS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "fbclid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "msclkid", "twclid",
+        "igshid", "si", "mc_cid", "mc_eid", "zanpid", "yclid", "utm_source", "utm_medium",
+        "utm_campaign", "utm_term", "utm_content", "utm_id"
+    ));
 
-private static boolean isTracker(String key) {
-    if (key == null) return false;
-    String lowerKey = key.toLowerCase();
-    if (lowerKey.startsWith("utm_") || lowerKey.startsWith("oly_") || lowerKey.startsWith("vero_") || lowerKey.startsWith("trk_")) return true;
-    return EXACT_TRACKERS.contains(lowerKey);
-}
-
-public static String cleanUrl(String url) {
-    if (url == null || !url.contains("?")) return url;
-    try {
-        int queryStart = url.indexOf('?');
-        String baseUrl = url.substring(0, queryStart);
-        String queryAndFragment = url.substring(queryStart + 1);
-        
-        String fragment = "";
-        int fragmentStart = queryAndFragment.indexOf('#');
-        if (fragmentStart != -1) {
-            fragment = queryAndFragment.substring(fragmentStart);
-            queryAndFragment = queryAndFragment.substring(0, fragmentStart);
-        }
-        
-        if (queryAndFragment.isEmpty()) return url;
-        
-        String[] pairs = queryAndFragment.split("&");
-        StringBuilder cleanQuery = new StringBuilder();
-        
-        for (String pair : pairs) {
-            int idx = pair.indexOf("=");
-            String key = (idx > 0) ? pair.substring(0, idx) : pair;
-            
-            if (!isTracker(key)) {
-                if (cleanQuery.length() > 0) cleanQuery.append("&");
-                cleanQuery.append(pair);
-            }
-        }
-        
-        if (cleanQuery.length() == 0) {
-            return baseUrl + fragment;
-        } else {
-            return baseUrl + "?" + cleanQuery.toString() + fragment;
-        }
-    } catch (Exception e) {
-        return url; // Fallback to original on any parsing error to prevent breakage
+    private static boolean isTracker(String key) {
+        if (key == null) return false;
+        String lowerKey = key.toLowerCase();
+        if (lowerKey.startsWith("utm_") || lowerKey.startsWith("oly_") || lowerKey.startsWith("vero_") || lowerKey.startsWith("trk_")) return true;
+        return EXACT_TRACKERS.contains(lowerKey);
     }
-}
-    
+
+    public static String cleanUrl(String url) {
+        if (url == null || !url.contains("?")) return url;
+        try {
+            int queryStart = url.indexOf('?');
+            String baseUrl = url.substring(0, queryStart);
+            String queryAndFragment = url.substring(queryStart + 1);
+
+            String fragment = "";
+            int fragmentStart = queryAndFragment.indexOf('#');
+            if (fragmentStart != -1) {
+                fragment = queryAndFragment.substring(fragmentStart);
+                queryAndFragment = queryAndFragment.substring(0, fragmentStart);
+            }
+
+            if (queryAndFragment.isEmpty()) return url;
+
+            String[] pairs = queryAndFragment.split("&");
+            StringBuilder cleanQuery = new StringBuilder();
+
+            for (String pair : pairs) {
+                int idx = pair.indexOf("=");
+                String key = (idx > 0) ? pair.substring(0, idx) : pair;
+
+                if (!isTracker(key)) {
+                    if (cleanQuery.length() > 0) cleanQuery.append("&");
+                    cleanQuery.append(pair);
+                }
+            }
+
+            if (cleanQuery.length() == 0) {
+                return baseUrl + fragment;
+            } else {
+                return baseUrl + "?" + cleanQuery.toString() + fragment;
+            }
+        } catch (Exception e) {
+            return url;
+        }
+    }
 }

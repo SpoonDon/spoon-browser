@@ -697,11 +697,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            boolean isCurrentSiteDesktop = false;
-            if (currentHost != null && !currentHost.isEmpty()) {
-                isCurrentSiteDesktop = getSharedPreferences("browser_prefs", MODE_PRIVATE)
-                    .getStringSet("desktop_sites", new java.util.HashSet<>()).contains(currentHost);
-            }
+            boolean isCurrentSiteDesktop = isDesktopHostEnabled(currentHost);
 
             popup.getMenu().add(isCurrentSiteDesktop ? "Desktop Site [ON]" : "Desktop Site [OFF]");
             popup.getMenu().add("Passwords");
@@ -1035,12 +1031,10 @@ public class MainActivity extends AppCompatActivity {
                 String title = menuItem.getTitle().toString();
 
                 if (title.equals("🔑 Vault / Autofill")) {
-
                     showVaultForCurrentSite();
                     return true;
                 }
                 else if (title.equals("Global History")) {
-
                     showHistoryDialog();
                     return true;
                 }
@@ -1052,13 +1046,11 @@ public class MainActivity extends AppCompatActivity {
 
         int screenWidth = getScreenWidthDp();
         if (screenWidth < 600) {
-
             forwardButton.setVisibility(View.GONE);
             prevTabButton.setVisibility(View.GONE);
             nextTabButton.setVisibility(View.GONE);
             newTabButton.setVisibility(View.GONE);
         } else {
-
             forwardButton.setVisibility(View.VISIBLE);
             prevTabButton.setVisibility(View.VISIBLE);
             nextTabButton.setVisibility(View.VISIBLE);
@@ -1097,7 +1089,6 @@ public class MainActivity extends AppCompatActivity {
         final boolean[] justGainedFocus = {false};
         addressBar.setOnFocusChangeListener((view, hasFocus) -> {
             if (hasFocus) {
-
                 addressBar.post(() -> {
                     if (addressBar.getText() != null) {
                         addressBar.selectAll();
@@ -1110,14 +1101,12 @@ public class MainActivity extends AppCompatActivity {
         });
 
         addressBar.setOnClickListener(view -> {
-
             if (!justGainedFocus[0]) {
                 int cursorPosition = addressBar.getSelectionStart();
                 if (cursorPosition >= 0) {
                     addressBar.setSelection(cursorPosition);
                 }
             }
-
             justGainedFocus[0] = false;
         });
 
@@ -1181,11 +1170,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 if (suppressSuggestions) return;
-
                 updateAddressBarSuggestions(s.toString().trim());
             }
             @Override public void afterTextChanged(android.text.Editable s) {}
-
         });
 
         GradientDrawable addressBg = new GradientDrawable();
@@ -1201,7 +1188,6 @@ public class MainActivity extends AppCompatActivity {
         float widthDp = getResources().getConfiguration().screenWidthDp;
 
         if (widthDp >= 600) {
-
             toolbar.addView(forwardButton);
             toolbar.addView(prevTabButton);
             toolbar.addView(tabIndicator);
@@ -1210,7 +1196,6 @@ public class MainActivity extends AppCompatActivity {
             toolbar.addView(addressBar);
             toolbar.addView(menuButton);
         } else {
-
             if (addressBar != null && addressBar.getParent() instanceof ViewGroup) {
                 ((ViewGroup) addressBar.getParent()).removeView(addressBar);
             }
@@ -1701,12 +1686,9 @@ public class MainActivity extends AppCompatActivity {
 
     public void openUrlInNewTab(String url) {
         runOnUiThread(() -> {
-
             createNewTab();
-
             android.webkit.WebView newTab = tabList.get(currentTabPosition).getWebView();
             newTab.loadUrl(url);
-
             android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
         });
     }
@@ -1747,11 +1729,7 @@ public class MainActivity extends AppCompatActivity {
         WebView activeWv = tabList.get(index).getWebView();
         if (activeWv != null) {
             String host = activeWv.getUrl() != null ? Uri.parse(activeWv.getUrl()).getHost() : null;
-            boolean desktop = false;
-            if (host != null && !host.isEmpty()) {
-                desktop = getSharedPreferences("browser_prefs", MODE_PRIVATE)
-                        .getStringSet("desktop_sites", new HashSet<>()).contains(host);
-            }
+            boolean desktop = isDesktopHostEnabled(host);
             applyDesktopUa(activeWv, desktop);
         }
     }
@@ -1977,11 +1955,7 @@ public class MainActivity extends AppCompatActivity {
         if (wv != null && url != null) {
             String host = null;
             try { host = Uri.parse(url).getHost(); } catch (Exception ignored) {}
-            boolean desktop = false;
-            if (host != null && !host.isEmpty()) {
-                desktop = getSharedPreferences("browser_prefs", MODE_PRIVATE)
-                        .getStringSet("desktop_sites", new HashSet<>()).contains(host);
-            }
+            boolean desktop = isDesktopHostEnabled(host);
             applyDesktopUa(wv, desktop);
 
             String query = url.trim();
@@ -2362,7 +2336,6 @@ public class MainActivity extends AppCompatActivity {
 
     public void updateTabBadgeCount() {
         if (tabBadgeButton != null && tabList != null) {
-
             runOnUiThread(() -> {
                 tabBadgeButton.setText(String.valueOf(tabList.size()));
             });
@@ -2375,12 +2348,25 @@ public class MainActivity extends AppCompatActivity {
         return Uri.parse(wv.getUrl()).getHost();
     }
 
+    public static String normalizeDesktopHost(String host) {
+        if (host == null) return "";
+        String lower = host.toLowerCase();
+        if (lower.equals("youtube.com") || lower.endsWith(".youtube.com") || lower.equals("youtu.be")) {
+            return "youtube.com";
+        }
+        return lower;
+    }
+
+    public boolean isDesktopHostEnabled(String host) {
+        if (host == null || host.isEmpty()) return false;
+        String normalized = normalizeDesktopHost(host);
+        return getSharedPreferences("browser_prefs", MODE_PRIVATE)
+                .getStringSet("desktop_sites", new HashSet<>()).contains(normalized);
+    }
+
     private boolean isDesktopForCurrentHost() {
         String host = getCurrentHost();
-        if (host == null || host.isEmpty()) return false;
-
-        SharedPreferences browserPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-        return browserPrefs.getStringSet("desktop_sites", new HashSet<>()).contains(host);
+        return isDesktopHostEnabled(host);
     }
 
     private void applyDesktopUa(WebView wv, boolean desktop) {
@@ -2405,23 +2391,20 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        String normalized = normalizeDesktopHost(host);
         SharedPreferences browserPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
         HashSet<String> desktopSites = new HashSet<>(
                 browserPrefs.getStringSet("desktop_sites", new HashSet<>()));
 
-        boolean wasDesktop = desktopSites.contains(host);
+        boolean wasDesktop = desktopSites.contains(normalized);
         if (wasDesktop) {
-            desktopSites.remove(host);
+            desktopSites.remove(normalized);
         } else {
-            desktopSites.add(host);
+            desktopSites.add(normalized);
         }
         browserPrefs.edit().putStringSet("desktop_sites", desktopSites).apply();
 
-        boolean isYoutube = host.equalsIgnoreCase("youtube.com")
-                || host.equalsIgnoreCase("www.youtube.com")
-                || host.equalsIgnoreCase("m.youtube.com");
-
-        if (isYoutube) {
+        if (normalized.equals("youtube.com")) {
             android.webkit.CookieManager.getInstance().removeAllCookies(null);
             android.webkit.CookieManager.getInstance().flush();
         }
@@ -2587,6 +2570,11 @@ public class MainActivity extends AppCompatActivity {
             this.title = title;
             this.url = url;
         }
+
+        @Override
+        public String toString() {
+            return url != null ? url : title;
+        }
     }
 
     private static class SuggestionAdapter extends ArrayAdapter<Suggestion> {
@@ -2602,6 +2590,24 @@ public class MainActivity extends AppCompatActivity {
                 text.setText(s.url != null ? s.url : s.title);
             }
             return text;
+        }
+
+        @Override
+        public Filter getFilter() {
+            return new Filter() {
+                @Override
+                protected FilterResults performFiltering(CharSequence constraint) {
+                    FilterResults results = new FilterResults();
+                    results.values = new ArrayList<>();
+                    results.count = 0;
+                    return results;
+                }
+
+                @Override
+                protected void publishResults(CharSequence constraint, FilterResults results) {
+                    notifyDataSetChanged();
+                }
+            };
         }
     }
 
