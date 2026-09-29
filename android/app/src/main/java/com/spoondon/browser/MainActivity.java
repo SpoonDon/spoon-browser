@@ -30,23 +30,22 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
-import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Orchestrator for Spoon Browser.
+ * Thin Activity shell for Spoon Browser.
  *
- * Post-refactor responsibilities (this file only):
- *   - Wire collaborators together.
- *   - Own the Activity-level lifecycle (onCreate/onPause/onStop/onDestroy).
- *   - Own the layout skeleton (root / toolbar / browserWrapper / progressBar).
- *   - Expose the small public surface required by SpoonWebChromeClient,
- *     SpoonWebViewClient, MenuController, and TabManager.
+ * Owns:
+ *   - The Android lifecycle.
+ *   - The root view tree (root / toolbar / browserWrapper / progressBar).
+ *   - File picker launchers (password import / export).
+ *   - Clipboard watcher (vault protection).
+ *   - The public API surface that SpoonWebViewClient, SpoonWebChromeClient,
+ *     and AppWiring call into.
  *
- * Everything else lives in a dedicated collaborator.
+ * All browser logic lives in AppWiring and its collaborators.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -56,52 +55,35 @@ public class MainActivity extends AppCompatActivity {
     private static final String PREFS_NAME = "spoon_browser";
 
     // ------------------------------------------------------------------------
-    // Collaborators
+    // Core state (needed by the Activity lifecycle itself)
     // ------------------------------------------------------------------------
-    SecureCredentialManager secureCredentialManager;
+    private SharedPreferences prefs;
+    private final ExecutorService backgroundExecutor = Executors.newFixedThreadPool(4);
+    private SecureCredentialManager secureCredentialManager;
     public BrowserDatabaseHelper dbHelper;
-
     private PermissionController permissionController;
     private SessionManager sessionManager;
-    private TabManager tabManager;
-    private ToolbarController toolbarController;
-    private MenuController menuController;
-    private HistoryController historyController;
-    private VaultController vaultController;
-    private AdBlockController adBlockController;
-    private DownloadHandler downloadHandler;
-    private WebViewFactory webViewFactory;
-    private HomePageRenderer homePageRenderer;
-    private SuggestionProvider suggestionProvider;
+    private AppWiring wiring;
+    private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
 
     // ------------------------------------------------------------------------
-    // View fields
+    // View tree
     // ------------------------------------------------------------------------
     LinearLayout root;
     LinearLayout browserContainer;
-    FrameLayout browserWrapper;                // the weighted child of `root`
+    FrameLayout browserWrapper;
     androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
     public ProgressBar progressBar;
 
-    // Legacy public fields kept for API compatibility with older call sites.
-    public LinearLayout addressContainer;
-    public android.widget.TextView securityIcon;
-
-    // Fullscreen video state — read/written by SpoonWebChromeClient.
+    // Fullscreen video state (read/written by SpoonWebChromeClient).
     View customView;
     WebChromeClient.CustomViewCallback customViewCallback;
 
     // ------------------------------------------------------------------------
-    // Misc state
+    // File pickers + clipboard
     // ------------------------------------------------------------------------
-    private SharedPreferences prefs;
-    private final ExecutorService backgroundExecutor = Executors.newFixedThreadPool(4);
     private ActivityResultLauncher<String> passwordImportLauncher;
     private ActivityResultLauncher<String> exportCsvLauncher;
-
-    private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
-
-    // Clipboard auto-clear (vault protection).
     private ClipboardManager clipboardManager;
     private android.os.Handler clipboardHandler;
     private Runnable clipboardClearRunnable;
@@ -117,14 +99,88 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // -- Collaborators that don't need views -----------------------------
         secureCredentialManager = new SecureCredentialManager(this);
         dbHelper = BrowserDatabaseHelper.getInstance(this);
         permissionController = new PermissionController(this);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         sessionManager = new SessionManager(this);
 
-        // -- File pickers ----------------------------------------------------
+        registerFilePickers();
+        registerClipboardWatcher();
+
+        setupRootLayout();
+
+        // AppWiring owns the full controller graph. It needs the container
+        // to hand to TabManager, plus the pre-existing collaborators.
+        wiring = new AppWiring(
+                this,
+                browserContainer,
+                secureCredentialManager,
+                dbHelper,
+                permissionController,
+                prefs,
+                backgroundExecutor,
+                filterLists);
+        wiring.initialize();
+
+        assembleLayout();
+
+        wiring.getHistoryController().migrateLegacyBookmarksToDatabase();
+        loadFilterListsIntoMemory();
+        wiring.getTabManager().createNewTab();
+        wiring.showHome();
+
+        warmUpBackgroundWork();
+        installBackHandler();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
+
+    @Override public void onResume() {
+        super.onResume();
+        handleIncomingIntent(getIntent());
+        setIntent(new Intent());
+        if (wiring != null) wiring.getTabManager().resumeActiveTab();
+    }
+
+    @Override protected void onPause() {
+        super.onPause();
+        if (sessionManager != null) sessionManager.onPause();
+        if (wiring != null) wiring.getTabManager().pauseActiveTab();
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        if (sessionManager != null) sessionManager.onStop();
+    }
+
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (wiring != null) wiring.getTabManager().onTrimMemory(level);
+    }
+
+    @Override protected void onDestroy() {
+        if (sessionManager != null) sessionManager.onDestroy();
+        if (backgroundExecutor != null) backgroundExecutor.shutdownNow();
+        if (wiring != null) wiring.getTabManager().destroyAll();
+
+        if (clipboardManager != null && clipChangedListener != null) {
+            clipboardManager.removePrimaryClipChangedListener(clipChangedListener);
+        }
+        if (clipboardHandler != null) {
+            clipboardHandler.removeCallbacks(clipboardClearRunnable);
+        }
+        super.onDestroy();
+    }
+
+    // ========================================================================
+    // Setup helpers (called once from onCreate)
+    // ========================================================================
+
+    private void registerFilePickers() {
         exportCsvLauncher = registerForActivityResult(
                 new ActivityResultContracts.CreateDocument("text/csv"),
                 uri -> {
@@ -164,8 +220,9 @@ public class MainActivity extends AppCompatActivity {
                                 Toast.LENGTH_SHORT).show();
                     }
                 });
+    }
 
-        // -- Clipboard watcher -----------------------------------------------
+    private void registerClipboardWatcher() {
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardHandler = new android.os.Handler(android.os.Looper.getMainLooper());
         clipboardClearRunnable = () -> {
@@ -185,108 +242,7 @@ public class MainActivity extends AppCompatActivity {
         if (clipboardManager != null) {
             clipboardManager.addPrimaryClipChangedListener(clipChangedListener);
         }
-
-        // -- View tree skeleton ----------------------------------------------
-        setupRootLayout();
-
-        // -- Collaborators that need the view tree ---------------------------
-        buildAndWireControllers();
-
-        // -- Assemble the full layout ----------------------------------------
-        assembleLayout();
-
-        // -- Startup data ----------------------------------------------------
-        historyController.migrateLegacyBookmarksToDatabase();
-        loadFilterListsIntoMemory();
-        tabManager.createNewTab();
-        showHome();
-
-        // -- Background warm-up ----------------------------------------------
-        backgroundExecutor.execute(() -> {
-            AdBlockEngine.init(MainActivity.this, filterLists);
-            AdBlockEngine.checkAndRefreshFilters(
-                    MainActivity.this, backgroundExecutor, filterLists, false);
-        });
-        backgroundExecutor.execute(() -> {
-            try {
-                if (dbHelper != null) dbHelper.cleanupOldHistory(90);
-            } catch (Exception ignored) {
-            }
-        });
-
-        // -- Back handling ---------------------------------------------------
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                if (tabManager.isTabSwitcherVisible()) {
-                    tabManager.hideTabSwitcher();
-                    return;
-                }
-                WebView active = tabManager.getCurrentWebView();
-                if (active != null && active.canGoBack()) {
-                    active.goBack();
-                    return;
-                }
-                if (tabManager.getTabCount() > 1) {
-                    tabManager.closeTab(tabManager.getCurrentPosition());
-                } else {
-                    sessionManager.showExitConfirmationDialog();
-                }
-            }
-        });
     }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        handleIncomingIntent(getIntent());
-        setIntent(new Intent());
-        if (tabManager != null) tabManager.resumeActiveTab();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (sessionManager != null) sessionManager.onPause();
-        if (tabManager != null) tabManager.pauseActiveTab();
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        if (sessionManager != null) sessionManager.onStop();
-    }
-
-    @Override
-    public void onTrimMemory(int level) {
-        super.onTrimMemory(level);
-        if (tabManager != null) tabManager.onTrimMemory(level);
-    }
-
-    @Override
-    protected void onDestroy() {
-        if (sessionManager != null) sessionManager.onDestroy();
-        if (backgroundExecutor != null) backgroundExecutor.shutdownNow();
-        if (tabManager != null) tabManager.destroyAll();
-
-        if (clipboardManager != null && clipChangedListener != null) {
-            clipboardManager.removePrimaryClipChangedListener(clipChangedListener);
-        }
-        if (clipboardHandler != null) {
-            clipboardHandler.removeCallbacks(clipboardClearRunnable);
-        }
-        super.onDestroy();
-    }
-
-    // ========================================================================
-    // Layout assembly
-    // ========================================================================
 
     private void setupRootLayout() {
         root = new LinearLayout(this);
@@ -322,7 +278,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void assembleLayout() {
-        root.addView(toolbarController.getRootView());
+        root.addView(wiring.getToolbarController().getRootView());
 
         browserWrapper = new FrameLayout(this);
         LinearLayout.LayoutParams wrapperParams = new LinearLayout.LayoutParams(
@@ -363,249 +319,73 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ========================================================================
-    // Controller wiring
-    // ========================================================================
-
-    private void buildAndWireControllers() {
-        // ---- ToolbarController ---------------------------------------------
-        toolbarController = new ToolbarController(this, new ToolbarController.Callbacks() {
-            @Override public void onNavigate(@NonNull String input) { openUrl(input); }
-
-            @Override public void onForward() {
-                WebView wv = getCurrentWebView();
-                if (wv != null && wv.canGoForward()) wv.goForward();
-            }
-
-            @Override public void onPreviousTab() {
-                if (tabManager.getTabCount() <= 1) return;
-                int prev = tabManager.getCurrentPosition() - 1;
-                if (prev < 0) prev = tabManager.getTabCount() - 1;
-                tabManager.switchToTab(prev);
-            }
-
-            @Override public void onNextTab() {
-                if (tabManager.getTabCount() <= 1) return;
-                int next = (tabManager.getCurrentPosition() + 1) % tabManager.getTabCount();
-                tabManager.switchToTab(next);
-            }
-
-            @Override public void onNewTab() {
-                tabManager.createNewTab();
-                showHome();
-            }
-
-            @Override public void onShowTabSwitcher() { tabManager.showTabSwitcher(); }
-
-            @Override public void onMenuClicked(@NonNull View anchor) {
-                menuController.showMainMenu(anchor);
-            }
-
-            @NonNull @Override
-            public List<ToolbarController.Suggestion> fetchSuggestions(@NonNull String query) {
-                return suggestionProvider.fetch(query);
-            }
-
-            @NonNull @Override public Executor getBackgroundExecutor() {
-                return backgroundExecutor;
-            }
+    private void warmUpBackgroundWork() {
+        backgroundExecutor.execute(() -> {
+            AdBlockEngine.init(MainActivity.this, filterLists);
+            AdBlockEngine.checkAndRefreshFilters(
+                    MainActivity.this, backgroundExecutor, filterLists, false);
         });
-
-        // ---- DownloadHandler (referenced by WebViewFactory) ----------------
-        downloadHandler = new DownloadHandler(this, this::getCurrentWebView);
-
-        // ---- WebViewFactory -----------------------------------------------
-        webViewFactory = new WebViewFactory(
-                this, secureCredentialManager, permissionController, downloadHandler);
-
-        // ---- HomePageRenderer ---------------------------------------------
-        homePageRenderer = new HomePageRenderer();
-
-        // ---- SuggestionProvider -------------------------------------------
-        suggestionProvider = new SuggestionProvider(dbHelper);
-
-        // ---- TabManager ----------------------------------------------------
-        tabManager = new TabManager(this, browserContainer, new TabManager.Callbacks() {
-            @NonNull @Override public WebView createConfiguredWebView() {
-                return webViewFactory.create();
+        backgroundExecutor.execute(() -> {
+            try {
+                if (dbHelper != null) dbHelper.cleanupOldHistory(90);
+            } catch (Exception ignored) {
             }
-
-            @Override public void onCurrentTabChanged(@Nullable WebView webView,
-                                                      @Nullable TabState state) {
-                applyTabToToolbar(webView, state);
-                updateScreenShield();
-            }
-
-            @Override public void onTabCountChanged(int count) {
-                toolbarController.setTabCounter(
-                        tabManager.getCurrentPosition(), count);
-            }
-
-            @Override public void onNewTabRequested() {
-                tabManager.createNewTab();
-                showHome();
-            }
-
-            @Override public void onAllTabsClosed() {
-                sessionManager.showExitConfirmationDialog();
-            }
-        });
-
-        // ---- HistoryController --------------------------------------------
-        historyController = new HistoryController(
-                this, dbHelper, backgroundExecutor,
-                new HistoryController.Callbacks() {
-                    @Override public void onNavigate(@NonNull String url) { openUrl(url); }
-
-                    @Override public void openInNewTab(@NonNull String url) {
-                        tabManager.openUrlInNewTab(url);
-                    }
-                });
-
-        // ---- VaultController ----------------------------------------------
-        vaultController = new VaultController(
-                this, secureCredentialManager, backgroundExecutor,
-                new VaultController.Callbacks() {
-                    @Nullable @Override public String getCurrentHost() {
-                        return MainActivity.this.getCurrentHost();
-                    }
-
-                    @Override public void copyToClipboard(@NonNull String value,
-                                                          @NonNull String message) {
-                        if (clipboardManager != null) {
-                            clipboardManager.setPrimaryClip(
-                                    ClipData.newPlainText("spoon_copy", value));
-                        }
-                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
-                    }
-                });
-
-        // ---- AdBlockController --------------------------------------------
-        adBlockController = new AdBlockController(
-                this, filterLists, backgroundExecutor, prefs);
-
-        // ---- MenuController -----------------------------------------------
-        menuController = new MenuController(this, prefs, new MenuController.Callbacks() {
-            @Override public void newTab(boolean incognito) {
-                tabManager.createNewTab(incognito);
-                showHome();
-            }
-
-            @Override public void reload() {
-                WebView wv = getCurrentWebView();
-                if (wv != null) wv.reload();
-            }
-
-            @Override public void openDownloads() { openSystemDownloads(); }
-
-            @Override public void findInPage() {
-                menuController.showFindInPageDialog(tabManager.getCurrentWebView());
-            }
-
-            @Override public void showBookmarks() { historyController.showBookmarks(); }
-
-            @Override public void addBookmark() {
-                WebView wv = getCurrentWebView();
-                if (wv != null) historyController.addBookmark(wv.getUrl(), wv.getTitle());
-            }
-
-            @Override public void showHistory() { historyController.showHistoryDialog(); }
-
-            @Override public void clearHistory() { historyController.clearHistory(); }
-
-            @Override public void clearCache() {
-                WebView wv = getCurrentWebView();
-                if (wv != null) wv.clearCache(true);
-                Toast.makeText(MainActivity.this, "Cache cleared",
-                        Toast.LENGTH_SHORT).show();
-            }
-
-            @Override public void showFilterLists() {
-                adBlockController.showFilterListsDialog();
-            }
-
-            @Override public void toggleFilterEngine() {
-                adBlockController.toggleEngine(getCurrentWebView());
-            }
-
-            @Override public void toggleDesktopMode() {
-                NavigationHelper.toggleDesktopMode(
-                        MainActivity.this,
-                        getCurrentWebView(),
-                        getCurrentHost(),
-                        () -> Toast.makeText(MainActivity.this,
-                                "No site loaded", Toast.LENGTH_SHORT).show());
-            }
-
-            @Override public boolean isDesktopEnabledForCurrentSite() {
-                return NavigationHelper.isDesktopHostEnabled(
-                        MainActivity.this, getCurrentHost());
-            }
-
-            @Override public void showSavedPasswords() {
-                vaultController.showSavedPasswordsDialog();
-            }
-
-            @Override public void importPasswords() {
-                passwordImportLauncher.launch("text/*");
-            }
-
-            @Override public void exportPasswords() {
-                exportCsvLauncher.launch("spoon_passwords.csv");
-            }
-
-            @Override public void showVaultForCurrentSite() {
-                vaultController.showVaultForCurrentSite();
-            }
-
-            @Override public void toggleStartupAnimation() {
-                toggleStartupAnimationInternal();
-            }
-
-            @Override public void exit() { sessionManager.exitNow(); }
-
-            @Nullable @Override public WebView getCurrentWebView() {
-                return MainActivity.this.getCurrentWebView();
-            }
-
-            @NonNull @Override public Context getContext() { return MainActivity.this; }
-
-            @NonNull @Override public SharedPreferences getPreferences() { return prefs; }
         });
     }
 
-    private void applyTabToToolbar(@Nullable WebView webView, @Nullable TabState state) {
-        String url = webView != null ? webView.getUrl() : null;
-        toolbarController.setAddress(url);
-        toolbarController.setIncognito(state != null && state.isIncognito());
+    private void installBackHandler() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                TabManager tabs = wiring.getTabManager();
+                if (tabs.isTabSwitcherVisible()) {
+                    tabs.hideTabSwitcher();
+                    return;
+                }
+                WebView active = tabs.getCurrentWebView();
+                if (active != null && active.canGoBack()) {
+                    active.goBack();
+                    return;
+                }
+                if (tabs.getTabCount() > 1) {
+                    tabs.closeTab(tabs.getCurrentPosition());
+                } else {
+                    sessionManager.showExitConfirmationDialog();
+                }
+            }
+        });
+    }
 
-        if (webView != null && webView.getUrl() != null) {
-            String host = Uri.parse(webView.getUrl()).getHost();
-            boolean desktop = NavigationHelper.isDesktopHostEnabled(this, host);
-            NavigationHelper.applyDesktopUa(webView, desktop);
+    // ========================================================================
+    // Startup helpers
+    // ========================================================================
+
+    private void loadFilterListsIntoMemory() {
+        String saved = prefs.getString(AdBlockController.KEY_FILTER_LISTS, "");
+        if (!saved.isEmpty()) {
+            for (String line : saved.split("\\n")) {
+                if (!line.isEmpty() && !filterLists.contains(line)) {
+                    filterLists.add(line);
+                }
+            }
+        }
+        if (!filterLists.isEmpty()) {
+            long last = prefs.getLong(AdBlockController.KEY_FILTER_REFRESH_TIME, 0);
+            if (System.currentTimeMillis() - last > 24L * 60 * 60 * 1000) {
+                AdBlockEngine.checkAndRefreshFilters(
+                        this, backgroundExecutor, filterLists, true);
+            }
         }
     }
-
-    private void toggleStartupAnimationInternal() {
-        SharedPreferences sp = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-        boolean enabled = sp.getBoolean("show_splash_screen", true);
-        sp.edit().putBoolean("show_splash_screen", !enabled).apply();
-        Toast.makeText(this,
-                !enabled ? "Startup Animation Enabled" : "Startup Animation Disabled",
-                Toast.LENGTH_SHORT).show();
-    }
-
-    // ========================================================================
-    // Incoming intents
-    // ========================================================================
 
     private void handleIncomingIntent(Intent intent) {
         if (intent == null) return;
 
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
-            if (tabManager.isEmpty()) tabManager.createNewTab();
-            toolbarController.setAddress(urlToLoad);
+            TabManager tabs = wiring.getTabManager();
+            if (tabs.isEmpty()) tabs.createNewTab();
+            wiring.getToolbarController().setAddress(urlToLoad);
             openUrl(urlToLoad);
             setIntent(new Intent());
         } else if (intent.getAction() != null) {
@@ -614,19 +394,39 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // Public API surface used by other files
+    // Public API surface called by other files
     // ========================================================================
 
+    public void openUrl(@Nullable String url) {
+        WebView wv = getCurrentWebView();
+        if (wv == null || url == null) return;
+        NavigationHelper.openUrl(wv, url, this, wiring::getSearchUrlFor);
+    }
+
+    @Nullable public String getCurrentHost() {
+        WebView wv = getCurrentWebView();
+        if (wv == null || wv.getUrl() == null) return null;
+        return Uri.parse(wv.getUrl()).getHost();
+    }
+
+    @Nullable public WebView getCurrentWebView() {
+        return wiring != null ? wiring.getTabManager().getCurrentWebView() : null;
+    }
+
+    @Nullable public TabState getCurrentTabState() {
+        return wiring != null ? wiring.getTabManager().getCurrentTabState() : null;
+    }
+
     public void openUrlInNewTab(String url) {
-        if (tabManager != null) tabManager.openUrlInNewTab(url);
+        if (wiring != null) wiring.getTabManager().openUrlInNewTab(url);
     }
 
     public void handleDeadRenderProcess(WebView deadWebView) {
-        if (tabManager != null) tabManager.handleDeadRenderProcess(deadWebView);
+        if (wiring != null) wiring.getTabManager().handleDeadRenderProcess(deadWebView);
     }
 
     public int getTabCount() {
-        return tabManager != null ? tabManager.getTabCount() : 0;
+        return wiring != null ? wiring.getTabManager().getTabCount() : 0;
     }
 
     public int getBookmarkCount() {
@@ -637,31 +437,57 @@ public class MainActivity extends AppCompatActivity {
         return dbHelper != null ? dbHelper.getHistoryCount() : 0;
     }
 
-    public WebView getCurrentWebView() {
-        return tabManager != null ? tabManager.getCurrentWebView() : null;
-    }
-
-    public TabState getCurrentTabState() {
-        return tabManager != null ? tabManager.getCurrentTabState() : null;
-    }
-
     public void updateTabBadgeCount() {
-        if (tabManager != null) {
-            toolbarController.setTabCounter(
-                    tabManager.getCurrentPosition(), tabManager.getTabCount());
-        }
+        if (wiring == null) return;
+        TabManager tabs = wiring.getTabManager();
+        wiring.getToolbarController().setTabCounter(
+                tabs.getCurrentPosition(), tabs.getTabCount());
     }
 
-    // ---- Delegators for SpoonWebViewClient -----------------------------
+    public void showHome() {
+        if (wiring != null) wiring.showHome();
+    }
+
+    public void showExitConfirmationDialog() {
+        if (sessionManager != null) sessionManager.showExitConfirmationDialog();
+    }
+
+    public void exitBrowser() {
+        if (sessionManager != null) sessionManager.exitNow();
+    }
+
+    public void launchPasswordImport() {
+        if (passwordImportLauncher != null) passwordImportLauncher.launch("text/*");
+    }
+
+    public void launchPasswordExport() {
+        if (exportCsvLauncher != null) exportCsvLauncher.launch("spoon_passwords.csv");
+    }
+
+    public void toggleStartupAnimation() {
+        SharedPreferences sp = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        boolean enabled = sp.getBoolean("show_splash_screen", true);
+        sp.edit().putBoolean("show_splash_screen", !enabled).apply();
+        Toast.makeText(this,
+                !enabled ? "Startup Animation Enabled" : "Startup Animation Disabled",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    public void copyToClipboard(@NonNull String value, @NonNull String message) {
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_copy", value));
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
 
     /** Called by SpoonWebViewClient when a spoonsearch:// link fires. */
     public String getSearchUrlFor(String query) {
-        return menuController != null ? menuController.getSearchUrlFor(query) : "";
+        return wiring != null ? wiring.getSearchUrlFor(query) : "";
     }
 
     /** Called by SpoonWebViewClient when a known file extension is hit. */
     public void triggerManualDownload(String url, String mime) {
-        if (downloadHandler != null) downloadHandler.triggerExternalDownload(url, mime);
+        if (wiring != null) wiring.triggerManualDownload(url, mime);
     }
 
     /** Called by SpoonWebViewClient in onPageStarted to set per-host UA. */
@@ -676,7 +502,19 @@ public class MainActivity extends AppCompatActivity {
 
     /** Called by SpoonWebViewClient in onPageStarted to update the address bar. */
     public void setAddressBarText(String url) {
-        if (toolbarController != null) toolbarController.setAddress(url);
+        if (wiring != null) wiring.getToolbarController().setAddress(url);
+    }
+
+    public void executeSafely(Runnable task) {
+        if (backgroundExecutor != null
+                && !backgroundExecutor.isShutdown()
+                && !backgroundExecutor.isTerminated()) {
+            try {
+                backgroundExecutor.execute(task);
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     // ========================================================================
@@ -684,7 +522,8 @@ public class MainActivity extends AppCompatActivity {
     // ========================================================================
 
     public void setToolbarVisible(boolean visible) {
-        View bar = toolbarController.getRootView();
+        if (wiring == null) return;
+        View bar = wiring.getToolbarController().getRootView();
         if (bar != null) bar.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
@@ -726,80 +565,6 @@ public class MainActivity extends AppCompatActivity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         } else {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        }
-    }
-
-    public void executeSafely(Runnable task) {
-        if (backgroundExecutor != null
-                && !backgroundExecutor.isShutdown()
-                && !backgroundExecutor.isTerminated()) {
-            try {
-                backgroundExecutor.execute(task);
-            } catch (java.util.concurrent.RejectedExecutionException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    // ========================================================================
-    // Navigation
-    // ========================================================================
-
-    public void openUrl(String url) {
-        WebView wv = getCurrentWebView();
-        if (wv == null || url == null) return;
-        NavigationHelper.openUrl(wv, url, this, menuController::getSearchUrlFor);
-    }
-
-    private String getCurrentHost() {
-        WebView wv = getCurrentWebView();
-        if (wv == null || wv.getUrl() == null) return null;
-        return Uri.parse(wv.getUrl()).getHost();
-    }
-
-    // ========================================================================
-    // Startup helpers
-    // ========================================================================
-
-    private void loadFilterListsIntoMemory() {
-        String saved = prefs.getString(AdBlockController.KEY_FILTER_LISTS, "");
-        if (!saved.isEmpty()) {
-            for (String line : saved.split("\\n")) {
-                if (!line.isEmpty() && !filterLists.contains(line)) {
-                    filterLists.add(line);
-                }
-            }
-        }
-        if (!filterLists.isEmpty()) {
-            long last = prefs.getLong(AdBlockController.KEY_FILTER_REFRESH_TIME, 0);
-            if (System.currentTimeMillis() - last > 24L * 60 * 60 * 1000) {
-                AdBlockEngine.checkAndRefreshFilters(
-                        this, backgroundExecutor, filterLists, true);
-            }
-        }
-    }
-
-    // ========================================================================
-    // Home page
-    // ========================================================================
-
-    private void showHome() {
-        WebView wv = getCurrentWebView();
-        if (wv == null || homePageRenderer == null) return;
-        homePageRenderer.render(wv, getResources().getConfiguration().screenWidthDp);
-    }
-
-    // ========================================================================
-    // Utilities
-    // ========================================================================
-
-    private void openSystemDownloads() {
-        try {
-            Intent intent = new Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        } catch (android.content.ActivityNotFoundException e) {
-            Toast.makeText(this, "No download manager found", Toast.LENGTH_SHORT).show();
         }
     }
 }
