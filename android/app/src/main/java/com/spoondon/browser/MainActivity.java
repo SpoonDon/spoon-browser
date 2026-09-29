@@ -9,7 +9,6 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,13 +29,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.webkit.WebViewCompat;
-import androidx.webkit.WebViewFeature;
 
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -48,13 +42,11 @@ import java.util.concurrent.Executors;
  * Post-refactor responsibilities (this file only):
  *   - Wire collaborators together.
  *   - Own the Activity-level lifecycle (onCreate/onPause/onStop/onDestroy).
- *   - Own the WebView factory (config + bridge injection).
- *   - Own the home page HTML.
+ *   - Own the layout skeleton (root / toolbar / browserWrapper / progressBar).
  *   - Expose the small public surface required by SpoonWebChromeClient,
- *     SpoonWebViewClient, MenuController, TabManager, and ToolbarController.
+ *     SpoonWebViewClient, MenuController, and TabManager.
  *
- * Everything else lives in a dedicated collaborator. See REFACTORING.md
- * for the full slice plan.
+ * Everything else lives in a dedicated collaborator.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -78,6 +70,9 @@ public class MainActivity extends AppCompatActivity {
     private VaultController vaultController;
     private AdBlockController adBlockController;
     private DownloadHandler downloadHandler;
+    private WebViewFactory webViewFactory;
+    private HomePageRenderer homePageRenderer;
+    private SuggestionProvider suggestionProvider;
 
     // ------------------------------------------------------------------------
     // View fields
@@ -105,10 +100,6 @@ public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<String> exportCsvLauncher;
 
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
-    private final HashSet<String> blockedDomains = new HashSet<>();
-    private final HashSet<String> rawFilterRules = new HashSet<>();
-
-    private String cachedHomeHtml = null;
 
     // Clipboard auto-clear (vault protection).
     private ClipboardManager clipboardManager;
@@ -377,7 +368,7 @@ public class MainActivity extends AppCompatActivity {
     // ========================================================================
 
     private void buildAndWireControllers() {
-        // ---- ToolbarController (references tabManager lazily via `this`) ---
+        // ---- ToolbarController ---------------------------------------------
         toolbarController = new ToolbarController(this, new ToolbarController.Callbacks() {
             @Override public void onNavigate(@NonNull String input) { openUrl(input); }
 
@@ -412,7 +403,7 @@ public class MainActivity extends AppCompatActivity {
 
             @NonNull @Override
             public List<ToolbarController.Suggestion> fetchSuggestions(@NonNull String query) {
-                return fetchSuggestionsInternal(query);
+                return suggestionProvider.fetch(query);
             }
 
             @NonNull @Override public Executor getBackgroundExecutor() {
@@ -420,10 +411,23 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // ---- DownloadHandler (referenced by WebViewFactory) ----------------
+        downloadHandler = new DownloadHandler(this, this::getCurrentWebView);
+
+        // ---- WebViewFactory -----------------------------------------------
+        webViewFactory = new WebViewFactory(
+                this, secureCredentialManager, permissionController, downloadHandler);
+
+        // ---- HomePageRenderer ---------------------------------------------
+        homePageRenderer = new HomePageRenderer();
+
+        // ---- SuggestionProvider -------------------------------------------
+        suggestionProvider = new SuggestionProvider(dbHelper);
+
         // ---- TabManager ----------------------------------------------------
         tabManager = new TabManager(this, browserContainer, new TabManager.Callbacks() {
             @NonNull @Override public WebView createConfiguredWebView() {
-                return MainActivity.this.createConfiguredWebView();
+                return webViewFactory.create();
             }
 
             @Override public void onCurrentTabChanged(@Nullable WebView webView,
@@ -479,9 +483,6 @@ public class MainActivity extends AppCompatActivity {
         // ---- AdBlockController --------------------------------------------
         adBlockController = new AdBlockController(
                 this, filterLists, backgroundExecutor, prefs);
-
-        // ---- DownloadHandler (attached to each WebView on creation) -------
-        downloadHandler = new DownloadHandler(this, this::getCurrentWebView);
 
         // ---- MenuController -----------------------------------------------
         menuController = new MenuController(this, prefs, new MenuController.Callbacks() {
@@ -779,296 +780,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // WebView factory
-    // ========================================================================
-
-    private void configureWebSettings(android.webkit.WebSettings settings) {
-        if (settings == null) return;
-
-        settings.setJavaScriptEnabled(true);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setSaveFormData(true);
-
-        android.net.ConnectivityManager connMgr =
-                (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (connMgr != null && connMgr.isActiveNetworkMetered()) {
-            settings.setBlockNetworkImage(true);
-            settings.setCacheMode(android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK);
-        } else {
-            settings.setBlockNetworkImage(false);
-            settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
-        }
-
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(false);
-        settings.setAllowUniversalAccessFromFileURLs(false);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            settings.setLayoutAlgorithm(
-                    android.webkit.WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
-        }
-        settings.setSupportZoom(true);
-        settings.setBuiltInZoomControls(true);
-        settings.setDisplayZoomControls(false);
-        settings.setGeolocationEnabled(false);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(false);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(
-                    android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            settings.setSafeBrowsingEnabled(true);
-        }
-
-        try {
-            android.webkit.CookieManager.getInstance().setAcceptCookie(true);
-        } catch (Exception ignored) {
-        }
-
-        settings.setUserAgentString(NavigationHelper.MOBILE_UA);
-        settings.setUseWideViewPort(false);
-        settings.setLoadWithOverviewMode(false);
-
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-            androidx.webkit.WebSettingsCompat.setForceDark(
-                    settings, androidx.webkit.WebSettingsCompat.FORCE_DARK_ON);
-        }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
-            androidx.webkit.WebSettingsCompat.setForceDarkStrategy(settings,
-                    androidx.webkit.WebSettingsCompat
-                            .DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING);
-        }
-    }
-
-    private View.OnLongClickListener createImageLongClickListener(WebView webView) {
-        return v -> {
-            WebView.HitTestResult result = webView.getHitTestResult();
-            if (result != null
-                    && (result.getType() == WebView.HitTestResult.IMAGE_TYPE
-                        || result.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(result.getExtra())));
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Cannot download image",
-                            Toast.LENGTH_SHORT).show();
-                }
-                return true;
-            }
-            return false;
-        };
-    }
-
-    @NonNull
-    private WebView createConfiguredWebView() {
-        WebView webView = new WebView(this);
-        LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        webView.setLayoutParams(webParams);
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-
-        android.webkit.WebSettings ws = webView.getSettings();
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            ws.setMediaPlaybackRequiresUserGesture(false);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            ws.setOffscreenPreRaster(true);
-        }
-        ws.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
-        ws.setLoadsImagesAutomatically(true);
-        ws.setBlockNetworkImage(false);
-
-        configureWebSettings(ws);
-
-        ws.setDomStorageEnabled(true);
-        ws.setDatabaseEnabled(true);
-        ws.setJavaScriptEnabled(true);
-        ws.setUseWideViewPort(true);
-        ws.setLoadWithOverviewMode(true);
-        ws.setLayoutAlgorithm(android.webkit.WebSettings.LayoutAlgorithm.NORMAL);
-        ws.setAllowFileAccess(true);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            ws.setAllowFileAccessFromFileURLs(false);
-            ws.setAllowUniversalAccessFromFileURLs(false);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            ws.setMixedContentMode(
-                    android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        }
-
-        String currentUa = ws.getUserAgentString();
-        if (currentUa != null) {
-            currentUa = currentUa.replace("; wv", "");
-            currentUa = currentUa.replaceFirst("Version/[0-9.]+\\s", "");
-            ws.setUserAgentString(currentUa);
-        }
-
-        try {
-            android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
-            cm.setAcceptCookie(true);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                cm.setAcceptThirdPartyCookies(webView, false);
-            }
-        } catch (Exception ignored) {
-        }
-
-        webView.setOnLongClickListener(createImageLongClickListener(webView));
-        webView.setWebViewClient(new SpoonWebViewClient(this));
-        webView.setWebChromeClient(new SpoonWebChromeClient(this, permissionController));
-
-        webView.addJavascriptInterface(new BlobDownloader(this), "AndroidDownloader");
-        webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
-
-        downloadHandler.attach(webView);
-
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            Set<String> allowedOrigins = java.util.Collections.singleton("*");
-            WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
-                    (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
-                try {
-                    String currentUrl = view.getUrl();
-                    if (currentUrl == null
-                            || !currentUrl.startsWith("file:///android_asset/vault.html")) {
-                        return;
-                    }
-                    String msg = message.getData();
-
-                    if ("FETCH_ALL_VAULT_DATA".equals(msg)) {
-                        String all = secureCredentialManager.getAllCredentialsAsJson();
-                        replyProxy.postMessage(all != null ? all : "[]");
-                    } else if (msg != null && msg.startsWith("{")) {
-                        org.json.JSONObject obj = new org.json.JSONObject(msg);
-                        String action = obj.optString("action");
-                        String host = obj.optString("host");
-                        String user = obj.optString("username");
-
-                        if ("SAVE_LOGIN".equals(action)) {
-                            secureCredentialManager.saveCredentials(
-                                    host, user, obj.optString("password"));
-                        } else if ("DELETE_LOGIN".equals(action)) {
-                            secureCredentialManager.deleteCredentials(host, user);
-                        }
-                    }
-                } catch (Exception ignored) {
-                }
-            });
-        }
-
-        ViewCompat.setNestedScrollingEnabled(webView, true);
-        return webView;
-    }
-
-    // ========================================================================
     // Home page
     // ========================================================================
 
     private void showHome() {
-        if (cachedHomeHtml == null) {
-            float widthDp = getResources().getConfiguration().screenWidthDp;
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("<html><body style='margin:0;background:#000;color:white;")
-              .append("font-family:sans-serif;text-align:center;'>")
-              .append("<div style='padding-top:20%;'>")
-              .append("<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>");
-
-            if (widthDp >= 600) {
-                sb.append("<input id='q' type='text' placeholder='Search privately...' ")
-                  .append("style='width:72%;padding:20px;border:none;border-radius:18px;")
-                  .append("background:#1f1f1f;color:white;font-size:18px;outline:none;'/>");
-            }
-
-            sb.append("</div><script>")
-              .append("function goSearch(){")
-              .append("var el=document.getElementById('q');var q=el.value;")
-              .append("if(!q)return;el.blur();el.value='';el.placeholder='Searching...';")
-              .append("window.location.href='spoonsearch://'+encodeURIComponent(q);}")
-              .append("var el=document.getElementById('q');")
-              .append("if(el){el.addEventListener('keydown',function(e){")
-              .append("if(e.key==='Enter'){goSearch();}});}")
-              .append("</script></body></html>");
-
-            cachedHomeHtml = sb.toString();
-        }
-
         WebView wv = getCurrentWebView();
-        if (wv != null) {
-            wv.loadDataWithBaseURL("about:blank", cachedHomeHtml, "text/html", "UTF-8", null);
-        }
-    }
-
-    // ========================================================================
-    // Autocomplete suggestions
-    // ========================================================================
-
-    @NonNull
-    private List<ToolbarController.Suggestion> fetchSuggestionsInternal(@NonNull String query) {
-        List<ToolbarController.Suggestion> result = new ArrayList<>();
-        if (query.isEmpty() || dbHelper == null) return result;
-
-        List<String[]> rawResults = dbHelper.getMatchingHistory(query);
-        Set<String> addedUrls = new HashSet<>();
-        Set<String> addedHosts = new HashSet<>();
-
-        // Pass 1: distinct hosts that match the query string.
-        String lowerQuery = query.toLowerCase();
-        for (String[] row : rawResults) {
-            try {
-                Uri uri = Uri.parse(row[0]);
-                String host = uri.getHost();
-                if (host == null) continue;
-                String cleanHost = host.replaceFirst("^www\\.", "");
-                if (cleanHost.toLowerCase().contains(lowerQuery)
-                        && !addedHosts.contains(cleanHost)) {
-                    result.add(new ToolbarController.Suggestion(cleanHost, cleanHost));
-                    addedHosts.add(cleanHost);
-                    addedUrls.add(cleanHost);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // Pass 2: up to three deep-link history entries.
-        int deepLinks = 0;
-        for (String[] row : rawResults) {
-            if (deepLinks >= 3) break;
-            String rawUrl = row[0];
-            String title = (row[1] != null && !row[1].isEmpty()) ? row[1] : rawUrl;
-            String display = rawUrl.replaceFirst("^https?://(www\\.)?", "");
-            if (!addedUrls.contains(display) && !addedHosts.contains(display)) {
-                result.add(new ToolbarController.Suggestion(title, display));
-                addedUrls.add(display);
-                deepLinks++;
-            }
-        }
-
-        return result;
-    }
-
-    // ========================================================================
-    // JS bridge (SpoonVault)
-    // ========================================================================
-
-    /**
-     * Only exposes saveCredentials. getUsername / getPassword were removed —
-     * addJavascriptInterface is NOT origin-scoped, so any page in any WebView
-     * could read stored credentials for any host. The vault UI reads them
-     * via the WebMessageListener, which is restricted to vault.html.
-     */
-    private class PasswordAutosaveBridge {
-        @android.webkit.JavascriptInterface
-        public void saveCredentials(String host, String username, String password) {
-            if (secureCredentialManager != null) {
-                secureCredentialManager.saveCredentials(host, username, password);
-            }
-        }
+        if (wv == null || homePageRenderer == null) return;
+        homePageRenderer.render(wv, getResources().getConfiguration().screenWidthDp);
     }
 
     // ========================================================================
