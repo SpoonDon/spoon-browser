@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -17,7 +16,6 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
-import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -653,6 +651,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ---- Delegators for SpoonWebViewClient -----------------------------
+
+    /** Called by SpoonWebViewClient when a spoonsearch:// link fires. */
+    public String getSearchUrlFor(String query) {
+        return menuController != null ? menuController.getSearchUrlFor(query) : "";
+    }
+
+    /** Called by SpoonWebViewClient when a known file extension is hit. */
+    public void triggerManualDownload(String url, String mime) {
+        if (downloadHandler != null) downloadHandler.triggerExternalDownload(url, mime);
+    }
+
+    /** Called by SpoonWebViewClient in onPageStarted to set per-host UA. */
+    public boolean isDesktopHostEnabled(String host) {
+        return NavigationHelper.isDesktopHostEnabled(this, host);
+    }
+
+    /** Called by SpoonWebViewClient for background history writes. */
+    public ExecutorService getBackgroundExecutor() {
+        return backgroundExecutor;
+    }
+
+    /** Called by SpoonWebViewClient in onPageStarted to update the address bar. */
+    public void setAddressBarText(String url) {
+        if (toolbarController != null) toolbarController.setAddress(url);
+    }
+
     // ========================================================================
     // Fullscreen video support (called by SpoonWebChromeClient)
     // ========================================================================
@@ -1058,10 +1083,5 @@ public class MainActivity extends AppCompatActivity {
         } catch (android.content.ActivityNotFoundException e) {
             Toast.makeText(this, "No download manager found", Toast.LENGTH_SHORT).show();
         }
-    }
-
-    private int dp(int value) {
-        return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics());
     }
 }

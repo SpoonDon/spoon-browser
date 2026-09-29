@@ -204,8 +204,9 @@ public class SpoonWebViewClient extends WebViewClient {
             android.webkit.CookieManager.getInstance().flush();
         }
 
-        if (view == activity.getCurrentWebView() && activity.addressBar != null) {
-            activity.addressBar.setText((url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
+        if (view == activity.getCurrentWebView()) {
+            activity.setAddressBarText(
+                    (url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
         }
 
         if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
@@ -266,7 +267,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 final String finalUrl = cleanUrl(url);
                 final String finalTitle = view.getTitle();
 
-                activity.backgroundExecutor.execute(() -> {
+                activity.getBackgroundExecutor().execute(() -> {
                     try {
                         activity.dbHelper.addHistory(finalUrl, finalTitle);
                     } catch (Exception ignored) {}
