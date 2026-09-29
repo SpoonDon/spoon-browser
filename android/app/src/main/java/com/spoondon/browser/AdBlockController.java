@@ -16,7 +16,7 @@ import androidx.annotation.Nullable;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 
 /**
  * All ad-block UI: filter-list subscription dialog, subscribed-list viewer,
@@ -27,6 +27,10 @@ import java.util.concurrent.Executor;
  * The {@code filterLists} reference is shared with MainActivity; mutations
  * here are visible there and vice versa. It is a CopyOnWriteArrayList so
  * iteration is safe from any thread.
+ *
+ * NOTE: the executor must be an ExecutorService (not just Executor) because
+ * AdBlockEngine.checkAndRefreshFilters / removeFilterList / clearAllFilterLists
+ * all require ExecutorService.
  */
 public class AdBlockController {
 
@@ -35,12 +39,12 @@ public class AdBlockController {
 
     private final MainActivity activity;
     private final CopyOnWriteArrayList<String> filterLists;
-    private final Executor backgroundExecutor;
+    private final ExecutorService backgroundExecutor;
     private final SharedPreferences prefs;
 
     public AdBlockController(@NonNull MainActivity activity,
                              @NonNull CopyOnWriteArrayList<String> filterLists,
-                             @NonNull Executor backgroundExecutor,
+                             @NonNull ExecutorService backgroundExecutor,
                              @NonNull SharedPreferences prefs) {
         this.activity = activity;
         this.filterLists = filterLists;
