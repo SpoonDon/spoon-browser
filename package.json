@@ -1,0 +1,21 @@
+{
+  "name": "spoon-browser",
+  "version": "3.2.4",
+  "private": true,
+  "description": "Privacy-focused native Android web browser",
+  "scripts": {
+    "sync": "cap sync android",
+    "build:android": "cd android && ./gradlew assembleDebug",
+    "build:release": "cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/core": "^8.4.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
