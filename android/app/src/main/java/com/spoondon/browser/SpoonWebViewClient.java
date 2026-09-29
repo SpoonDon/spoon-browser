@@ -88,29 +88,18 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
-        if (url.startsWith("http://") && !url.contains("localhost") && !url.contains("10.0.2.2")) {
-            try {
-                String remaining = url.substring(7);
-                int slashIndex = remaining.indexOf("/");
-                String rawHost = (slashIndex != -1) ? remaining.substring(0, slashIndex) : remaining;
-                if (rawHost.contains(":")) {
-                    rawHost = rawHost.split(":")[0];
-                }
-                rawHost = rawHost.trim().toLowerCase();
-
-                boolean isIpAddress = rawHost.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$");
-                boolean isLocalRouter = rawHost.endsWith("tplinkwifi.net") ||
-                        rawHost.endsWith("routerlogin.net") ||
-                        rawHost.endsWith("tendawifi.com") ||
-                        rawHost.endsWith("asusrouter.com") ||
-                        rawHost.endsWith("mwlogin.net") ||
-                        rawHost.endsWith("pi.hole") ||
-                        rawHost.endsWith(".local");
-
-                if (isIpAddress || isLocalRouter) {
-                    return false;
-                }
-            } catch (Exception ignored) {}
+        // Security batch A — cleartext policy.
+        // If the host is on the whitelist (routers, localhost, emulator host,
+        // mDNS), let the WebView load it over http:// — those servers cannot
+        // be upgraded to https://. Everything else gets rewritten to https://.
+        // The whitelist lives in CleartextPolicy.java and mirrors
+        // res/xml/network_security_config.xml, which is what the platform
+        // actually enforces at the network layer.
+        if (url.startsWith("http://")) {
+            String rawHost = extractHostFromHttpUrl(url);
+            if (CleartextPolicy.isCleartextAllowed(rawHost)) {
+                return false;
+            }
 
             String secureUrl = url.replace("http://", "https://");
             view.loadUrl(secureUrl);
@@ -169,6 +158,24 @@ public class SpoonWebViewClient extends WebViewClient {
         }
 
         return false;
+    }
+
+    /**
+     * Pulls the host component out of an http:// URL, stripping any port
+     * and lowercase-trimming. Returns "" if the URL is malformed.
+     */
+    private static String extractHostFromHttpUrl(String url) {
+        try {
+            String remaining = url.substring("http://".length());
+            int slashIndex = remaining.indexOf('/');
+            String rawHost = (slashIndex != -1) ? remaining.substring(0, slashIndex) : remaining;
+            if (rawHost.contains(":")) {
+                rawHost = rawHost.split(":")[0];
+            }
+            return rawHost.trim();
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     @Override
@@ -455,26 +462,17 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @Override
     public void onReceivedSslError(android.webkit.WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+        // Security batch A — SSL bypass is now scoped to the same whitelist
+        // as cleartext. Router admin panels serve self-signed certs; nothing
+        // else gets to proceed through an SSL error.
         String url = error.getUrl();
         if (url != null) {
             try {
                 android.net.Uri uri = android.net.Uri.parse(url);
                 String host = uri.getHost();
-                if (host != null) {
-                    host = host.toLowerCase();
-                    boolean isIpAddress = host.matches("^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$");
-                    boolean isLocalRouter = host.endsWith("tplinkwifi.net") ||
-                            host.endsWith("routerlogin.net") ||
-                            host.endsWith("tendawifi.com") ||
-                            host.endsWith("asusrouter.com") ||
-                            host.endsWith("mwlogin.net") ||
-                            host.endsWith("pi.hole") ||
-                            host.endsWith(".local");
-
-                    if (isIpAddress || isLocalRouter) {
-                        handler.proceed();
-                        return;
-                    }
+                if (CleartextPolicy.isCleartextAllowed(host)) {
+                    handler.proceed();
+                    return;
                 }
             } catch (Exception ignored) {}
         }

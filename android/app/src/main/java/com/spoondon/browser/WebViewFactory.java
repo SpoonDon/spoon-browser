@@ -28,9 +28,10 @@ import java.util.Set;
  *   - Long-press image handling
  *
  * Extracted from MainActivity (god-object split, slice 6).
- *
- * NOTE: SpoonWebViewClient still takes a MainActivity reference. Narrowing
- * that coupling to a Host interface is a separate follow-up.
+ * Security batch A (2026-09-30): MIXED_CONTENT_COMPATIBILITY_MODE →
+ * MIXED_CONTENT_NEVER_ALLOW. Cleartext is now enforced at the network
+ * layer via res/xml/network_security_config.xml; this setting makes the
+ * intent explicit and closes the https→http subresource path.
  */
 public class WebViewFactory {
 
@@ -92,7 +93,8 @@ public class WebViewFactory {
             ws.setAllowUniversalAccessFromFileURLs(false);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            ws.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            // Security batch A — was COMPATIBILITY_MODE, now NEVER_ALLOW.
+            ws.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
 
         String currentUa = ws.getUserAgentString();
@@ -168,7 +170,8 @@ public class WebViewFactory {
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            // Security batch A — NEVER_ALLOW, mirrors the NSC base-config.
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true);
