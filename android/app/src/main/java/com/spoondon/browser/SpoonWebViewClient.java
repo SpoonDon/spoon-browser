@@ -14,11 +14,14 @@ import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.webkit.WebViewAssetLoader;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class SpoonWebViewClient extends WebViewClient {
     private final MainActivity activity;
@@ -32,14 +35,17 @@ public class SpoonWebViewClient extends WebViewClient {
         this.assetLoader = assetLoader;
     }
 
+    // ------------------------------------------------------------------------
+    // AdBlock interception
+    // ------------------------------------------------------------------------
+
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // Asset loader first — vault.html (and any future bundled asset)
-            // is served from the synthetic HTTPS origin, never from the
-            // network. AdBlock must not see or block these requests.
-            WebResourceResponse assetResponse =
-                    assetLoader.shouldInterceptRequest(request.getUrl());
+            // 1. Asset loader first — vault.html (and any future bundled asset)
+            //    is served from the synthetic HTTPS origin, never from the
+            //    network. AdBlock must not see or block these requests.
+            WebResourceResponse assetResponse = assetLoader.shouldInterceptRequest(request.getUrl());
             if (assetResponse != null) {
                 return assetResponse;
             }
@@ -51,7 +57,7 @@ public class SpoonWebViewClient extends WebViewClient {
             String url = request.getUrl().toString();
             String host = request.getUrl().getHost();
             if (host != null) {
-                String lowerHost = host.toLowerCase();
+                String lowerHost = host.toLowerCase(Locale.ROOT);
                 if (lowerHost.contains("youtube.com") ||
                         lowerHost.contains("googlevideo.com") ||
                         lowerHost.contains("search.brave.com") ||
@@ -60,7 +66,12 @@ public class SpoonWebViewClient extends WebViewClient {
                 }
             }
 
-            if (AdBlockEngine.shouldBlock(url)) {
+            // Compute resource type + source host so $script, $domain=,
+            // and $third-party rules can match. See AdBlockEngine batch C.
+            int resourceType = classifyResource(request);
+            String sourceHost = extractSourceHost(view);
+
+            if (AdBlockEngine.shouldBlock(url, resourceType, sourceHost)) {
                 return new WebResourceResponse(
                         "text/plain",
                         "UTF-8",
@@ -71,10 +82,48 @@ public class SpoonWebViewClient extends WebViewClient {
         return super.shouldInterceptRequest(view, request);
     }
 
+    @Nullable
+    private static String extractSourceHost(@Nullable WebView view) {
+        if (view == null) return null;
+        String topUrl = view.getUrl();
+        if (topUrl == null) return null;
+        try {
+            return Uri.parse(topUrl).getHost();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Best-effort resource type from the request headers. WebResourceRequest
+     * does not expose a resource type directly — we infer from Accept: and
+     * from whether this is a subframe.
+     */
+    private static int classifyResource(WebResourceRequest request) {
+        if (request.isForMainFrame()) return AdBlockEngine.TYPE_DOCUMENT;
+
+        Map<String, String> headers = request.getRequestHeaders();
+        String accept = headers != null ? headers.get("Accept") : null;
+        if (accept == null) return AdBlockEngine.TYPE_OTHER;
+
+        String a = accept.toLowerCase(Locale.ROOT);
+        if (a.startsWith("text/css") || a.contains("text/css")) return AdBlockEngine.TYPE_STYLESHEET;
+        if (a.startsWith("image/")) return AdBlockEngine.TYPE_IMAGE;
+        if (a.contains("javascript")) return AdBlockEngine.TYPE_SCRIPT;
+        if (a.startsWith("font/") || a.contains("font/")) return AdBlockEngine.TYPE_FONT;
+        if (a.startsWith("video/") || a.startsWith("audio/")) return AdBlockEngine.TYPE_MEDIA;
+        if (a.contains("json") || a.contains("xml")) return AdBlockEngine.TYPE_XHR;
+        if (a.startsWith("text/html")) return AdBlockEngine.TYPE_SUBDOCUMENT;
+        return AdBlockEngine.TYPE_OTHER;
+    }
+
+    // ------------------------------------------------------------------------
+    // URL loading
+    // ------------------------------------------------------------------------
+
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        String url = request.getUrl().toString();
-        return handleUrlLoading(view, url);
+        return handleUrlLoading(view, request.getUrl().toString());
     }
 
     @SuppressWarnings("deprecation")
@@ -86,12 +135,7 @@ public class SpoonWebViewClient extends WebViewClient {
     private boolean handleUrlLoading(WebView view, String url) {
         if (url == null) return false;
 
-        // Vault URL must pass through untouched — its "https" origin is
-        // synthetic, and the http→https rewrite below would be a no-op,
-        // but we short-circuit to make the intent explicit.
-        if (VaultUrls.isVaultUrl(url)) {
-            return false;
-        }
+        if (VaultUrls.isVaultUrl(url)) return false;
 
         url = cleanUrl(url);
 
@@ -103,9 +147,11 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
-        String cleanUrl = url.split("\\?")[0].split("#")[0].toLowerCase();
+        String cleanUrl = url.split("\\?")[0].split("#")[0].toLowerCase(Locale.ROOT);
         if (cleanUrl.matches(".*\\.(mp4|webm|mkv|avi|mov|flv|wmv|ts|png|jpg|jpeg|gif|webp|apk|zip|rar|7z|pdf|iso)$")) {
-            String mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(android.webkit.MimeTypeMap.getFileExtensionFromUrl(cleanUrl));
+            String mime = android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(
+                            android.webkit.MimeTypeMap.getFileExtensionFromUrl(cleanUrl));
             if (mime == null) mime = "application/octet-stream";
             activity.triggerManualDownload(url, mime);
             return true;
@@ -125,8 +171,7 @@ public class SpoonWebViewClient extends WebViewClient {
         if (url.contains(" ") && (url.contains("http://") || url.contains("https://"))) {
             int httpIndex = url.indexOf("http");
             if (httpIndex != -1) {
-                String finalUrl = url.substring(httpIndex).trim();
-                view.loadUrl(finalUrl);
+                view.loadUrl(url.substring(httpIndex).trim());
                 return true;
             }
         }
@@ -136,20 +181,21 @@ public class SpoonWebViewClient extends WebViewClient {
                 android.content.Context context = view.getContext();
                 Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
-                    if (intent.getPackage() != null && intent.getPackage().equals(context.getPackageName())) {
+                    if (intent.getPackage() != null
+                            && intent.getPackage().equals(context.getPackageName())) {
                         return true;
                     }
-
-                    android.content.pm.PackageManager packageManager = context.getPackageManager();
-                    android.content.pm.ResolveInfo info = packageManager.resolveActivity(
+                    android.content.pm.PackageManager pm = context.getPackageManager();
+                    android.content.pm.ResolveInfo info = pm.resolveActivity(
                             intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
-
                     if (info != null) {
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
                     } else {
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
-                        if (fallbackUrl != null && (fallbackUrl.startsWith("http://") || fallbackUrl.startsWith("https://"))) {
+                        if (fallbackUrl != null
+                                && (fallbackUrl.startsWith("http://")
+                                    || fallbackUrl.startsWith("https://"))) {
                             view.loadUrl(fallbackUrl);
                         }
                     }
@@ -183,14 +229,16 @@ public class SpoonWebViewClient extends WebViewClient {
             String remaining = url.substring("http://".length());
             int slashIndex = remaining.indexOf('/');
             String rawHost = (slashIndex != -1) ? remaining.substring(0, slashIndex) : remaining;
-            if (rawHost.contains(":")) {
-                rawHost = rawHost.split(":")[0];
-            }
+            if (rawHost.contains(":")) rawHost = rawHost.split(":")[0];
             return rawHost.trim();
         } catch (Exception e) {
             return "";
         }
     }
+
+    // ------------------------------------------------------------------------
+    // Page lifecycle
+    // ------------------------------------------------------------------------
 
     @Override
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
@@ -199,30 +247,26 @@ public class SpoonWebViewClient extends WebViewClient {
         boolean vaultPage = VaultUrls.isVaultUrl(url);
 
         if (activity.swipeRefresh != null && url != null) {
-            String lowerUrl = url.toLowerCase();
-
+            String lowerUrl = url.toLowerCase(Locale.ROOT);
             boolean isSpaSite = lowerUrl.contains("youtube.com") ||
-                        lowerUrl.contains("twitter.com") ||
-                        lowerUrl.contains("x.com") ||
-                        lowerUrl.contains("reddit.com") ||
-                        lowerUrl.contains("instagram.com");
-
-            // Vault is local-only — no refresh gesture.
+                    lowerUrl.contains("twitter.com") ||
+                    lowerUrl.contains("x.com") ||
+                    lowerUrl.contains("reddit.com") ||
+                    lowerUrl.contains("instagram.com");
             activity.swipeRefresh.setEnabled(!isSpaSite && !vaultPage);
         }
-
         injectBlobHook(view);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             String gpcScript = "javascript:(function() { " +
-                "try { " +
-                "  Object.defineProperty(navigator, 'globalPrivacyControl', { " +
-                "    get: function() { return true; }, " +
-                "    configurable: false, " +
-                "    enumerable: true " +
-                "  }); " +
-                "} catch(e) {} " +
-                "})();";
+                    "try { " +
+                    "  Object.defineProperty(navigator, 'globalPrivacyControl', { " +
+                    "    get: function() { return true; }, " +
+                    "    configurable: false, " +
+                    "    enumerable: true " +
+                    "  }); " +
+                    "} catch(e) {} " +
+                    "})();";
             view.evaluateJavascript(gpcScript, null);
         }
 
@@ -239,18 +283,22 @@ public class SpoonWebViewClient extends WebViewClient {
             String host = Uri.parse(url).getHost();
             if (host != null) {
                 boolean desktop = activity.isDesktopHostEnabled(host);
-
                 if (desktop) {
-                    view.getSettings().setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+                    view.getSettings().setUserAgentString(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                    + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
                     view.getSettings().setLoadWithOverviewMode(true);
                     view.getSettings().setUseWideViewPort(true);
                 } else {
                     String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(activity);
                     if (defaultUA != null) {
-                        defaultUA = defaultUA.replace("; wv", "").replaceFirst("Version/[0-9.]+\\s", "");
+                        defaultUA = defaultUA.replace("; wv", "")
+                                .replaceFirst("Version/[0-9.]+\\s", "");
                         view.getSettings().setUserAgentString(defaultUA);
                     } else {
-                        view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+                        view.getSettings().setUserAgentString(
+                                "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 "
+                                        + "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
                     }
                     view.getSettings().setLoadWithOverviewMode(false);
                     view.getSettings().setUseWideViewPort(false);
@@ -265,7 +313,6 @@ public class SpoonWebViewClient extends WebViewClient {
         super.doUpdateVisitedHistory(view, url, isReload);
         injectBlobHook(view);
 
-        // Never record the vault URL in history.
         if (VaultUrls.isVaultUrl(url)) return;
 
         if (activity.getCurrentTabState() != null && activity.getCurrentTabState().isIncognito()) {
@@ -277,18 +324,18 @@ public class SpoonWebViewClient extends WebViewClient {
             Uri currentUri = Uri.parse(url);
             Uri lastUri = Uri.parse(lastRecordedHistoryUrl);
 
-            String currentHost = currentUri.getHost() != null ? currentUri.getHost().replaceFirst("^www\\.", "") : "";
+            String currentHost = currentUri.getHost() != null
+                    ? currentUri.getHost().replaceFirst("^www\\.", "") : "";
             String currentPath = currentUri.getPath() != null ? currentUri.getPath() : "";
-            String lastHost = lastUri.getHost() != null ? lastUri.getHost().replaceFirst("^www\\.", "") : "";
+            String lastHost = lastUri.getHost() != null
+                    ? lastUri.getHost().replaceFirst("^www\\.", "") : "";
             String lastPath = lastUri.getPath() != null ? lastUri.getPath() : "";
 
             boolean isSameCorePage = currentHost.equals(lastHost) && currentPath.equals(lastPath);
             boolean isRapidFire = (currentTime - lastRecordedHistoryTime) < 1500;
 
             if (activity.dbHelper != null) {
-                if (isSameCorePage && isRapidFire) {
-                    return;
-                }
+                if (isSameCorePage && isRapidFire) return;
 
                 lastRecordedHistoryUrl = url;
                 lastRecordedHistoryTime = currentTime;
@@ -342,23 +389,23 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public void onPageFinished(WebView view, String url) {
         String webrtcSanitizer = "javascript:(function() {" +
-            "if (window.RTCPeerConnection) {" +
-            "  var OrigPC = window.RTCPeerConnection;" +
-            "  window.RTCPeerConnection = function(config, constraints) {" +
-            "    var pc = new OrigPC(config, constraints);" +
-            "    var origCreateOffer = pc.createOffer;" +
-            "    pc.createOffer = function(opts) {" +
-            "      return origCreateOffer.call(pc, opts).then(function(offer) {" +
-            "        var ipRegex = new RegExp('([0-9]{1,3}\\\\.){3}[0-9]{1,3}', 'g');" +
-            "        offer.sdp = offer.sdp.replace(ipRegex, '0.0.0.0');" +
-            "        return offer;" +
-            "      });" +
-            "    };" +
-            "    return pc;" +
-            "  };" +
-            "  window.RTCPeerConnection.prototype = OrigPC.prototype;" +
-            "}" +
-            "})();";
+                "if (window.RTCPeerConnection) {" +
+                "  var OrigPC = window.RTCPeerConnection;" +
+                "  window.RTCPeerConnection = function(config, constraints) {" +
+                "    var pc = new OrigPC(config, constraints);" +
+                "    var origCreateOffer = pc.createOffer;" +
+                "    pc.createOffer = function(opts) {" +
+                "      return origCreateOffer.call(pc, opts).then(function(offer) {" +
+                "        var ipRegex = new RegExp('([0-9]{1,3}\\\\.){3}[0-9]{1,3}', 'g');" +
+                "        offer.sdp = offer.sdp.replace(ipRegex, '0.0.0.0');" +
+                "        return offer;" +
+                "      });" +
+                "    };" +
+                "    return pc;" +
+                "  };" +
+                "  window.RTCPeerConnection.prototype = OrigPC.prototype;" +
+                "}" +
+                "})();";
         view.evaluateJavascript(webrtcSanitizer, null);
         super.onPageFinished(view, url);
         if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
@@ -367,12 +414,12 @@ public class SpoonWebViewClient extends WebViewClient {
             CookieManager.getInstance().flush();
         }
 
-        // No autofill injection on the vault page itself.
         if (VaultUrls.isVaultUrl(url)) return;
 
         String cosmeticCss = AdBlockEngine.getCosmeticCss(url);
         if (!cosmeticCss.isEmpty()) {
-            String cleanCss = cosmeticCss.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"");
+            String cleanCss = cosmeticCss.replace("\\", "\\\\")
+                    .replace("'", "\\'").replace("\"", "\\\"");
             String injectScript = "javascript:(function() {" +
                     "var style = document.createElement('style');" +
                     "style.type = 'text/css';" +
@@ -430,6 +477,10 @@ public class SpoonWebViewClient extends WebViewClient {
         view.evaluateJavascript(script, null);
     }
 
+    // ------------------------------------------------------------------------
+    // Error handling
+    // ------------------------------------------------------------------------
+
     @Override
     public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
         if (activity != null && view != null) {
@@ -439,7 +490,8 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+    public void onReceivedError(WebView view, WebResourceRequest request,
+                                android.webkit.WebResourceError error) {
         super.onReceivedError(view, request, error);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (request.isForMainFrame()) {
@@ -458,11 +510,12 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     private void handleNetworkError(WebView view, int errorCode) {
-        if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
+        if (errorCode == ERROR_HOST_LOOKUP
+                || errorCode == ERROR_CONNECT
+                || errorCode == ERROR_TIMEOUT) {
 
             String originalUrl = view.getUrl();
             String retryJs = "window.location.reload()";
-
             if (originalUrl != null && !originalUrl.startsWith("data:")) {
                 String safeUrl = originalUrl.replace("'", "\\'");
                 retryJs = "window.location.href='" + safeUrl + "'";
@@ -487,7 +540,8 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
+    public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler,
+                                   android.net.http.SslError error) {
         String url = error.getUrl();
         if (url != null) {
             try {
@@ -504,16 +558,23 @@ public class SpoonWebViewClient extends WebViewClient {
                 Toast.LENGTH_SHORT).show();
     }
 
+    // ------------------------------------------------------------------------
+    // URL cleaning (tracking params)
+    // ------------------------------------------------------------------------
+
     private static final java.util.Set<String> EXACT_TRACKERS = new java.util.HashSet<>(java.util.Arrays.asList(
-        "fbclid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "msclkid", "twclid",
-        "igshid", "si", "mc_cid", "mc_eid", "zanpid", "yclid", "utm_source", "utm_medium",
-        "utm_campaign", "utm_term", "utm_content", "utm_id"
+            "fbclid", "gclid", "gclsrc", "dclid", "gbraid", "wbraid", "msclkid", "twclid",
+            "igshid", "si", "mc_cid", "mc_eid", "zanpid", "yclid", "utm_source", "utm_medium",
+            "utm_campaign", "utm_term", "utm_content", "utm_id"
     ));
 
     private static boolean isTracker(String key) {
         if (key == null) return false;
-        String lowerKey = key.toLowerCase();
-        if (lowerKey.startsWith("utm_") || lowerKey.startsWith("oly_") || lowerKey.startsWith("vero_") || lowerKey.startsWith("trk_")) return true;
+        String lowerKey = key.toLowerCase(Locale.ROOT);
+        if (lowerKey.startsWith("utm_")
+                || lowerKey.startsWith("oly_")
+                || lowerKey.startsWith("vero_")
+                || lowerKey.startsWith("trk_")) return true;
         return EXACT_TRACKERS.contains(lowerKey);
     }
 
@@ -539,18 +600,14 @@ public class SpoonWebViewClient extends WebViewClient {
             for (String pair : pairs) {
                 int idx = pair.indexOf("=");
                 String key = (idx > 0) ? pair.substring(0, idx) : pair;
-
                 if (!isTracker(key)) {
                     if (cleanQuery.length() > 0) cleanQuery.append("&");
                     cleanQuery.append(pair);
                 }
             }
 
-            if (cleanQuery.length() == 0) {
-                return baseUrl + fragment;
-            } else {
-                return baseUrl + "?" + cleanQuery.toString() + fragment;
-            }
+            if (cleanQuery.length() == 0) return baseUrl + fragment;
+            return baseUrl + "?" + cleanQuery + fragment;
         } catch (Exception e) {
             return url;
         }
