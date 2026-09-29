@@ -1,262 +1,255 @@
 # Spoon Browser — God-Object Split Plan
 
-**Status:** Slice 1 delivered (`TabManager`, `DownloadHandler`).
-Slices 2–5 speced below.
+**Status:** Slices 1 and 2 delivered.
+Slices 3–5 speced below.
 
-The goal is to reduce `MainActivity.java` from ~2000 lines to a ~300-line
-orchestrator. Each slice is independently buildable and reversible.
+Goal: reduce `MainActivity.java` from ~2000 lines to a ~300-line orchestrator.
+Each slice is independently buildable and reversible.
 
 ---
 
 ## Slice 1 — DELIVERED ✅
 
-### New files
-- `android/app/src/main/java/com/spoondon/browser/TabManager.java`
-- `android/app/src/main/java/com/spoondon/browser/DownloadHandler.java`
+New files:
+- `TabManager.java`
+- `DownloadHandler.java`
 
-### What to delete from `MainActivity.java`
+See previous version of this doc for the full migration instructions.
 
-**Fields to remove** (now owned by `TabManager`):
+---
+
+## Slice 2 — DELIVERED ✅
+
+### New file
+- `android/app/src/main/java/com/spoondon/browser/ToolbarController.java`
+
+### Fields to remove from `MainActivity.java`
+
 ```java
-private java.util.List<TabState> tabList;
-private int currentTabPosition;
-private TabAdapter tabAdapter;
-private android.view.View tabSwitcherOverlay;
-private androidx.recyclerview.widget.RecyclerView tabsRecyclerView;   // already dead
-private android.view.ViewGroup webViewContainer;                      // already dead
+AutoCompleteTextView addressBar;
+private SuggestionAdapter addressBarAdapter;
+LinearLayout toolbar;
+private Button forwardButton;
+private Button prevTabButton;
+private Button nextTabButton;
+private Button newTabButton;
+private Button menuButton;
+private Button tabBadgeButton;
+private TextView tabIndicator;
+
+// Suggestion classes — now nested in ToolbarController
+private static class Suggestion { ... }
+private static class SuggestionAdapter { ... }
 ```
 
-**Methods to delete** (now in `TabManager`):
+### Methods to delete from `MainActivity.java`
 
-- `createNewTab()` / `createNewTab(boolean)`
-- `switchToTab(int)`
-- `closeTab(int)`
-- `buildTabItems()`
-- `showTabSwitcher()` / `hideTabSwitcher()`
-- `updateTabCountersUI()`
-- `updateTabBadgeCount()`
-- `handleDeadRenderProcess(WebView)`
-- `openUrlInNewTab(String)`
-- `saveOpenTabs()` (replaced by `tabManager.getNonIncognitoUrls()`)
-- `captureWebViewSnapshotAsync(...)`
+- `createToolbarViews()`
+- `setupToolbarListeners()` — **BUT** see the caveat below.
+- `makeButton(String)` — moved into ToolbarController
+- `getToolbarButtonSize()`
+- `updateAddressBarSuggestions(String)`
+- `navigate()` — logic now lives in `ToolbarController.submitAddress()` → `callbacks.onNavigate()`
 
-**Download code to delete** (now in `DownloadHandler`):
+**Caveat on `setupToolbarListeners()`:** the original method also sets up
+address-bar Enter handling. That's now inside `ToolbarController`. Delete the
+whole method.
 
-- The entire `webView.setDownloadListener(new DownloadListener() { ... })` block
-inside `createConfiguredWebView()` — replace with `downloadHandler.attach(webView);`
-- `triggerManualDownload(String, String)` — replaced by
-`downloadHandler.triggerExternalDownload(url, mime)`
-- `triggerExternalDownload(String, String)` — moved into `DownloadHandler`
-
-### New fields in `MainActivity`
+### New field in `MainActivity.java`
 
 ```
-TabManager tabManager;
-DownloadHandler downloadHandler;
+ToolbarController toolbarController;
 ```
 
-### Wiring in `onCreate` (after `browserContainer` is created)
+### Wiring in `onCreate` — replace the old `createToolbarViews()`
 
-Place this **after** the existing `root.addView(browserWrapper)` block and
-**before** `loadSavedData()`:
+### + `setupToolbarListeners()` + `setupMenuButton()` block with:
 
 ```
-// --- Slice 1: extracted managers ---
-downloadHandler = new DownloadHandler(this, () -> tabManager.getCurrentWebView());
+// --- Slice 2: extracted toolbar controller ---
+toolbarController = new ToolbarController(this, new ToolbarController.Callbacks() {
 
-tabManager = new TabManager(this, browserContainer, new TabManager.Callbacks() {
-    @NonNull @Override
-    public WebView createConfiguredWebView() {
-        return MainActivity.this.createConfiguredWebView();
+    @Override
+    public void onNavigate(@NonNull String input) {
+        openUrl(input);
     }
 
     @Override
-    public void onCurrentTabChanged(WebView webView, TabState state) {
-        // Sync the address bar to the new tab's URL
-        if (addressBar != null) {
-            String url = webView != null ? webView.getUrl() : null;
-            boolean blank = (url == null || url.isEmpty() || "about:blank".equals(url));
-            addressBar.setText(blank ? "" : url);
-
-            if (state != null && state.isIncognito()) {
-                addressBar.setBackgroundColor(Color.parseColor("#3c1f40"));
-                addressBar.setHint("Incognito Search or URL");
-            } else {
-                addressBar.setBackgroundColor(Color.parseColor("#222222"));
-                addressBar.setHint("Search or enter address");
-            }
-        }
-
-        // Reapply per-site desktop UA for the newly active tab
-        if (webView != null) {
-            String host = webView.getUrl() != null
-                    ? Uri.parse(webView.getUrl()).getHost() : null;
-            applyDesktopUa(webView, isDesktopHostEnabled(host));
-        }
-
-        updateScreenShield();
+    public void onForward() {
+        WebView wv = tabManager.getCurrentWebView();
+        if (wv != null && wv.canGoForward()) wv.goForward();
     }
 
     @Override
-    public void onTabCountChanged(int count) {
-        if (tabIndicator != null) {
-            tabIndicator.setText((tabManager.getCurrentPosition() + 1) + "/" + count);
-        }
-        if (tabBadgeButton != null) {
-            tabBadgeButton.setText((tabManager.getCurrentPosition() + 1) + "/" + count);
+    public void onPreviousTab() {
+        int count = tabManager.getTabCount();
+        if (count > 1) {
+            int prev = tabManager.getCurrentPosition() - 1;
+            if (prev < 0) prev = count - 1;
+            tabManager.switchToTab(prev);
         }
     }
 
     @Override
-    public void onNewTabRequested() {
+    public void onNextTab() {
+        int count = tabManager.getTabCount();
+        if (count > 1) {
+            tabManager.switchToTab((tabManager.getCurrentPosition() + 1) % count);
+        }
+    }
+
+    @Override
+    public void onNewTab() {
         tabManager.createNewTab();
         showHome();
     }
 
     @Override
-    public void onAllTabsClosed() {
-        showExitConfirmationDialog();
+    public void onShowTabSwitcher() {
+        tabManager.showTabSwitcher();
+    }
+
+    @Override
+    public void onMenuClicked(@NonNull View anchor) {
+        // Slice 4 will extract this into MenuController.
+        showMainMenu(anchor);
+    }
+
+    @NonNull @Override
+    public List<ToolbarController.Suggestion> fetchSuggestions(@NonNull String query) {
+        return queryHistoryForSuggestions(query);
+    }
+
+    @NonNull @Override
+    public Executor getBackgroundExecutor() {
+        return backgroundExecutor;
     }
 });
+
+// Add the toolbar to the root layout (was previously done inline).
+root.addView(toolbarController.getRootView());
 ```
 
-### Delegating helpers
+### Helper methods to add to `MainActivity.java`
 
-Keep these **private** methods in `MainActivity` so all ~40 existing
-call sites continue to compile unchanged:
-
-```
-private WebView getCurrentWebView()          { return tabManager.getCurrentWebView(); }
-private TabState getCurrentTabState()        { return tabManager.getCurrentTabState(); }
-private int getCurrentTabPosition()          { return tabManager.getCurrentPosition(); }
-```
-
-Then replace every direct `tabList` / `currentTabPosition` access with the
-helper. Search-and-replace:
-
-- `tabList.size()` → `tabManager.getTabCount()`
-- `tabList.get(...)` → `tabManager.getTabs().get(...)`
-- `currentTabPosition` → `tabManager.getCurrentPosition()`
-- `tabList.isEmpty()` → `tabManager.isEmpty()`
-
-### Lifecycle delegation
+Two small methods that used to be inline in `updateAddressBarSuggestions()`
+and `setupMenuButton()`:
 
 ```
-@Override protected void onResume() {
-    super.onResume();
-    handleIncomingIntent(getIntent());
-    setIntent(new Intent());
-    if (tabManager != null) tabManager.resumeActiveTab();
-}
+/**
+ * Query the DB and produce a deduped, ranked suggestion list.
+ * Runs on a background thread (called from ToolbarController).
+ */
+@NonNull
+private List<ToolbarController.Suggestion> queryHistoryForSuggestions(@NonNull String query) {
+    List<ToolbarController.Suggestion> out = new ArrayList<>();
+    if (dbHelper == null) return out;
 
-@Override protected void onPause() {
-    super.onPause();
-    // ... existing cookie flush ...
-    if (tabManager != null) tabManager.pauseActiveTab();
-}
+    List<String[]> rawResults = dbHelper.getMatchingHistory(query);
+    Set<String> seenHosts = new HashSet<>();
+    Set<String> seenUrls = new HashSet<>();
 
-@Override protected void onDestroy() {
-    // ... existing cookie flush ...
-    if (backgroundExecutor != null) backgroundExecutor.shutdownNow();
-    if (tabManager != null) tabManager.destroyAll();
-    // ... clipboard cleanup ...
-    super.onDestroy();
-}
+    // 1) Host-level suggestions
+    for (String[] row : rawResults) {
+        try {
+            Uri uri = Uri.parse(row[0]);
+            String host = uri.getHost();
+            if (host == null) continue;
+            String cleanHost = host.replaceFirst("^www\\.", "");
+            if (cleanHost.toLowerCase().contains(query.toLowerCase())
+                    && seenHosts.add(cleanHost)) {
+                out.add(new ToolbarController.Suggestion(cleanHost, cleanHost));
+                seenUrls.add(cleanHost);
+            }
+        } catch (Exception ignored) {}
+    }
 
-@Override public void onTrimMemory(int level) {
-    super.onTrimMemory(level);
-    if (tabManager != null) tabManager.onTrimMemory(level);
-}
-```
-
-### Back-press handler
-
-Update the existing `OnBackPressedCallback`:
-
-```
-getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-    @Override public void handleOnBackPressed() {
-        if (tabManager.isTabSwitcherVisible()) { tabManager.hideTabSwitcher(); return; }
-        WebView wv = tabManager.getCurrentWebView();
-        if (wv != null && wv.canGoBack()) { wv.goBack(); return; }
-        if (tabManager.getTabCount() > 1) {
-            tabManager.closeTab(tabManager.getCurrentPosition());
-        } else {
-            showExitConfirmationDialog();
+    // 2) Up to 3 deep-link suggestions
+    int deepLinkLimit = 3;
+    int deepLinksAdded = 0;
+    for (String[] row : rawResults) {
+        if (deepLinksAdded >= deepLinkLimit) break;
+        String rawUrl = row[0];
+        String title = (row[1] != null && !row[1].isEmpty()) ? row[1] : rawUrl;
+        String displayUrl = rawUrl.replaceFirst("^https?://(www\\.)?", "");
+        if (!seenUrls.contains(displayUrl) && !seenHosts.contains(displayUrl)) {
+            out.add(new ToolbarController.Suggestion(title, displayUrl));
+            seenUrls.add(displayUrl);
+            deepLinksAdded++;
         }
     }
-});
-```
+    return out;
+}
 
-### `saveOpenTabs()` replacement
-
-```
-private void saveOpenTabs() {
-    java.util.List<String> urls = tabManager.getNonIncognitoUrls();
-    backgroundExecutor.execute(() ->
-        prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", urls)).apply());
+/**
+ * Menu builder. Will become MenuController in slice 4.
+ */
+private void showMainMenu(@NonNull View anchor) {
+    // ... move the body of the CURRENT `menuButton.setOnClickListener`
+    //     (the one inside setupMenuButton()) here, minus the listener wrapper.
 }
 ```
 
-### In `createConfiguredWebView()`
+### Delegating helpers — update existing call sites
 
-Replace the entire download listener block with:
-
-```
-downloadHandler.attach(webView);
-```
-
-### SplashActivity `handleIncomingIntent`
-
-Replace the `tabList.isEmpty()` check with `tabManager.isEmpty()`.
-
----
-
-## Slice 2 — ToolbarController (next)
-
-**Extract:** everything about the top toolbar — address bar, buttons, tab
-badge, autocomplete dropdown.
-
-**New file:** `ToolbarController.java`
-
-**Public API sketch:**
+Anywhere `MainActivity` still references `addressBar`, `tabIndicator`,
+`forwardButton`, `menuButton`, etc., replace with:
 
 ```
-class ToolbarController {
-    interface Callbacks {
-        void onNavigate(String input);
-        void onForward();
-        void onPreviousTab();
-        void onNextTab();
-        void onNewTab();
-        void onShowTabSwitcher();
-        void onShowMenu(View anchor);
-        List<Suggestion> fetchSuggestions(String query);
+toolbarController.getAddressBar()
+toolbarController.setAddress(tabManager.getCurrentWebView().getUrl())
+toolbarController.setTabCounter(tabManager.getCurrentPosition(), tabManager.getTabCount())
+toolbarController.setIncognito(state.isIncognito())
+toolbarController.setForwardEnabled(wv.canGoForward())
+toolbarController.hideSuggestions()
+toolbarController.clearAddressFocus()
+```
+
+### Update `TabManager.Callbacks.onCurrentTabChanged` wiring
+
+Replace the address-bar block inside the slice-1 wiring with:
+
+```
+@Override
+public void onCurrentTabChanged(WebView webView, TabState state) {
+    if (toolbarController != null) {
+        toolbarController.setAddress(webView != null ? webView.getUrl() : null);
+        toolbarController.setIncognito(state != null && state.isIncognito());
+        toolbarController.setForwardEnabled(webView != null && webView.canGoForward());
     }
 
-    ToolbarController(MainActivity activity, Callbacks callbacks);
+    if (webView != null) {
+        String host = webView.getUrl() != null
+                ? Uri.parse(webView.getUrl()).getHost() : null;
+        applyDesktopUa(webView, isDesktopHostEnabled(host));
+    }
 
-    View getRootView();                        // the toolbar LinearLayout
-    void setAddress(String url);
-    void setTabCounter(int current, int total);
-    void setIncognito(boolean incognito);
-    void setForwardEnabled(boolean enabled);
-    void hideSuggestions();
-    void clearFocus();
+    updateScreenShield();
+}
+
+@Override
+public void onTabCountChanged(int count) {
+    if (toolbarController != null) {
+        toolbarController.setTabCounter(tabManager.getCurrentPosition(), count);
+    }
 }
 ```
 
-**Moves out of `MainActivity`:**
+### In `onCreate` — remove the old `root.addView(toolbar)` line
 
-- `createToolbarViews()`
-- `setupToolbarListeners()` (the address-bar / button portions)
-- `makeButton()`, `makeSmallButton()`, `getToolbarButtonSize()`
-- `updateAddressBarSuggestions()`
-- Nested classes: `Suggestion`, `SuggestionAdapter`
+The toolbar is now added via `root.addView(toolbarController.getRootView())`.
+Search for the old `if (toolbar != null) root.addView(toolbar);` line and
+delete it.
 
-**Careful:** `onTabCountChanged` in slice 1 currently calls
-`tabIndicator.setText(...)` and `tabBadgeButton.setText(...)` directly.
-In slice 2 those become `toolbar.setTabCounter(...)`.
+### Smoke tests for slice 2
+
+- Address bar shows the current URL after every navigation
+- Tapping a suggestion loads it and dismisses the dropdown
+- Forward button lights up (tablet) / no-ops (phone)
+- Prev/next tab buttons work (tablet only)
+- Tab counter shows "N/M" after opening / closing tabs
+- Menu button opens the popup menu
+- Long-press on the tab indicator does nothing (regression guard)
 
 ---
 
@@ -266,32 +259,42 @@ Three UI-only controllers, each ~150 lines.
 
 ### `VaultController.java`
 
+Extract:
+
 - `showVaultForCurrentSite()`
 - `parseAccountsForHost(String)`
 - `showSavedPasswordsDialog()`
-- `CredentialAdapter` (nested)
+- Nested `CredentialAdapter`
 - `copyTextToClipboard(String, String)`
+- `makeSmallButton(String)` — only used by CredentialAdapter
 
-**Does NOT include** `PasswordAutosaveBridge` — that stays tied to WebView
-construction and will be resolved in the security batch (item #1).
+Constructor deps: `MainActivity`, `SecureCredentialManager`, `Executor`.
+
+**Does NOT include** `PasswordAutosaveBridge`. That stays tied to WebView
+construction and is resolved in the security batch (item #1).
 
 ### `AdBlockController.java`
+
+Extract:
 
 - `showFilterListsDialog()`
 - `showFilterListOptions()`
 - `showSubscribedFilterLists()`
 - `saveFilterLists()`
 
-Depends on `AdBlockEngine` (static) + `backgroundExecutor` + `filterLists`
-list. Pass those in via constructor.
+Constructor deps: `MainActivity`, `AdBlockEngine` (static),
+`CopyOnWriteArrayList<String> filterLists`, `Executor`, `SharedPreferences`.
 
 ### `HistoryController.java`
+
+Extract:
 
 - `showHistoryDialog()`
 - `showBookmarks()`
 - `migrateLegacyBookmarksToDatabase()`
 
-Depends on `dbHelper`. Pass in via constructor.
+Constructor deps: `MainActivity`, `BrowserDatabaseHelper`, `Executor`,
+`TabManager`, `Callback` for "open in new tab".
 
 ---
 
@@ -299,19 +302,30 @@ Depends on `dbHelper`. Pass in via constructor.
 
 ### `PermissionController.java`
 
-- `webPermissionLauncher`
-- `currentPermissionRequest` / `currentGeolocation*`
+Extract:
+
+- `webPermissionLauncher` field + registration
+- `currentPermissionRequest` / `currentGeolocation*` fields
 - `requestWebPermissions(String[])`
 - `mFilePathCallback` + `FILECHOOSER_RESULTCODE`
 - `onActivityResult` file-chooser handling
 
+`SpoonWebChromeClient` gains a `PermissionController` dep instead of calling
+`activity.requestWebPermissions(...)` directly.
+
 ### `MenuController.java`
 
-- The popup menu builder in `setupMenuButton()`
+Extract:
+
+- `showMainMenu(View anchor)` — the popup currently built in `setupMenuButton()`
 - `showSearchEngineDialog()`
-- `showAbout()` / `createStatRow()`
+- `showAbout()` / `createStatRow(...)`
 - `showFindInPageDialog()`
-- `getSearchUrlFor(String)`
+- `getSearchUrlFor(String)` + `KEY_SEARCH_ENGINE` handling
+
+Constructor deps: `MainActivity`, `TabManager`, `ToolbarController`,
+`BrowserDatabaseHelper`, `AdBlockController`, `VaultController`, plus a
+small set of callbacks for tab-close, cache-clear, exit, etc.
 
 ---
 
@@ -319,48 +333,49 @@ Depends on `dbHelper`. Pass in via constructor.
 
 ### `SessionManager.java`
 
-- `clearSessionOnExit`
-- Cookie flush / WebStorage wipe logic in `onPause` / `onStop` / `onDestroy`
+Extract:
+
+- `clearSessionOnExit` flag
+- Cookie flush + WebStorage wipe logic in `onPause` / `onStop` / `onDestroy`
 - `showExitConfirmationDialog()`
 
 ### `NavigationHelper.java` (static utility class)
 
-- `openUrl(String)` — URL classification + search-vs-navigate decision
+Extract:
+
+- `openUrl(String)` — the URL-vs-search decision + auto-HTTPS upgrade
 - `normalizeDesktopHost(String)`
 - `isDesktopHostEnabled(Context, String)`
 - `applyDesktopUa(WebView, boolean)`
+
+These are pure functions on top of Context / WebView — no state, so a static
+utility class is the right shape.
+
+---
+
+## After slice 5 — apply the security batch (A/B/C + items #1–#8)
+
+Once `MainActivity` is ~300 lines, the security batch becomes surgical:
+
+| Fix ↕▾ | File ↕▾ | Effort ↕▾ |
+|---|---|---|
+| −A: `usesCleartextTraffic=false` | `AndroidManifest.xml`, `network_security_config.xml` | 15 min |
+| B: WebViewAssetLoader for vault | new `VaultAssetProvider.java` + `createConfiguredWebView()` | 1 hr |
+| C: AdBlock `@@` + `$domain=` | `AdBlockEngine.parseFilterLines()` | 1 hr |
+| #1: Delete `getPassword`/`getUsername` | `PasswordAutosaveBridge` in MainActivity | 5 min |
+| MIXED_CONTENT switch | `configureWebSettings()` | 5 min |
+| Duplicate `checkAndRefreshFilters` | `loadSavedData()` | 2 min |
+⚙
+
+Estimated post-refactor effort: **2–3 hours**.
 
 ---
 
 ## Safety notes for each slice
 
 1. **Build after every slice.** Do not stack slices without a green CI run.
-2. **Commit granularly.** One slice per commit, so `git revert` is surgical.
-3. **Smoke test each slice:**
-
-- Open new tab → home page appears
-- Type URL → loads
-- Open 3+ tabs → switcher works, thumbnails render
-- Close tab → other tab becomes active
-- Back-press → goes back / closes tab / shows exit dialog
-- Rotate device → state preserved
+2. **Commit granularly.** One slice per commit.
+3. **Smoke test each slice** using the checklist under that slice's section.
 4. **Do NOT touch the WebView client during refactor.** Leave
 `SpoonWebViewClient` / `SpoonWebChromeClient` alone until slice 5.
-
----
-
-## After slice 5 — apply the security batch
-
-Once `MainActivity` is ~300 lines, the security fixes become trivial:
-
-| Fix | Where it lands after refactor |
-|---|---|
-| A: `usesCleartextTraffic=false` | `AndroidManifest.xml` + `network_security_config.xml` |
-| B: WebViewAssetLoader for vault | `createConfiguredWebView()` (or a new `VaultAssetProvider` helper) |
-| C: AdBlock `@@` + `$domain=` | `AdBlockEngine.parseFilterLines()` — isolated |
-| #1: Delete `getPassword`/`getUsername` | `PasswordAutosaveBridge` in MainActivity |
-| MIXED_CONTENT switch | `configureWebSettings()` in MainActivity |
-
-Estimated post-refactor effort for the entire security batch: **2–3 hours**.
-Pre-refactor it would have been a week of careful surgery.
 
