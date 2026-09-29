@@ -1,26 +1,35 @@
-// Force Java 17 compatibility for all Android modules
+// ---------------------------------------------------------------------------
+// Force Java 21 compatibility across all Android modules.
+//
+// Why 21 and not 17:
+//   - Capacitor 8.x (@capacitor/android) declares Java 21 source/target
+//     in its own build.gradle and in the generated capacitor.build.gradle.
+//   - AGP 8.13 fully supports Java 21.
+//   - Mixing 17 and 21 across modules leads to non-deterministic build
+//     outcomes depending on apply order.
+// ---------------------------------------------------------------------------
 
 allprojects {
     tasks.withType(JavaCompile).configureEach {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 }
 
 subprojects {
     afterEvaluate { project ->
         if (project.hasProperty("android")) {
-            android {
+            project.android {
                 compileOptions {
-                    sourceCompatibility JavaVersion.VERSION_17
-                    targetCompatibility JavaVersion.VERSION_17
+                    sourceCompatibility JavaVersion.VERSION_21
+                    targetCompatibility JavaVersion.VERSION_21
                 }
             }
         }
     }
 }
 
-// Prevent accidental Java 21 usage anywhere in build chain
+// Belt-and-suspenders: prevent any module from silently downgrading.
 tasks.withType(JavaCompile).configureEach {
-    options.release = 17
+    options.release = 21
 }
