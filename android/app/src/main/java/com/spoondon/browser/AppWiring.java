@@ -1,7 +1,5 @@
 package com.spoondon.browser;
 
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -25,17 +23,14 @@ import java.util.concurrent.ExecutorService;
  * HistoryController, VaultController, AdBlockController, MenuController,
  * WebViewFactory, DownloadHandler, HomePageRenderer, SuggestionProvider.
  *
- * MainActivity holds one AppWiring field and delegates through it. Every
- * controller callback that used to reach into MainActivity fields now
- * routes through the small public surface MainActivity exposes (openUrl,
- * showHome, getCurrentHost, ...).
- *
  * Extracted from MainActivity (god-object split, slice 7 — final).
+ * Security batch B (2026-09-30): added showVault() callback so the HTML
+ * vault can be opened at its new HTTPS origin.
  */
 public class AppWiring {
 
     // ------------------------------------------------------------------------
-    // Injected dependencies (provided by MainActivity at construction)
+    // Injected dependencies
     // ------------------------------------------------------------------------
     private final MainActivity activity;
     private final LinearLayout browserContainer;
@@ -47,7 +42,7 @@ public class AppWiring {
     private final CopyOnWriteArrayList<String> filterLists;
 
     // ------------------------------------------------------------------------
-    // Controllers (constructed in initialize())
+    // Controllers
     // ------------------------------------------------------------------------
     private DownloadHandler downloadHandler;
     private WebViewFactory webViewFactory;
@@ -82,24 +77,13 @@ public class AppWiring {
     // Construction
     // ========================================================================
 
-    /**
-     * Build the full controller graph. Must be called on the main thread,
-     * after MainActivity's view tree skeleton exists (browserContainer
-     * available) but before {@code assembleLayout()} — because the toolbar
-     * view comes out of ToolbarController.
-     */
     public void initialize() {
-        // ---- DownloadHandler (needed by WebViewFactory) -------------------
         downloadHandler = new DownloadHandler(activity, activity::getCurrentWebView);
 
-        // ---- WebViewFactory ----------------------------------------------
         webViewFactory = new WebViewFactory(
                 activity, credentials, permissionController, downloadHandler);
 
-        // ---- HomePageRenderer --------------------------------------------
         homePageRenderer = new HomePageRenderer();
-
-        // ---- SuggestionProvider ------------------------------------------
         suggestionProvider = new SuggestionProvider(dbHelper);
 
         // ---- TabManager ---------------------------------------------------
@@ -265,6 +249,10 @@ public class AppWiring {
                         activity, activity.getCurrentHost());
             }
 
+            @Override public void showVault() {
+                activity.openVault();
+            }
+
             @Override public void showSavedPasswords() {
                 vaultController.showSavedPasswordsDialog();
             }
@@ -301,10 +289,6 @@ public class AppWiring {
     // Operations the controllers delegate to
     // ========================================================================
 
-    /**
-     * Push the active tab's state into the toolbar: URL text, incognito
-     * styling, and per-host desktop UA.
-     */
     private void applyTabToToolbar(@Nullable WebView webView, @Nullable TabState state) {
         String url = webView != null ? webView.getUrl() : null;
         toolbarController.setAddress(url);

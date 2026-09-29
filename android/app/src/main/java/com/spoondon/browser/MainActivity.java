@@ -37,26 +37,15 @@ import java.util.concurrent.Executors;
 /**
  * Thin Activity shell for Spoon Browser.
  *
- * Owns:
- *   - The Android lifecycle.
- *   - The root view tree (root / toolbar / browserWrapper / progressBar).
- *   - File picker launchers (password import / export).
- *   - Clipboard watcher (vault protection).
- *   - The public API surface that SpoonWebViewClient, SpoonWebChromeClient,
- *     and AppWiring call into.
- *
- * All browser logic lives in AppWiring and its collaborators.
+ * Security batch B (2026-09-30): isVaultActive() and openVault() now use
+ * VaultUrls. The vault page is served by WebViewAssetLoader over the
+ * synthetic HTTPS origin https://appassets.androidplatform.net.
  */
 public class MainActivity extends AppCompatActivity {
 
-    // ------------------------------------------------------------------------
-    // Constants
-    // ------------------------------------------------------------------------
     private static final String PREFS_NAME = "spoon_browser";
 
-    // ------------------------------------------------------------------------
-    // Core state (needed by the Activity lifecycle itself)
-    // ------------------------------------------------------------------------
+    // Core state
     private SharedPreferences prefs;
     private final ExecutorService backgroundExecutor = Executors.newFixedThreadPool(4);
     private SecureCredentialManager secureCredentialManager;
@@ -66,22 +55,18 @@ public class MainActivity extends AppCompatActivity {
     private AppWiring wiring;
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
 
-    // ------------------------------------------------------------------------
     // View tree
-    // ------------------------------------------------------------------------
     LinearLayout root;
     LinearLayout browserContainer;
     FrameLayout browserWrapper;
     androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
     public ProgressBar progressBar;
 
-    // Fullscreen video state (read/written by SpoonWebChromeClient).
+    // Fullscreen video state
     View customView;
     WebChromeClient.CustomViewCallback customViewCallback;
 
-    // ------------------------------------------------------------------------
     // File pickers + clipboard
-    // ------------------------------------------------------------------------
     private ActivityResultLauncher<String> passwordImportLauncher;
     private ActivityResultLauncher<String> exportCsvLauncher;
     private ClipboardManager clipboardManager;
@@ -107,11 +92,8 @@ public class MainActivity extends AppCompatActivity {
 
         registerFilePickers();
         registerClipboardWatcher();
-
         setupRootLayout();
 
-        // AppWiring owns the full controller graph. It needs the container
-        // to hand to TabManager, plus the pre-existing collaborators.
         wiring = new AppWiring(
                 this,
                 browserContainer,
@@ -177,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // Setup helpers (called once from onCreate)
+    // Setup
     // ========================================================================
 
     private void registerFilePickers() {
@@ -356,10 +338,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ========================================================================
-    // Startup helpers
-    // ========================================================================
-
     private void loadFilterListsIntoMemory() {
         String saved = prefs.getString(AdBlockController.KEY_FILTER_LISTS, "");
         if (!saved.isEmpty()) {
@@ -394,13 +372,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // Public API surface called by other files
+    // Public API
     // ========================================================================
 
     public void openUrl(@Nullable String url) {
         WebView wv = getCurrentWebView();
         if (wv == null || url == null) return;
         NavigationHelper.openUrl(wv, url, this, wiring::getSearchUrlFor);
+    }
+
+    /**
+     * Open the HTML vault page in a new tab.
+     *
+     * The vault is served by WebViewAssetLoader at VaultUrls.HTML — a
+     * synthetic HTTPS origin. It never touches the network.
+     */
+    public void openVault() {
+        TabManager tabs = wiring.getTabManager();
+        tabs.createNewTab();
+        WebView wv = tabs.getCurrentWebView();
+        if (wv != null) {
+            wv.loadUrl(VaultUrls.HTML);
+        }
     }
 
     @Nullable public String getCurrentHost() {
@@ -480,27 +473,22 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 
-    /** Called by SpoonWebViewClient when a spoonsearch:// link fires. */
     public String getSearchUrlFor(String query) {
         return wiring != null ? wiring.getSearchUrlFor(query) : "";
     }
 
-    /** Called by SpoonWebViewClient when a known file extension is hit. */
     public void triggerManualDownload(String url, String mime) {
         if (wiring != null) wiring.triggerManualDownload(url, mime);
     }
 
-    /** Called by SpoonWebViewClient in onPageStarted to set per-host UA. */
     public boolean isDesktopHostEnabled(String host) {
         return NavigationHelper.isDesktopHostEnabled(this, host);
     }
 
-    /** Called by SpoonWebViewClient for background history writes. */
     public ExecutorService getBackgroundExecutor() {
         return backgroundExecutor;
     }
 
-    /** Called by SpoonWebViewClient in onPageStarted to update the address bar. */
     public void setAddressBarText(String url) {
         if (wiring != null) wiring.getToolbarController().setAddress(url);
     }
@@ -518,7 +506,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // Fullscreen video support (called by SpoonWebChromeClient)
+    // Fullscreen video support
     // ========================================================================
 
     public void setToolbarVisible(boolean visible) {
@@ -528,8 +516,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void setBrowserVisible(boolean visible) {
-        // Must target the weighted child of `root` — hiding browserContainer
-        // would collapse its content but leave the wrapper's weight intact.
         if (browserWrapper != null) {
             browserWrapper.setVisibility(visible ? View.VISIBLE : View.GONE);
         }
@@ -554,10 +540,17 @@ public class MainActivity extends AppCompatActivity {
     // Vault / screen shield
     // ========================================================================
 
+    /**
+     * True when the active tab is showing the vault page.
+     *
+     * Security batch B: the vault is no longer served from
+     * file:///android_asset/vault.html. It now lives at VaultUrls.HTML
+     * on the synthetic HTTPS origin. VaultUrls.isVaultUrl handles the
+     * exact-match and query/fragment cases.
+     */
     public boolean isVaultActive() {
         WebView wv = getCurrentWebView();
-        return wv != null && wv.getUrl() != null
-                && wv.getUrl().startsWith("file:///android_asset/vault.html");
+        return wv != null && VaultUrls.isVaultUrl(wv.getUrl());
     }
 
     public void updateScreenShield() {

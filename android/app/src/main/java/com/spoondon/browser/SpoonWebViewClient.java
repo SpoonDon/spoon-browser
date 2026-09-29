@@ -13,22 +13,37 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.webkit.WebViewAssetLoader;
+
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class SpoonWebViewClient extends WebViewClient {
     private final MainActivity activity;
+    private final WebViewAssetLoader assetLoader;
     private String lastRecordedHistoryUrl = "";
     private long lastRecordedHistoryTime = 0;
 
-    public SpoonWebViewClient(MainActivity activity) {
+    public SpoonWebViewClient(@NonNull MainActivity activity,
+                              @NonNull WebViewAssetLoader assetLoader) {
         this.activity = activity;
+        this.assetLoader = assetLoader;
     }
 
     @Override
-    public android.webkit.WebResourceResponse shouldInterceptRequest(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            // Asset loader first — vault.html (and any future bundled asset)
+            // is served from the synthetic HTTPS origin, never from the
+            // network. AdBlock must not see or block these requests.
+            WebResourceResponse assetResponse =
+                    assetLoader.shouldInterceptRequest(request.getUrl());
+            if (assetResponse != null) {
+                return assetResponse;
+            }
+
             if (request.isForMainFrame() || !AdBlockEngine.hasRules()) {
                 return super.shouldInterceptRequest(view, request);
             }
@@ -46,10 +61,10 @@ public class SpoonWebViewClient extends WebViewClient {
             }
 
             if (AdBlockEngine.shouldBlock(url)) {
-                return new android.webkit.WebResourceResponse(
+                return new WebResourceResponse(
                         "text/plain",
                         "UTF-8",
-                        new java.io.ByteArrayInputStream(new byte[0])
+                        new ByteArrayInputStream(new byte[0])
                 );
             }
         }
@@ -57,19 +72,27 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public boolean shouldOverrideUrlLoading(android.webkit.WebView view, android.webkit.WebResourceRequest request) {
+    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
         String url = request.getUrl().toString();
         return handleUrlLoading(view, url);
     }
 
     @SuppressWarnings("deprecation")
     @Override
-    public boolean shouldOverrideUrlLoading(android.webkit.WebView view, String urlString) {
+    public boolean shouldOverrideUrlLoading(WebView view, String urlString) {
         return handleUrlLoading(view, urlString);
     }
 
-    private boolean handleUrlLoading(android.webkit.WebView view, String url) {
+    private boolean handleUrlLoading(WebView view, String url) {
         if (url == null) return false;
+
+        // Vault URL must pass through untouched — its "https" origin is
+        // synthetic, and the http→https rewrite below would be a no-op,
+        // but we short-circuit to make the intent explicit.
+        if (VaultUrls.isVaultUrl(url)) {
+            return false;
+        }
+
         url = cleanUrl(url);
 
         if (url.startsWith("spoonsearch://")) {
@@ -88,19 +111,12 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
-        // Security batch A — cleartext policy.
-        // If the host is on the whitelist (routers, localhost, emulator host,
-        // mDNS), let the WebView load it over http:// — those servers cannot
-        // be upgraded to https://. Everything else gets rewritten to https://.
-        // The whitelist lives in CleartextPolicy.java and mirrors
-        // res/xml/network_security_config.xml, which is what the platform
-        // actually enforces at the network layer.
+        // Cleartext policy — see CleartextPolicy.java.
         if (url.startsWith("http://")) {
             String rawHost = extractHostFromHttpUrl(url);
             if (CleartextPolicy.isCleartextAllowed(rawHost)) {
                 return false;
             }
-
             String secureUrl = url.replace("http://", "https://");
             view.loadUrl(secureUrl);
             return true;
@@ -118,17 +134,18 @@ public class SpoonWebViewClient extends WebViewClient {
         if (url.startsWith("intent://")) {
             try {
                 android.content.Context context = view.getContext();
-                android.content.Intent intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME);
+                Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
                     if (intent.getPackage() != null && intent.getPackage().equals(context.getPackageName())) {
                         return true;
                     }
 
                     android.content.pm.PackageManager packageManager = context.getPackageManager();
-                    android.content.pm.ResolveInfo info = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+                    android.content.pm.ResolveInfo info = packageManager.resolveActivity(
+                            intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
 
                     if (info != null) {
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
                     } else {
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
@@ -145,14 +162,15 @@ public class SpoonWebViewClient extends WebViewClient {
 
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             try {
-                android.content.Intent intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME);
+                Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
-                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     view.getContext().startActivity(intent);
                     return true;
                 }
             } catch (Exception e) {
-                android.widget.Toast.makeText(view.getContext(), "No app found to handle this link", android.widget.Toast.LENGTH_SHORT).show();
+                Toast.makeText(view.getContext(), "No app found to handle this link",
+                        Toast.LENGTH_SHORT).show();
                 return true;
             }
         }
@@ -160,10 +178,6 @@ public class SpoonWebViewClient extends WebViewClient {
         return false;
     }
 
-    /**
-     * Pulls the host component out of an http:// URL, stripping any port
-     * and lowercase-trimming. Returns "" if the URL is malformed.
-     */
     private static String extractHostFromHttpUrl(String url) {
         try {
             String remaining = url.substring("http://".length());
@@ -179,8 +193,11 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void onPageStarted(android.webkit.WebView view, String url, android.graphics.Bitmap favicon) {
+    public void onPageStarted(WebView view, String url, Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
+
+        boolean vaultPage = VaultUrls.isVaultUrl(url);
+
         if (activity.swipeRefresh != null && url != null) {
             String lowerUrl = url.toLowerCase();
 
@@ -190,11 +207,13 @@ public class SpoonWebViewClient extends WebViewClient {
                         lowerUrl.contains("reddit.com") ||
                         lowerUrl.contains("instagram.com");
 
-            activity.swipeRefresh.setEnabled(!isSpaSite);
+            // Vault is local-only — no refresh gesture.
+            activity.swipeRefresh.setEnabled(!isSpaSite && !vaultPage);
         }
+
         injectBlobHook(view);
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             String gpcScript = "javascript:(function() { " +
                 "try { " +
                 "  Object.defineProperty(navigator, 'globalPrivacyControl', { " +
@@ -207,8 +226,8 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(gpcScript, null);
         }
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            android.webkit.CookieManager.getInstance().flush();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            CookieManager.getInstance().flush();
         }
 
         if (view == activity.getCurrentWebView()) {
@@ -217,7 +236,7 @@ public class SpoonWebViewClient extends WebViewClient {
         }
 
         if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
-            String host = android.net.Uri.parse(url).getHost();
+            String host = Uri.parse(url).getHost();
             if (host != null) {
                 boolean desktop = activity.isDesktopHostEnabled(host);
 
@@ -242,9 +261,12 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void doUpdateVisitedHistory(android.webkit.WebView view, String url, boolean isReload) {
+    public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
         super.doUpdateVisitedHistory(view, url, isReload);
         injectBlobHook(view);
+
+        // Never record the vault URL in history.
+        if (VaultUrls.isVaultUrl(url)) return;
 
         if (activity.getCurrentTabState() != null && activity.getCurrentTabState().isIncognito()) {
             return;
@@ -252,8 +274,8 @@ public class SpoonWebViewClient extends WebViewClient {
 
         if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
             long currentTime = System.currentTimeMillis();
-            android.net.Uri currentUri = android.net.Uri.parse(url);
-            android.net.Uri lastUri = android.net.Uri.parse(lastRecordedHistoryUrl);
+            Uri currentUri = Uri.parse(url);
+            Uri lastUri = Uri.parse(lastRecordedHistoryUrl);
 
             String currentHost = currentUri.getHost() != null ? currentUri.getHost().replaceFirst("^www\\.", "") : "";
             String currentPath = currentUri.getPath() != null ? currentUri.getPath() : "";
@@ -283,8 +305,8 @@ public class SpoonWebViewClient extends WebViewClient {
         }
     }
 
-    public void injectBlobHook(android.webkit.WebView view) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+    public void injectBlobHook(WebView view) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             view.evaluateJavascript(
                     "javascript:(function() {" +
                             "   if (window.spoonBlobHooked) return;" +
@@ -318,7 +340,7 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void onPageFinished(android.webkit.WebView view, String url) {
+    public void onPageFinished(WebView view, String url) {
         String webrtcSanitizer = "javascript:(function() {" +
             "if (window.RTCPeerConnection) {" +
             "  var OrigPC = window.RTCPeerConnection;" +
@@ -341,9 +363,12 @@ public class SpoonWebViewClient extends WebViewClient {
         super.onPageFinished(view, url);
         if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            android.webkit.CookieManager.getInstance().flush();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            CookieManager.getInstance().flush();
         }
+
+        // No autofill injection on the vault page itself.
+        if (VaultUrls.isVaultUrl(url)) return;
 
         String cosmeticCss = AdBlockEngine.getCosmeticCss(url);
         if (!cosmeticCss.isEmpty()) {
@@ -406,7 +431,7 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public boolean onRenderProcessGone(android.webkit.WebView view, android.webkit.RenderProcessGoneDetail detail) {
+    public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
         if (activity != null && view != null) {
             activity.handleDeadRenderProcess(view);
         }
@@ -414,9 +439,9 @@ public class SpoonWebViewClient extends WebViewClient {
     }
 
     @Override
-    public void onReceivedError(android.webkit.WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
+    public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
         super.onReceivedError(view, request, error);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (request.isForMainFrame()) {
                 handleNetworkError(view, error.getErrorCode());
             }
@@ -425,14 +450,14 @@ public class SpoonWebViewClient extends WebViewClient {
 
     @SuppressWarnings("deprecation")
     @Override
-    public void onReceivedError(android.webkit.WebView view, int errorCode, String description, String failingUrl) {
+    public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
         super.onReceivedError(view, errorCode, description, failingUrl);
         if (failingUrl != null && failingUrl.equals(view.getUrl())) {
             handleNetworkError(view, errorCode);
         }
     }
 
-    private void handleNetworkError(android.webkit.WebView view, int errorCode) {
+    private void handleNetworkError(WebView view, int errorCode) {
         if (errorCode == ERROR_HOST_LOOKUP || errorCode == ERROR_CONNECT || errorCode == ERROR_TIMEOUT) {
 
             String originalUrl = view.getUrl();
@@ -454,21 +479,19 @@ public class SpoonWebViewClient extends WebViewClient {
                     "</body></html>";
 
             view.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null);
-            android.widget.Toast.makeText(view.getContext(), "Offline or Unreachable", android.widget.Toast.LENGTH_SHORT).show();
+            Toast.makeText(view.getContext(), "Offline or Unreachable",
+                    Toast.LENGTH_SHORT).show();
         }
 
         if (activity.swipeRefresh != null) activity.swipeRefresh.setRefreshing(false);
     }
 
     @Override
-    public void onReceivedSslError(android.webkit.WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
-        // Security batch A — SSL bypass is now scoped to the same whitelist
-        // as cleartext. Router admin panels serve self-signed certs; nothing
-        // else gets to proceed through an SSL error.
+    public void onReceivedSslError(WebView view, android.webkit.SslErrorHandler handler, android.net.http.SslError error) {
         String url = error.getUrl();
         if (url != null) {
             try {
-                android.net.Uri uri = android.net.Uri.parse(url);
+                Uri uri = Uri.parse(url);
                 String host = uri.getHost();
                 if (CleartextPolicy.isCleartextAllowed(host)) {
                     handler.proceed();
@@ -477,7 +500,8 @@ public class SpoonWebViewClient extends WebViewClient {
             } catch (Exception ignored) {}
         }
         handler.cancel();
-        android.widget.Toast.makeText(view.getContext(), "SSL Certificate Error Blocked", android.widget.Toast.LENGTH_SHORT).show();
+        Toast.makeText(view.getContext(), "SSL Certificate Error Blocked",
+                Toast.LENGTH_SHORT).show();
     }
 
     private static final java.util.Set<String> EXACT_TRACKERS = new java.util.HashSet<>(java.util.Arrays.asList(

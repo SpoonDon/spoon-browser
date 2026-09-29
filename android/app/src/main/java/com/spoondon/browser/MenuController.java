@@ -60,6 +60,10 @@ public class MenuController {
         void toggleDesktopMode();
         boolean isDesktopEnabledForCurrentSite();
 
+        /** Open the HTML vault page in a new tab. */
+        void showVault();
+
+        /** Legacy native dialog listing host+user pairs. */
         void showSavedPasswords();
         void importPasswords();
         void exportPasswords();
@@ -116,13 +120,10 @@ public class MenuController {
         popup.getMenu().add("Startup Animation");
         popup.getMenu().add("Exit");
 
-        // --- Dynamic labels ----------------------------------------------------
-        // Filterlists item (index 10)
         boolean filterEnabled = AdBlockEngine.checkIsEngineEnabled(activity);
         popup.getMenu().getItem(10)
                 .setTitle(filterEnabled ? "Disable Filterlists" : "Enable Filterlists");
 
-        // Desktop Site item (index 11)
         boolean desktopOn = callbacks.isDesktopEnabledForCurrentSite();
         popup.getMenu().getItem(11)
                 .setTitle(desktopOn ? "Desktop Site [ON]" : "Desktop Site [OFF]");
@@ -159,13 +160,19 @@ public class MenuController {
     }
 
     private void showPasswordsSubmenu() {
-        String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
+        String[] options = {
+                "Open Vault",
+                "Saved Passwords (dialog)",
+                "Import from CSV",
+                "Export to CSV"
+        };
         new android.app.AlertDialog.Builder(activity)
                 .setTitle("Password Management")
                 .setItems(options, (dialog, which) -> {
-                    if (which == 0)      callbacks.showSavedPasswords();
-                    else if (which == 1) callbacks.importPasswords();
-                    else if (which == 2) callbacks.exportPasswords();
+                    if (which == 0)      callbacks.showVault();
+                    else if (which == 1) callbacks.showSavedPasswords();
+                    else if (which == 2) callbacks.importPasswords();
+                    else if (which == 3) callbacks.exportPasswords();
                 })
                 .show();
     }

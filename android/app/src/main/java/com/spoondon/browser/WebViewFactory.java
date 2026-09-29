@@ -11,27 +11,29 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.core.view.ViewCompat;
+import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
+import java.util.Collections;
 import java.util.Set;
 
 /**
  * Builds and configures WebViews.
  *
- * Owns everything that used to live in MainActivity's WebView factory:
+ * Owns:
  *   - WebSettings configuration (mobile-vs-desktop, mixed content, dark mode)
  *   - SpoonWebViewClient + SpoonWebChromeClient installation
+ *   - WebViewAssetLoader for the vault page
  *   - JavaScript bridge injection (BlobDownloader, PasswordAutosaveBridge)
  *   - Download listener wiring
- *   - The vault WebMessageListener (restricted to vault.html)
+ *   - The vault WebMessageListener (origin-scoped to VaultUrls.ORIGIN)
  *   - Long-press image handling
  *
- * Extracted from MainActivity (god-object split, slice 6).
- * Security batch A (2026-09-30): MIXED_CONTENT_COMPATIBILITY_MODE →
- * MIXED_CONTENT_NEVER_ALLOW. Cleartext is now enforced at the network
- * layer via res/xml/network_security_config.xml; this setting makes the
- * intent explicit and closes the https→http subresource path.
+ * Security batch B (2026-09-30): vault.html is now served via
+ * WebViewAssetLoader over the synthetic HTTPS origin VaultUrls.ORIGIN.
+ * The WebMessageListener origin whitelist changed from "*" to that exact
+ * origin — the in-handler URL check remains as a defence-in-depth measure.
  */
 public class WebViewFactory {
 
@@ -39,6 +41,9 @@ public class WebViewFactory {
     private final SecureCredentialManager credentials;
     private final PermissionController permissionController;
     private final DownloadHandler downloadHandler;
+
+    /** Loader is stateless; a single instance is reused for every WebView. */
+    private final WebViewAssetLoader assetLoader;
 
     public WebViewFactory(@NonNull MainActivity activity,
                           @NonNull SecureCredentialManager credentials,
@@ -48,6 +53,11 @@ public class WebViewFactory {
         this.credentials = credentials;
         this.permissionController = permissionController;
         this.downloadHandler = downloadHandler;
+
+        this.assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/",
+                        new WebViewAssetLoader.AssetsPathHandler(activity))
+                .build();
     }
 
     // ------------------------------------------------------------------------
@@ -79,8 +89,6 @@ public class WebViewFactory {
 
         configureSettings(ws);
 
-        // Overrides applied after configureSettings() — these mirror the
-        // pre-refactor behaviour where these calls came after the base config.
         ws.setDomStorageEnabled(true);
         ws.setDatabaseEnabled(true);
         ws.setJavaScriptEnabled(true);
@@ -93,7 +101,6 @@ public class WebViewFactory {
             ws.setAllowUniversalAccessFromFileURLs(false);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // Security batch A — was COMPATIBILITY_MODE, now NEVER_ALLOW.
             ws.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
 
@@ -114,7 +121,7 @@ public class WebViewFactory {
         }
 
         webView.setOnLongClickListener(createImageLongClickListener(webView));
-        webView.setWebViewClient(new SpoonWebViewClient(activity));
+        webView.setWebViewClient(new SpoonWebViewClient(activity, assetLoader));
         webView.setWebChromeClient(new SpoonWebChromeClient(activity, permissionController));
 
         webView.addJavascriptInterface(new BlobDownloader(activity), "AndroidDownloader");
@@ -170,7 +177,6 @@ public class WebViewFactory {
             settings.setMediaPlaybackRequiresUserGesture(false);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // Security batch A — NEVER_ALLOW, mirrors the NSC base-config.
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -225,23 +231,23 @@ public class WebViewFactory {
     // ------------------------------------------------------------------------
 
     /**
-     * Registers {@code spoonVaultMessage} on the WebView, restricted to
-     * {@code file:///android_asset/vault.html}.
+     * Registers {@code spoonVaultMessage} scoped to {@link VaultUrls#ORIGIN}.
      *
-     * Origin check is enforced inside the listener: even though the origin
-     * whitelist is "*", the handler rejects any message whose current URL is
-     * not the vault page.
+     * The origin whitelist is now a single exact origin (the synthetic
+     * HTTPS origin served by WebViewAssetLoader). The in-handler URL check
+     * remains as defence-in-depth — if the loader is ever misconfigured,
+     * the second layer still rejects the message.
      */
     private void installVaultMessageListener(@NonNull WebView webView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return;
 
-        Set<String> allowedOrigins = java.util.Collections.singleton("*");
+        Set<String> allowedOrigins = Collections.singleton(VaultUrls.ORIGIN);
+
         WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
                 (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
             try {
                 String currentUrl = view.getUrl();
-                if (currentUrl == null
-                        || !currentUrl.startsWith("file:///android_asset/vault.html")) {
+                if (!VaultUrls.isVaultUrl(currentUrl)) {
                     return;
                 }
                 String msg = message.getData();
