@@ -1,414 +1,313 @@
 package com.spoondon.browser;
 
-import android.content.ClipboardManager;
 import android.content.ClipData;
-import android.view.WindowManager;
-import android.annotation.SuppressLint;
-import android.os.Bundle;
-import android.os.Build;
-import android.os.Message;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.net.Uri;
-import android.util.TypedValue;
-
-import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
-import android.view.ContextThemeWrapper;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
-
-import android.text.Editable;
-import android.text.TextWatcher;
+import android.view.WindowManager;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Filter;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.PopupMenu;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.text.TextUtils;
-import android.app.AlertDialog;
-
-import android.webkit.DownloadListener;
-import android.webkit.RenderProcessGoneDetail;
-import android.webkit.SafeBrowsingResponse;
-import android.webkit.ValueCallback;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
-import android.webkit.WebView.WebViewTransport;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
-import androidx.webkit.WebMessageCompat;
-import androidx.webkit.WebMessagePortCompat;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.URL;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.Collections;
-import java.util.function.Consumer;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+/**
+ * Orchestrator for Spoon Browser.
+ *
+ * Post-refactor responsibilities (this file only):
+ *   - Build the view tree (root / toolbar / browserWrapper / progressBar).
+ *   - Wire every collaborator together (tabManager, menuController, ...).
+ *   - Own the toolbar widgets until ToolbarController is wired in.
+ *   - Own the download listener until DownloadHandler is wired in.
+ *   - Own the vault dialog until VaultController is wired in.
+ *   - Own the filter-list dialog until AdBlockController is wired in.
+ *   - Expose the small public surface that SpoonWebChromeClient,
+ *     SpoonWebViewClient, MenuController, and TabManager need.
+ *
+ * Everything else lives in a dedicated collaborator.
+ */
 public class MainActivity extends AppCompatActivity {
-    SecureCredentialManager secureCredentialManager;
-    public BrowserDatabaseHelper dbHelper;
-    private android.view.View findInPageBar = null;
+
+    // ------------------------------------------------------------------------
+    // Constants
+    // ------------------------------------------------------------------------
     private static final String PREFS_NAME = "spoon_browser";
-    private static final String KEY_BOOKMARKS = "bookmarks";
-    private static final String KEY_HISTORY = "history";
-    private static final String KEY_PAGE_TITLES = "page_titles";
     private static final String KEY_FILTER_LISTS = "filter_lists";
     private static final String KEY_FILTER_REFRESH_TIME = "filter_refresh_time";
     private static final String KEY_OPEN_TABS = "open_tabs";
     private static final String KEY_CURRENT_TAB = "current_tab";
-    private static final String KEY_SEARCH_ENGINE = "search_engine";
-    private static final int MAX_HISTORY = 500;
-    public android.webkit.PermissionRequest currentPermissionRequest;
-    public android.webkit.GeolocationPermissions.Callback currentGeolocationCallback;
-    public String currentGeolocationOrigin;
-    private androidx.activity.result.ActivityResultLauncher<String[]> webPermissionLauncher;
-    public android.webkit.ValueCallback<android.net.Uri[]> mFilePathCallback;
-    public static final int FILECHOOSER_RESULTCODE = 100;
-    public android.widget.ProgressBar progressBar;
-    public android.widget.LinearLayout addressContainer;
-    public android.widget.TextView securityIcon;
 
-    AutoCompleteTextView addressBar;
-    private SuggestionAdapter addressBarAdapter;
-    private String cachedHomeHtml = null;
+    // ------------------------------------------------------------------------
+    // Collaborators
+    // ------------------------------------------------------------------------
+    SecureCredentialManager secureCredentialManager;
+    public BrowserDatabaseHelper dbHelper;
+
+    private PermissionController permissionController;
+    private SessionManager sessionManager;
+    private TabManager tabManager;
+    private MenuController menuController;
+    private HistoryController historyController;
+
+    // ------------------------------------------------------------------------
+    // View fields
+    // ------------------------------------------------------------------------
     LinearLayout root;
     LinearLayout browserContainer;
-    public androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
-    private TextView tabIndicator;
+    FrameLayout browserWrapper;           // the weighted child of `root`
+    androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
+    public ProgressBar progressBar;
+
+    // Legacy public fields kept for API compatibility with older call sites.
+    public LinearLayout addressContainer;
+    public TextView securityIcon;
+
     LinearLayout toolbar;
+    private AutoCompleteTextView addressBar;
+    private SuggestionAdapter addressBarAdapter;
+    private TextView tabIndicator;
     private Button forwardButton;
     private Button prevTabButton;
     private Button nextTabButton;
     private Button newTabButton;
     private Button menuButton;
     private Button tabBadgeButton;
+
+    // Fullscreen video state — read/written by SpoonWebChromeClient.
     View customView;
     WebChromeClient.CustomViewCallback customViewCallback;
-    private ActivityResultLauncher<String> passwordImportLauncher;
-    private androidx.activity.result.ActivityResultLauncher<String> exportCsvLauncher;
-    public final java.util.concurrent.ExecutorService backgroundExecutor = java.util.concurrent.Executors.newFixedThreadPool(4);
-    private SharedPreferences prefs;
 
-    private boolean suppressSuggestions = false;
-    private boolean clearSessionOnExit = false;
-    private static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
-    private static final String DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-    private boolean isDesktopMode = false;
+    // ------------------------------------------------------------------------
+    // Misc state
+    // ------------------------------------------------------------------------
+    private SharedPreferences prefs;
+    private final ExecutorService backgroundExecutor = Executors.newFixedThreadPool(4);
+    private ActivityResultLauncher<String> passwordImportLauncher;
+    private ActivityResultLauncher<String> exportCsvLauncher;
+
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
     private final HashSet<String> blockedDomains = new HashSet<>();
     private final HashSet<String> rawFilterRules = new HashSet<>();
-    private java.util.List<TabState> tabList = new java.util.ArrayList<>();
-    private int currentTabPosition = -1;
-    private TabAdapter tabAdapter;
-    private android.view.View tabSwitcherOverlay;
-    private androidx.recyclerview.widget.RecyclerView tabsRecyclerView;
-    private android.view.ViewGroup webViewContainer;
+
+    private String cachedHomeHtml = null;
+    private boolean suppressSuggestions = false;
+    private boolean isDesktopMode = false;
+
+    // Clipboard auto-clear (vault protection).
     private ClipboardManager clipboardManager;
     private android.os.Handler clipboardHandler;
     private Runnable clipboardClearRunnable;
     private ClipboardManager.OnPrimaryClipChangedListener clipChangedListener;
 
+    // ========================================================================
+    // Lifecycle
+    // ========================================================================
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
-
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        exportCsvLauncher = registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv"), uri -> {
-            if (uri != null && secureCredentialManager != null) {
-                backgroundExecutor.execute(() -> {
-                    try {
-                        java.io.OutputStream os = getContentResolver().openOutputStream(uri);
-                        if (os != null) {
-                            String rawJson = secureCredentialManager.getAllCredentialsAsCsv();
-                            os.write(rawJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                            os.close();
-                            runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Passwords exported successfully", android.widget.Toast.LENGTH_LONG).show());
-                        }
-                    } catch (Exception e) {
-                        runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this, "Export failed", android.widget.Toast.LENGTH_SHORT).show());
-                    }
-                });
-            }
-        });
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            getWindow().setStatusBarColor(android.graphics.Color.BLACK);
-        }
-
+        // -- Collaborators (order matters) -----------------------------------
         secureCredentialManager = new SecureCredentialManager(this);
         dbHelper = BrowserDatabaseHelper.getInstance(this);
+        permissionController = new PermissionController(this);
 
+        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        sessionManager = new SessionManager(this);
+        isDesktopMode = prefs.getBoolean("isDesktopMode", false);
+
+        // -- View tree -------------------------------------------------------
+        setupRootLayout();
+        createToolbarViews();
+        setupToolbarListeners();
+
+        // Clipboard listener (vault auto-clear).
         clipboardManager = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
         clipboardHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-
         clipboardClearRunnable = () -> {
-            if (clipboardManager != null) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    clipboardManager.clearPrimaryClip();
-                } else {
-                    clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
-                }
+            if (clipboardManager == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                clipboardManager.clearPrimaryClip();
+            } else {
+                clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""));
             }
         };
-
         clipChangedListener = () -> {
             if (isVaultActive()) {
                 clipboardHandler.removeCallbacks(clipboardClearRunnable);
-                clipboardHandler.postDelayed(clipboardClearRunnable, 60000);
+                clipboardHandler.postDelayed(clipboardClearRunnable, 60_000);
             }
         };
-
         if (clipboardManager != null) {
             clipboardManager.addPrimaryClipChangedListener(clipChangedListener);
         }
 
-        migrateLegacyBookmarksToDatabase();
-
-        webPermissionLauncher = registerForActivityResult(
-            new androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
-            result -> {
-                if (currentPermissionRequest != null) {
-                    java.util.List<String> granted = new java.util.ArrayList<>();
-                    Boolean cam = result.get(android.Manifest.permission.CAMERA);
-                    Boolean mic = result.get(android.Manifest.permission.RECORD_AUDIO);
-                    if (cam != null && cam) {
-                        granted.add(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE);
-                    }
-                    if (mic != null && mic) {
-                        granted.add(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE);
-                    }
-                    if (!granted.isEmpty()) {
-                        currentPermissionRequest.grant(granted.toArray(new String[0]));
-                    } else {
-                        currentPermissionRequest.deny();
-                    }
-                    currentPermissionRequest = null;
-                }
-                if (currentGeolocationCallback != null) {
-                    Boolean fine = result.get(android.Manifest.permission.ACCESS_FINE_LOCATION);
-                    Boolean coarse = result.get(android.Manifest.permission.ACCESS_COARSE_LOCATION);
-                    if ((fine != null && fine) || (coarse != null && coarse)) {
-                        currentGeolocationCallback.invoke(currentGeolocationOrigin, true, false);
-                    } else {
-                        currentGeolocationCallback.invoke(currentGeolocationOrigin, false, false);
-                    }
-                    currentGeolocationCallback = null;
-                    currentGeolocationOrigin = null;
-                }
-            }
-        );
+        // -- File pickers ----------------------------------------------------
+        exportCsvLauncher = registerForActivityResult(
+                new ActivityResultContracts.CreateDocument("text/csv"),
+                uri -> {
+                    if (uri == null || secureCredentialManager == null) return;
+                    backgroundExecutor.execute(() -> {
+                        try {
+                            java.io.OutputStream os = getContentResolver().openOutputStream(uri);
+                            if (os != null) {
+                                String csv = secureCredentialManager.getAllCredentialsAsCsv();
+                                os.write(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                                os.close();
+                                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                                        "Passwords exported successfully",
+                                        Toast.LENGTH_LONG).show());
+                            }
+                        } catch (Exception e) {
+                            runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                                    "Export failed", Toast.LENGTH_SHORT).show());
+                        }
+                    });
+                });
 
         passwordImportLauncher = registerForActivityResult(
-            new ActivityResultContracts.GetContent(),
-            uri -> {
-                if (uri != null) {
+                new ActivityResultContracts.GetContent(),
+                uri -> {
+                    if (uri == null) return;
                     try (java.io.InputStream is = getContentResolver().openInputStream(uri)) {
                         if (secureCredentialManager.importFromCSVStream(is)) {
-                            android.widget.Toast.makeText(this, "Passwords imported successfully", android.widget.Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Passwords imported successfully",
+                                    Toast.LENGTH_SHORT).show();
                         } else {
-                            android.widget.Toast.makeText(this, "Failed to parse passwords.csv", android.widget.Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Failed to parse passwords.csv",
+                                    Toast.LENGTH_SHORT).show();
                         }
                     } catch (Exception e) {
-                        e.printStackTrace();
-                        android.widget.Toast.makeText(this, "Error opening file stream", android.widget.Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Error opening file stream",
+                                Toast.LENGTH_SHORT).show();
                     }
-                }
-            }
-        );
+                });
 
-        prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-
-        isDesktopMode = prefs.getBoolean("isDesktopMode", false);
-        setupRootLayout();
-        createToolbarViews();
-        setupToolbarListeners();
-        setupMenuButton();
-
+        // -- Assemble the view tree -----------------------------------------
         if (root != null) {
             if (toolbar != null) root.addView(toolbar);
 
-            android.widget.FrameLayout browserWrapper = new android.widget.FrameLayout(this);
-            android.widget.LinearLayout.LayoutParams wrapperParams = new android.widget.LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
+            browserWrapper = new FrameLayout(this);
+            LinearLayout.LayoutParams wrapperParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
             browserWrapper.setLayoutParams(wrapperParams);
 
             if (swipeRefresh != null) browserWrapper.addView(swipeRefresh);
 
-            progressBar = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-            android.widget.FrameLayout.LayoutParams progressParams = new android.widget.FrameLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, 8);
-            progressParams.gravity = android.view.Gravity.TOP;
+            progressBar = new ProgressBar(this, null,
+                    android.R.attr.progressBarStyleHorizontal);
+            FrameLayout.LayoutParams progressParams = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 8);
+            progressParams.gravity = Gravity.TOP;
             progressBar.setLayoutParams(progressParams);
             progressBar.setIndeterminate(false);
             progressBar.setMax(100);
-            progressBar.setVisibility(android.view.View.GONE);
+            progressBar.setVisibility(View.GONE);
 
-            android.graphics.drawable.Drawable progressDrawable = progressBar.getProgressDrawable();
-            if (progressDrawable != null) {
-                progressDrawable.setColorFilter(new android.graphics.PorterDuffColorFilter(android.graphics.Color.parseColor("#8ab4f8"), android.graphics.PorterDuff.Mode.SRC_IN));
+            android.graphics.drawable.Drawable pd = progressBar.getProgressDrawable();
+            if (pd != null) {
+                pd.setColorFilter(new android.graphics.PorterDuffColorFilter(
+                        Color.parseColor("#8ab4f8"),
+                        android.graphics.PorterDuff.Mode.SRC_IN));
             }
 
             browserWrapper.addView(progressBar);
             root.addView(browserWrapper);
 
             getWindow().setFlags(
-                android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-                android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-            );
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
 
             setContentView(root);
 
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                root.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                root.setImportantForAutofill(
+                        View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 if (browserContainer != null) {
-                    browserContainer.setImportantForAutofill(android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+                    browserContainer.setImportantForAutofill(
+                            View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
                 }
             }
         }
 
+        // -- Wire collaborators now that the view tree exists ----------------
+        wireControllers();
+        historyController.migrateLegacyBookmarksToDatabase();
         loadSavedData();
 
-        if (backgroundExecutor != null) {
-            backgroundExecutor.execute(() -> {
-                AdBlockEngine.init(MainActivity.this, filterLists);
-                AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, false);
-            });
-        }
+        // -- Background warm-up ---------------------------------------------
+        backgroundExecutor.execute(() -> {
+            AdBlockEngine.init(MainActivity.this, filterLists);
+            AdBlockEngine.checkAndRefreshFilters(
+                    MainActivity.this, backgroundExecutor, filterLists, false);
+        });
+        backgroundExecutor.execute(() -> {
+            try {
+                if (dbHelper != null) dbHelper.cleanupOldHistory(90);
+            } catch (Exception ignored) {
+            }
+        });
 
-        if (backgroundExecutor != null && dbHelper != null) {
-            backgroundExecutor.execute(() -> {
-                try {
-                    dbHelper.cleanupOldHistory(90);
-                } catch (Exception ignored) {}
-            });
-        }
-
-        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+        // -- Back handling ---------------------------------------------------
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (tabSwitcherOverlay != null && tabSwitcherOverlay.getVisibility() == android.view.View.VISIBLE) {
-                    hideTabSwitcher();
+                if (tabManager.isTabSwitcherVisible()) {
+                    tabManager.hideTabSwitcher();
                     return;
                 }
-                android.webkit.WebView activeWebView = getCurrentWebView();
-                if (activeWebView != null && activeWebView.canGoBack()) {
-                    activeWebView.goBack();
+                WebView active = tabManager.getCurrentWebView();
+                if (active != null && active.canGoBack()) {
+                    active.goBack();
                     return;
                 }
-                if (tabList.size() > 1) {
-                    closeTab(currentTabPosition);
+                if (tabManager.getTabCount() > 1) {
+                    tabManager.closeTab(tabManager.getCurrentPosition());
                 } else {
-                    showExitConfirmationDialog();
+                    sessionManager.showExitConfirmationDialog();
                 }
             }
         });
-    }
-
-    public boolean isVaultActive() {
-        android.webkit.WebView wv = getCurrentWebView();
-        return wv != null && wv.getUrl() != null && wv.getUrl().startsWith("file:///android_asset/vault.html");
-    }
-
-    public void updateScreenShield() {
-        if (isVaultActive()) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        }
-    }
-
-    private void migrateLegacyBookmarksToDatabase() {
-        android.content.SharedPreferences legacyPrefs = getSharedPreferences("spoon_bookmarks", android.content.Context.MODE_PRIVATE);
-        String legacyData = legacyPrefs.getString("bookmarks", null);
-
-        if (legacyData == null || legacyData.equals("[]")) {
-            return;
-        }
-
-        if (backgroundExecutor != null) {
-            backgroundExecutor.execute(() -> {
-                try {
-                    org.json.JSONArray bookmarksArray = new org.json.JSONArray(legacyData);
-
-                    for (int i = 0; i < bookmarksArray.length(); i++) {
-                        org.json.JSONObject bookmark = bookmarksArray.optJSONObject(i);
-                        if (bookmark != null) {
-                            String title = bookmark.optString("title", "Untitled");
-                            String url = bookmark.optString("url", "");
-
-                            if (!url.isEmpty() && dbHelper != null) {
-                                dbHelper.addBookmark(url, title);
-                            }
-                        }
-                    }
-
-                    legacyPrefs.edit().clear().apply();
-
-                } catch (Exception ignored) {
-                }
-            });
-        }
-    }
-
-    public void executeSafely(Runnable task) {
-        if (backgroundExecutor != null && !backgroundExecutor.isShutdown() && !backgroundExecutor.isTerminated()) {
-            try {
-                backgroundExecutor.execute(task);
-            } catch (java.util.concurrent.RejectedExecutionException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    private void showExitConfirmationDialog() {
-        if (this.isFinishing() || this.isDestroyed()) return;
-
-        new android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Exit Browser")
-            .setMessage("Are you sure you want to exit the browser?")
-            .setPositiveButton("Exit", (dialog, which) -> {
-                clearSessionOnExit = false;
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    android.webkit.CookieManager.getInstance().flush();
-                }
-                android.content.SharedPreferences prefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-                if (prefs != null) {
-                    prefs.edit().remove("open_tabs").remove("current_tab").apply();
-                }
-                finishAndRemoveTask();
-            })
-            .setNegativeButton("Cancel", null)
-            .show();
     }
 
     @Override
@@ -421,97 +320,34 @@ public class MainActivity extends AppCompatActivity {
     public void onResume() {
         super.onResume();
         handleIncomingIntent(getIntent());
-        setIntent(new android.content.Intent());
-        WebView activeWebView = getCurrentWebView();
-        if (activeWebView != null) {
-            activeWebView.onResume();
-            activeWebView.resumeTimers();
-        }
-    }
-
-    private void handleIncomingIntent(Intent intent) {
-        if (intent == null) return;
-
-        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
-            String urlToLoad = intent.getData().toString();
-
-            if (tabList.isEmpty()) {
-                createNewTab();
-            }
-
-            if (addressBar != null) {
-                addressBar.setText(urlToLoad);
-            }
-            openUrl(urlToLoad);
-
-            setIntent(new Intent());
-
-        } else if (intent.getAction() != null) {
-            setIntent(new Intent());
-        }
+        setIntent(new Intent());
+        if (tabManager != null) tabManager.resumeActiveTab();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-
-        try {
-            if (!clearSessionOnExit) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    android.webkit.CookieManager.getInstance().flush();
-                }
-            }
-        } catch (Exception ignored) {}
-
-        WebView activeWebView = getCurrentWebView();
-        if (activeWebView != null) {
-            activeWebView.onPause();
-            activeWebView.pauseTimers();
-        }
+        if (sessionManager != null) sessionManager.onPause();
+        if (tabManager != null) tabManager.pauseActiveTab();
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        if (sessionManager != null) sessionManager.onStop();
+    }
 
-        try {
-            if (clearSessionOnExit) {
-                android.webkit.WebStorage.getInstance().deleteAllData();
-                android.webkit.CookieManager.getInstance().removeAllCookies(null);
-                android.webkit.CookieManager.getInstance().flush();
-            }
-        } catch (Exception ignored) {}
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (tabManager != null) tabManager.onTrimMemory(level);
     }
 
     @Override
     protected void onDestroy() {
-        try {
-            if (!clearSessionOnExit) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                    android.webkit.CookieManager.getInstance().flush();
-                }
-            }
-        } catch (Exception ignored) {}
-
-        if (backgroundExecutor != null) {
-            backgroundExecutor.shutdownNow();
-        }
-
-        if (tabList != null) {
-            for (int i = 0; i < tabList.size(); i++) {
-                android.webkit.WebView wv = tabList.get(i).getWebView();
-                if (wv != null) {
-                    if (wv.getParent() instanceof android.view.ViewGroup) {
-                        ((android.view.ViewGroup) wv.getParent()).removeView(wv);
-                    }
-                    wv.stopLoading();
-                    wv.setWebChromeClient(null);
-                    wv.setWebViewClient(null);
-                    wv.destroy();
-                }
-            }
-            tabList.clear();
-        }
+        if (sessionManager != null) sessionManager.onDestroy();
+        if (backgroundExecutor != null) backgroundExecutor.shutdownNow();
+        if (tabManager != null) tabManager.destroyAll();
 
         if (clipboardManager != null && clipChangedListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipChangedListener);
@@ -519,2275 +355,189 @@ public class MainActivity extends AppCompatActivity {
         if (clipboardHandler != null) {
             clipboardHandler.removeCallbacks(clipboardClearRunnable);
         }
-
         super.onDestroy();
     }
 
-    private void setupRootLayout() {
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.BLACK);
-
-        ViewCompat.setOnApplyWindowInsetsListener(root, (v, windowInsets) -> {
-            Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(0, systemBars.top, 0, 0);
-            return windowInsets;
-        });
-
-        browserContainer = new LinearLayout(this);
-        browserContainer.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams browserParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f
-        );
-        browserContainer.setLayoutParams(browserParams);
-
-        swipeRefresh = new androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this);
-        swipeRefresh.setColorSchemeColors(android.graphics.Color.parseColor("#8ab4f8"));
-        swipeRefresh.setProgressBackgroundColorSchemeColor(android.graphics.Color.parseColor("#202124"));
-        swipeRefresh.addView(browserContainer);
-        swipeRefresh.setOnRefreshListener(() -> {
-            android.webkit.WebView wv = getCurrentWebView();
-            if (wv != null) wv.reload();
-            else swipeRefresh.setRefreshing(false);
-        });
-        swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
-            android.webkit.WebView wv = getCurrentWebView();
-            if (wv != null) {
-                return wv.getScrollY() > 0;
-            }
-            return true;
-        });
-    }
-
-    private void loadSavedData() {
-        String savedFilterLists = prefs.getString(KEY_FILTER_LISTS, "");
-        if (!savedFilterLists.isEmpty()) {
-            for (String filter : savedFilterLists.split("\\n")) {
-                if (!filterLists.contains(filter)) {
-                    filterLists.add(filter);
-                }
-            }
-        }
-
-        if (!filterLists.isEmpty()) {
-            long lastRefresh = prefs.getLong(KEY_FILTER_REFRESH_TIME, 0);
-            if (System.currentTimeMillis() - lastRefresh > 24L * 60 * 60 * 1000) {
-                AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-            }
-        }
-        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-
-        createNewTab();
-        showHome();
-    }
-
-    private void showSavedPasswordsDialog() {
-        if (secureCredentialManager == null) return;
-
-        backgroundExecutor.execute(() -> {
-            java.io.File vaultFile = new java.io.File(getFilesDir(), "secure_vault.dat");
-            java.util.ArrayList<String> hosts = new java.util.ArrayList<>();
-            if (vaultFile.exists()) {
-                try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(vaultFile), java.nio.charset.StandardCharsets.UTF_8))) {
-                    String line;
-                    while ((line = r.readLine()) != null) {
-                        if (line.contains("_user=")) {
-                            String host = line.split("_user=")[0];
-                            if (!hosts.contains(host)) {
-                                hosts.add(host);
-                            }
-                        }
-                    }
-                } catch (Exception e) { e.printStackTrace(); }
-            }
-
-            if (hosts.isEmpty()) {
-                runOnUiThread(() -> {
-                    if (!MainActivity.this.isFinishing() && !MainActivity.this.isDestroyed()) {
-                        new AlertDialog.Builder(this)
-                            .setTitle("Saved Passwords")
-                            .setMessage("No passwords saved yet.")
-                            .setPositiveButton("OK", null)
-                            .show();
-                    }
-                });
-                return;
-            }
-
-            java.util.ArrayList<String> displayList = new java.util.ArrayList<>();
-            for (String h : hosts) {
-                String user = secureCredentialManager.getUsername(h);
-                displayList.add(h + " (" + user + ")");
-            }
-
-            runOnUiThread(() -> {
-                if (MainActivity.this.isFinishing() || MainActivity.this.isDestroyed()) return;
-
-                ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayList);
-                ListView listView = new ListView(this);
-                listView.setAdapter(adapter);
-
-                AlertDialog dialog = new AlertDialog.Builder(this)
-                    .setTitle("Saved Passwords")
-                    .setView(listView)
-                    .setPositiveButton("Close", null)
-                    .create();
-
-                listView.setOnItemClickListener((parent, view, position, id) -> {
-                    String selectedHost = hosts.get(position);
-
-                    backgroundExecutor.execute(() -> {
-                        String user = secureCredentialManager.getUsername(selectedHost);
-                        String pass = secureCredentialManager.getPassword(selectedHost);
-
-                        runOnUiThread(() -> {
-                            if (MainActivity.this.isFinishing() || MainActivity.this.isDestroyed()) return;
-
-                            new AlertDialog.Builder(this)
-                                .setTitle(selectedHost)
-                                .setMessage("Username: " + user + "\nPassword: " + pass)
-                                .setNegativeButton("Delete", (d, w) -> {
-                                    backgroundExecutor.execute(() -> {
-                                        secureCredentialManager.clearCredentials(selectedHost);
-                                        runOnUiThread(() -> {
-                                            if (!MainActivity.this.isFinishing() && !MainActivity.this.isDestroyed()) {
-                                                Toast.makeText(this, "Credentials deleted", Toast.LENGTH_SHORT).show();
-                                                dialog.dismiss();
-                                                showSavedPasswordsDialog();
-                                            }
-                                        });
-                                    });
-                                })
-                                .setPositiveButton("OK", null)
-                                .show();
-                        });
-                    });
-                });
-
-                dialog.show();
-            });
-        });
-    }
-
-    private void setupMenuButton() {
-        menuButton.setOnClickListener(v -> {
-            android.content.Context wrapper = new android.view.ContextThemeWrapper(this, android.R.style.Widget_Material_Light_PopupMenu);
-            android.widget.PopupMenu popup = new android.widget.PopupMenu(wrapper, menuButton, android.view.Gravity.END);
-
-            popup.getMenu().add("New Tab");
-            popup.getMenu().add("New Incognito Tab");
-            popup.getMenu().add("Reload");
-            popup.getMenu().add("Downloads");
-            popup.getMenu().add("Find in Page");
-            popup.getMenu().add("Bookmarks");
-            popup.getMenu().add("Add Bookmark");
-            popup.getMenu().add("History");
-            popup.getMenu().add("Clear History");
-            popup.getMenu().add("Clear Cache");
-            popup.getMenu().add("Filter Lists");
-
-            boolean isFilterEnabled = AdBlockEngine.checkIsEngineEnabled(this);
-            popup.getMenu().add(isFilterEnabled ? "Disable Filterlists" : "Enable Filterlists");
-
-            String currentHost = "";
-            if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-                android.webkit.WebView activeWebView = tabList.get(currentTabPosition).getWebView();
-
-                if (activeWebView != null && activeWebView.getUrl() != null) {
-                    currentHost = android.net.Uri.parse(activeWebView.getUrl()).getHost();
-                }
-            }
-
-            boolean isCurrentSiteDesktop = isDesktopHostEnabled(currentHost);
-
-            popup.getMenu().add(isCurrentSiteDesktop ? "Desktop Site [ON]" : "Desktop Site [OFF]");
-            popup.getMenu().add("Passwords");
-            popup.getMenu().add("🔑 Vault (Copy)");
-            popup.getMenu().add("Search Engine");
-            popup.getMenu().add("About");
-            popup.getMenu().add("Startup Animation");
-            popup.getMenu().add("Exit");
-
-            popup.setOnMenuItemClickListener(item -> {
-                String title = item.getTitle().toString();
-                switch (title) {
-                    case "New Tab":
-                        createNewTab(false);
-                        showHome();
-                        return true;
-                    case "New Incognito Tab":
-                        createNewTab(true);
-                        showHome();
-                        return true;
-                    case "Reload":
-                        if (getCurrentWebView() != null) getCurrentWebView().reload();
-                        return true;
-                    case "Downloads":
-                        try {
-                            android.content.Intent intent = new android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
-                            intent.setFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                            startActivity(intent);
-                        } catch (android.content.ActivityNotFoundException e) {
-                            android.widget.Toast.makeText(this, "No download manager found", android.widget.Toast.LENGTH_SHORT).show();
-                        }
-                        return true;
-
-                    case "Find in Page":
-                        showFindInPageDialog();
-                        return true;
-
-                    case "Bookmarks":
-                        showBookmarks();
-                        return true;
-
-                    case "Add Bookmark":
-                        android.webkit.WebView wv = getCurrentWebView();
-                        if (wv != null && wv.getUrl() != null && dbHelper != null) {
-                            dbHelper.addBookmark(wv.getUrl(), wv.getTitle());
-                            android.widget.Toast.makeText(MainActivity.this, "Bookmark saved", android.widget.Toast.LENGTH_SHORT).show();
-                        }
-                        return true;
-
-                    case "History":
-                        showHistoryDialog();
-                        return true;
-
-                    case "Clear History":
-                        if (dbHelper != null) dbHelper.clearHistory();
-                        android.widget.Toast.makeText(MainActivity.this, "History cleared", android.widget.Toast.LENGTH_SHORT).show();
-                        return true;
-
-                    case "Clear Cache":
-                        if (getCurrentWebView() != null) getCurrentWebView().clearCache(true);
-                        android.widget.Toast.makeText(this, "Cache cleared", android.widget.Toast.LENGTH_SHORT).show();
-                        return true;
-
-                    case "Filter Lists":
-                        showFilterListsDialog();
-                        return true;
-
-                    case "Disable Filterlists":
-                    case "Enable Filterlists":
-                        boolean currentState = AdBlockEngine.checkIsEngineEnabled(MainActivity.this);
-                        AdBlockEngine.setEngineEnabled(MainActivity.this, !currentState);
-
-                        android.widget.Toast.makeText(MainActivity.this,
-                            !currentState ? "Filterlists Enabled" : "Filterlists Disabled",
-                            android.widget.Toast.LENGTH_SHORT).show();
-
-                        android.webkit.WebView currentWv = getCurrentWebView();
-                        if (currentWv != null) {
-                            currentWv.reload();
-                        }
-                        return true;
-
-                    case "Desktop Site [OFF]":
-                    case "Desktop Site [ON]":
-                        toggleDesktopMode();
-                        return true;
-
-                    case "Passwords":
-                        String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
-                        new android.app.AlertDialog.Builder(this)
-                            .setTitle("Password Management")
-                            .setItems(options, (dialog, which) -> {
-                                if (which == 0) {
-                                    createNewTab();
-                                    openUrl("file:///android_asset/vault.html");
-                                } else if (which == 1) {
-                                    passwordImportLauncher.launch("text/*");
-                                } else if (which == 2) {
-                                    exportCsvLauncher.launch("spoon_passwords.csv");
-                                }
-                            })
-                            .show();
-                        return true;
-
-                    case "🔑 Vault (Copy)":
-                        showVaultForCurrentSite();
-                        return true;
-
-                    case "Search Engine":
-                        showSearchEngineDialog();
-                        return true;
-
-                    case "Startup Animation":
-                        android.content.SharedPreferences splashPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-                        boolean isCurrentlyEnabled = splashPrefs.getBoolean("show_splash_screen", true);
-                        splashPrefs.edit().putBoolean("show_splash_screen", !isCurrentlyEnabled).apply();
-
-                        String statusMsg = !isCurrentlyEnabled ? "Startup Animation Enabled" : "Startup Animation Disabled";
-                        android.widget.Toast.makeText(MainActivity.this, statusMsg, android.widget.Toast.LENGTH_SHORT).show();
-                        return true;
-
-                    case "About":
-                        showAbout();
-                        return true;
-
-                    case "Exit":
-                        clearSessionOnExit = false;
-
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                            android.webkit.CookieManager.getInstance().flush();
-                        }
-
-                        if (prefs != null) {
-                            prefs.edit().remove("open_tabs").remove("current_tab").apply();
-                        }
-
-                        finishAndRemoveTask();
-                        return true;
-                }
-                return false;
-            });
-            popup.show();
-        });
-    }
-
-    private void showSearchEngineDialog() {
-        String current = prefs != null ? prefs.getString(KEY_SEARCH_ENGINE, "brave") : "brave";
-        final String[] engines = {"Brave", "Google", "DuckDuckGo"};
-        final String[] values = {"brave", "google", "duckduckgo"};
-
-        int checked = 0;
-        for (int i = 0; i < values.length; i++) {
-            if (values[i].equals(current)) {
-                checked = i;
-                break;
-            }
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle("Search Engine")
-                .setSingleChoiceItems(engines, checked, (dialog, which) -> {
-                    prefs.edit().putString(KEY_SEARCH_ENGINE, values[which]).apply();
-                    dialog.dismiss();
-                    Toast.makeText(this, engines[which] + " set as default", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
-
-    public String getSearchUrlFor(String query) {
-        String engine = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).getString(KEY_SEARCH_ENGINE, "brave");
-        String encoded = android.net.Uri.encode(query == null ? "" : query);
-        switch (engine) {
-            case "google":
-                return "https://www.google.com/search?q=" + encoded;
-            case "duckduckgo":
-                return "https://duckduckgo.com/?q=" + encoded;
-            case "brave":
-            default:
-                return "https://search.brave.com/search?q=" + encoded;
-        }
-    }
-
-    private void showFindInPageDialog() {
-        android.webkit.WebView webView = getCurrentWebView();
-        if (webView == null) return;
-
-        android.view.ViewGroup rootLayout = findViewById(android.R.id.content);
-
-        if (findInPageBar != null) rootLayout.removeView(findInPageBar);
-
-        android.widget.LinearLayout barLayout = new android.widget.LinearLayout(this);
-        barLayout.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        barLayout.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        barLayout.setPadding(20, 10, 20, 10);
-        barLayout.setElevation(10f);
-
-        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
-        shape.setCornerRadius(24);
-        shape.setColor(android.graphics.Color.parseColor("#B3121212"));
-        shape.setStroke(2, android.graphics.Color.parseColor("#333333"));
-        barLayout.setBackground(shape);
-
-        android.widget.EditText input = new android.widget.EditText(this);
-        input.setHint("Find...");
-        input.setSingleLine(true);
-        input.setTextColor(android.graphics.Color.WHITE);
-        input.setHintTextColor(android.graphics.Color.GRAY);
-        input.setBackground(null);
-        android.widget.LinearLayout.LayoutParams inputParams = new android.widget.LinearLayout.LayoutParams(0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        barLayout.addView(input, inputParams);
-
-        android.widget.TextView countText = new android.widget.TextView(this);
-        countText.setText("0/0");
-        countText.setTextColor(android.graphics.Color.LTGRAY);
-        countText.setPadding(15, 0, 15, 0);
-        barLayout.addView(countText);
-
-        android.widget.Button prevBtn = new android.widget.Button(this);
-        prevBtn.setText("∧");
-        prevBtn.setTextColor(android.graphics.Color.WHITE);
-        prevBtn.setBackground(null);
-
-        android.widget.Button nextBtn = new android.widget.Button(this);
-        nextBtn.setText("∨");
-        nextBtn.setTextColor(android.graphics.Color.WHITE);
-        nextBtn.setBackground(null);
-
-        android.widget.Button closeBtn = new android.widget.Button(this);
-        closeBtn.setText("X");
-        closeBtn.setTextColor(android.graphics.Color.parseColor("#FF5555"));
-        closeBtn.setBackground(null);
-
-        barLayout.addView(prevBtn);
-        barLayout.addView(nextBtn);
-        barLayout.addView(closeBtn);
-
-        webView.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
-            countText.setText(numberOfMatches == 0 ? "0/0" : (activeMatchOrdinal + 1) + "/" + numberOfMatches);
-        });
-
-        final android.os.Handler searchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-        final Runnable[] searchRunnable = new Runnable[1];
-
-        input.addTextChangedListener(new android.text.TextWatcher() {
+    // ========================================================================
+    // Wiring
+    // ========================================================================
+
+    private void wireControllers() {
+        // --- TabManager ----------------------------------------------------
+        tabManager = new TabManager(this, browserContainer, new TabManager.Callbacks() {
+            @NonNull
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public WebView createConfiguredWebView() {
+                return MainActivity.this.createConfiguredWebView();
+            }
+
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                if (searchRunnable[0] != null) searchHandler.removeCallbacks(searchRunnable[0]);
-                searchRunnable[0] = () -> webView.findAllAsync(s.toString());
-                searchHandler.postDelayed(searchRunnable[0], 300);
+            public void onCurrentTabChanged(@Nullable WebView webView,
+                                            @Nullable TabState state) {
+                updateAddressBarForTab(webView, state);
+                updateScreenShield();
             }
+
             @Override
-            public void afterTextChanged(android.text.Editable s) {}
-        });
-
-        prevBtn.setOnClickListener(v -> webView.findNext(false));
-        nextBtn.setOnClickListener(v -> webView.findNext(true));
-        closeBtn.setOnClickListener(v -> {
-            webView.clearMatches();
-            rootLayout.removeView(barLayout);
-            findInPageBar = null;
-        });
-
-        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        params.gravity = android.view.Gravity.TOP;
-        params.setMargins(20, 40, 20, 0);
-
-        rootLayout.addView(barLayout, params);
-        findInPageBar = barLayout;
-
-        input.requestFocus();
-    }
-
-    private void setupToolbarListeners() {
-
-        tabIndicator.setOnLongClickListener(null);
-        tabIndicator.setLongClickable(false);
-        tabIndicator.setOnClickListener(v -> showTabSwitcher());
-
-        addressBar.setOnEditorActionListener((v, actionId, event) -> {
-            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
-                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
-                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE ||
-                actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND ||
-                (event != null && event.getAction() == android.view.KeyEvent.ACTION_DOWN && event.getKeyCode() == android.view.KeyEvent.KEYCODE_ENTER)) {
-
-                navigate();
-
-                addressBar.clearFocus();
-                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.hideSoftInputFromWindow(addressBar.getWindowToken(), 0);
-                return true;
-            }
-            return false;
-        });
-
-        addressBar.setOnKeyListener((v, keyCode, event) -> {
-            if (event.getAction() == android.view.KeyEvent.ACTION_DOWN && keyCode == android.view.KeyEvent.KEYCODE_ENTER) {
-
-                navigate();
-
-                addressBar.clearFocus();
-                android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
-                if (imm != null) imm.hideSoftInputFromWindow(addressBar.getWindowToken(), 0);
-                return true;
-            }
-            return false;
-        });
-
-        forwardButton.setOnClickListener(v -> {
-            android.webkit.WebView webView = getCurrentWebView();
-            if (webView != null && webView.canGoForward()) {
-                webView.goForward();
-            }
-        });
-
-        newTabButton.setOnClickListener(v -> {
-            createNewTab();
-            showHome();
-        });
-
-        prevTabButton.setOnClickListener(v -> {
-            if (tabList.size() > 1) {
-                int previous = currentTabPosition - 1;
-                if (previous < 0) {
-                    previous = tabList.size() - 1;
-                }
-                switchToTab(previous);
-            }
-        });
-
-        nextTabButton.setOnClickListener(v -> {
-            if (tabList.size() > 1) {
-                int next = (currentTabPosition + 1) % tabList.size();
-                switchToTab(next);
-            }
-        });
-    }
-
-    private void createToolbarViews() {
-        toolbar = new LinearLayout(this);
-        toolbar.setOrientation(LinearLayout.HORIZONTAL);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(12), dp(10), dp(12), dp(10));
-        toolbar.setBackgroundColor(Color.parseColor("#141414"));
-
-        forwardButton = makeButton("→");
-        forwardButton.setContentDescription("Go Forward");
-
-        prevTabButton = makeButton("◀");
-        prevTabButton.setContentDescription("Previous Tab");
-
-        nextTabButton = makeButton("▶");
-        nextTabButton.setContentDescription("Next Tab");
-
-        newTabButton = makeButton("+");
-        newTabButton.setContentDescription("New Tab");
-
-        menuButton = makeButton("☰");
-        menuButton.setContentDescription("Open Menu");
-
-        menuButton.setOnClickListener(view -> {
-            android.widget.PopupMenu popupMenu = new android.widget.PopupMenu(MainActivity.this, menuButton);
-
-            popupMenu.getMenu().add("Global History");
-            popupMenu.getMenu().add("🔑 Vault / Autofill");
-
-            popupMenu.setOnMenuItemClickListener(menuItem -> {
-                String title = menuItem.getTitle().toString();
-
-                if (title.equals("🔑 Vault / Autofill")) {
-                    showVaultForCurrentSite();
-                    return true;
-                }
-                else if (title.equals("Global History")) {
-                    showHistoryDialog();
-                    return true;
-                }
-                return false;
-            });
-
-            popupMenu.show();
-        });
-
-        int screenWidth = getScreenWidthDp();
-        if (screenWidth < 600) {
-            forwardButton.setVisibility(View.GONE);
-            prevTabButton.setVisibility(View.GONE);
-            nextTabButton.setVisibility(View.GONE);
-            newTabButton.setVisibility(View.GONE);
-        } else {
-            forwardButton.setVisibility(View.VISIBLE);
-            prevTabButton.setVisibility(View.VISIBLE);
-            nextTabButton.setVisibility(View.VISIBLE);
-            newTabButton.setVisibility(View.VISIBLE);
-        }
-
-        tabIndicator = new TextView(this);
-        tabIndicator.setTextColor(Color.WHITE);
-        tabIndicator.setTextSize(14);
-        tabIndicator.setPadding(dp(8), 0, dp(8), 0);
-
-        if (screenWidth < 360) {
-            tabIndicator.setVisibility(View.GONE);
-        }
-
-        addressBar = new AutoCompleteTextView(this);
-        addressBar.setHint("Search or enter address");
-        addressBar.setTextColor(Color.WHITE);
-        addressBar.setHintTextColor(Color.GRAY);
-        addressBar.setSingleLine(true);
-        addressBar.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-
-        addressBar.setThreshold(1);
-
-        android.graphics.drawable.GradientDrawable customAddressBg = new android.graphics.drawable.GradientDrawable();
-        customAddressBg.setColor(android.graphics.Color.parseColor("#222222"));
-        customAddressBg.setCornerRadius(dp(20));
-        addressBar.setBackground(customAddressBg);
-
-        addressBar.setPadding(dp(16), dp(8), dp(16), dp(8));
-
-        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        addressParams.setMargins(dp(6), 0, dp(6), 0);
-        addressBar.setLayoutParams(addressParams);
-
-        final boolean[] justGainedFocus = {false};
-        addressBar.setOnFocusChangeListener((view, hasFocus) -> {
-            if (hasFocus) {
-                addressBar.post(() -> {
-                    if (addressBar.getText() != null) {
-                        addressBar.selectAll();
-                    }
-                });
-                justGainedFocus[0] = true;
-            } else {
-                justGainedFocus[0] = false;
-            }
-        });
-
-        addressBar.setOnClickListener(view -> {
-            if (!justGainedFocus[0]) {
-                int cursorPosition = addressBar.getSelectionStart();
-                if (cursorPosition >= 0) {
-                    addressBar.setSelection(cursorPosition);
-                }
-            }
-            justGainedFocus[0] = false;
-        });
-
-        addressBarAdapter = new SuggestionAdapter(this, new java.util.ArrayList<>());
-
-        addressBar.post(() -> {
-            try {
-                addressBar.setAdapter(addressBarAdapter);
-                addressBar.setDropDownBackgroundResource(R.drawable.bg_dropdown_rounded);
-                addressBar.setDropDownVerticalOffset(dp(8));
-            } catch (Exception ignored) {}
-        });
-
-        addressBar.setOnItemClickListener((parent, view, position, id) -> {
-            String rawItem = null;
-            if (view instanceof TextView) {
-                rawItem = ((TextView) view).getText().toString();
-            } else if (view instanceof ViewGroup) {
-                for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++) {
-                    View child = ((ViewGroup) view).getChildAt(i);
-                    if (child instanceof TextView) {
-                        rawItem = ((TextView) child).getText().toString();
-                        break;
-                    }
-                }
-            }
-            if (rawItem == null) {
-                try {
-                    rawItem = (String) parent.getItemAtPosition(position);
-                } catch (Exception e) {
-                    rawItem = addressBar.getText().toString();
-                }
-            }
-            if (rawItem == null || rawItem.isEmpty()) return;
-
-            String cleanUrl = rawItem;
-            if (rawItem.contains("http://") || rawItem.contains("https://")) {
-                int httpIndex = rawItem.indexOf("http://");
-                int httpsIndex = rawItem.indexOf("https://");
-                int startUrl = (httpIndex != -1 && httpsIndex != -1) ? Math.min(httpIndex, httpsIndex) : (httpIndex != -1 ? httpIndex : httpsIndex);
-                cleanUrl = rawItem.substring(startUrl).trim();
+            public void onTabCountChanged(int count) {
+                updateTabCountersUI(count);
             }
 
-            suppressSuggestions = true;
-            addressBar.setText(cleanUrl);
-            addressBar.setSelection(cleanUrl.length());
-            try {
-                if (addressBar.isAttachedToWindow()) {
-                    addressBar.dismissDropDown();
-                }
-            } catch (Exception ignored) {}
-
-            addressBar.post(() -> {
-                navigate();
-                suppressSuggestions = false;
-            });
-        });
-
-        addressBar.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                if (suppressSuggestions) return;
-                updateAddressBarSuggestions(s.toString().trim());
-            }
-            @Override public void afterTextChanged(android.text.Editable s) {}
-        });
-
-        GradientDrawable addressBg = new GradientDrawable();
-        addressBg.setColor(Color.parseColor("#262626"));
-        addressBg.setCornerRadius(dp(20));
-        addressBar.setBackground(addressBg);
-        addressBar.setPadding(dp(16), dp(12), dp(16), dp(12));
-
-        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        inputParams.setMargins(dp(8), 0, dp(8), 0);
-        addressBar.setLayoutParams(inputParams);
-
-        float widthDp = getResources().getConfiguration().screenWidthDp;
-
-        if (widthDp >= 600) {
-            toolbar.addView(forwardButton);
-            toolbar.addView(prevTabButton);
-            toolbar.addView(tabIndicator);
-            toolbar.addView(nextTabButton);
-            toolbar.addView(newTabButton);
-            toolbar.addView(addressBar);
-            toolbar.addView(menuButton);
-        } else {
-            if (addressBar != null && addressBar.getParent() instanceof ViewGroup) {
-                ((ViewGroup) addressBar.getParent()).removeView(addressBar);
-            }
-            if (menuButton != null && menuButton.getParent() instanceof ViewGroup) {
-                ((ViewGroup) menuButton.getParent()).removeView(menuButton);
-            }
-
-            forwardButton.setVisibility(View.GONE);
-            prevTabButton.setVisibility(View.GONE);
-            tabIndicator.setVisibility(View.GONE);
-            nextTabButton.setVisibility(View.GONE);
-            newTabButton.setVisibility(View.GONE);
-
-            tabBadgeButton = new Button(this);
-            tabBadgeButton.setContentDescription("Open Tab Switcher");
-            int tabCount = (tabList != null) ? tabList.size() : 1;
-            tabBadgeButton.setText(String.valueOf(tabCount));
-            tabBadgeButton.setTextColor(Color.WHITE);
-            tabBadgeButton.setTextSize(12);
-            tabBadgeButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-            tabBadgeButton.setGravity(Gravity.CENTER);
-
-            tabBadgeButton.setPadding(0, 0, 0, 0);
-            tabBadgeButton.setIncludeFontPadding(false);
-
-            GradientDrawable badgeBg = new GradientDrawable();
-            badgeBg.setColor(Color.TRANSPARENT);
-            badgeBg.setStroke(dp(2), Color.parseColor("#CCCCCC"));
-            badgeBg.setCornerRadius(dp(6));
-            tabBadgeButton.setBackground(badgeBg);
-
-            LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(dp(36), dp(36));
-            badgeParams.setMargins(dp(6), 0, dp(6), 0);
-            tabBadgeButton.setLayoutParams(badgeParams);
-
-            tabBadgeButton.setOnClickListener(v -> {
-                showTabSwitcher();
-            });
-
-            if (menuButton != null) {
-                menuButton.setPadding(0, 0, 0, 0);
-                menuButton.setIncludeFontPadding(false);
-            }
-
-            if (addressBar != null && addressBar.getParent() == null) {
-                toolbar.addView(addressBar);
-            }
-            if (tabBadgeButton != null && tabBadgeButton.getParent() == null) {
-                toolbar.addView(tabBadgeButton);
-            }
-            if (menuButton != null && menuButton.getParent() == null) {
-                toolbar.addView(menuButton);
-            }
-        }
-    }
-
-    private Button makeButton(String text) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextColor(Color.WHITE);
-        button.setAllCaps(false);
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor("#2a2a2a"));
-        bg.setCornerRadius(dp(12));
-        button.setBackground(bg);
-
-        int buttonSize = getToolbarButtonSize();
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(buttonSize, buttonSize);
-        params.setMargins(dp(3), 0, dp(3), 0);
-        button.setLayoutParams(params);
-
-        return button;
-    }
-
-    private int getToolbarButtonSize() {
-        int width = getResources().getConfiguration().screenWidthDp;
-        if (width < 400) return dp(36);
-        else if (width < 600) return dp(42);
-        return dp(46);
-    }
-
-    private int getScreenWidthDp() {
-        return getResources().getConfiguration().screenWidthDp;
-    }
-
-    private int dp(int value) {
-        return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, value, getResources().getDisplayMetrics()
-        );
-    }
-
-    private void configureWebSettings(android.webkit.WebSettings settings) {
-        if (settings == null) return;
-
-        settings.setJavaScriptEnabled(true);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(true);
-
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setSaveFormData(true);
-        android.net.ConnectivityManager connMgr = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (connMgr != null && connMgr.isActiveNetworkMetered()) {
-            settings.setBlockNetworkImage(true);
-            settings.setCacheMode(android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK);
-        } else {
-            settings.setBlockNetworkImage(false);
-            settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
-        }
-
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(false);
-        settings.setAllowUniversalAccessFromFileURLs(false);
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
-            settings.setLayoutAlgorithm(android.webkit.WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
-        }
-        settings.setSupportZoom(true);
-        settings.setBuiltInZoomControls(true);
-        settings.setDisplayZoomControls(false);
-        settings.setGeolocationEnabled(false);
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(false);
-        }
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            settings.setSafeBrowsingEnabled(true);
-        }
-
-        try {
-            android.webkit.CookieManager cm = android.webkit.CookieManager.getInstance();
-            cm.setAcceptCookie(true);
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                cm.setAcceptThirdPartyCookies(getCurrentWebView(), false);
-            }
-        } catch (Exception ignored) {}
-
-        settings.setUserAgentString(MOBILE_UA);
-        settings.setUseWideViewPort(false);
-        settings.setLoadWithOverviewMode(false);
-
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK)) {
-            androidx.webkit.WebSettingsCompat.setForceDark(settings, androidx.webkit.WebSettingsCompat.FORCE_DARK_ON);
-        }
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.FORCE_DARK_STRATEGY)) {
-            androidx.webkit.WebSettingsCompat.setForceDarkStrategy(settings,
-                androidx.webkit.WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING);
-        }
-    }
-
-    private View.OnLongClickListener createImageLongClickListener(WebView webView) {
-        return v -> {
-            WebView.HitTestResult result = webView.getHitTestResult();
-            if (result != null && (result.getType() == WebView.HitTestResult.IMAGE_TYPE
-                    || result.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(result.getExtra())));
-                } catch (Exception e) {
-                    Toast.makeText(MainActivity.this, "Cannot download image", Toast.LENGTH_SHORT).show();
-                }
-                return true;
-            }
-            return false;
-        };
-    }
-
-    private WebView createConfiguredWebView() {
-        WebView webView = new WebView(this);
-        LinearLayout.LayoutParams webParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        webView.setLayoutParams(webParams);
-
-        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
-
-        android.webkit.WebSettings webSettings = webView.getSettings();
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            webSettings.setMediaPlaybackRequiresUserGesture(false);
-        }
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            webSettings.setOffscreenPreRaster(true);
-        }
-
-        webSettings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
-        webSettings.setLoadsImagesAutomatically(true);
-        webSettings.setBlockNetworkImage(false);
-
-        configureWebSettings(webSettings);
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            webSettings.setSafeBrowsingEnabled(true);
-        }
-
-        webSettings.setDomStorageEnabled(true);
-        webSettings.setDatabaseEnabled(true);
-        webSettings.setJavaScriptEnabled(true);
-        webSettings.setUseWideViewPort(true);
-        webSettings.setLoadWithOverviewMode(true);
-        webSettings.setLayoutAlgorithm(android.webkit.WebSettings.LayoutAlgorithm.NORMAL);
-        webSettings.setAllowFileAccess(true);
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
-            webSettings.setAllowFileAccessFromFileURLs(false);
-            webSettings.setAllowUniversalAccessFromFileURLs(false);
-        }
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            webSettings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        }
-
-        String currentUserAgent = webSettings.getUserAgentString();
-        if (currentUserAgent != null) {
-            currentUserAgent = currentUserAgent.replace("; wv", "");
-            currentUserAgent = currentUserAgent.replaceFirst("Version/[0-9.]+\\s", "");
-            webSettings.setUserAgentString(currentUserAgent);
-        }
-
-        try {
-            android.webkit.CookieManager cookieMgr = android.webkit.CookieManager.getInstance();
-            cookieMgr.setAcceptCookie(true);
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                cookieMgr.setAcceptThirdPartyCookies(getCurrentWebView(), false);
-            }
-        } catch (Exception ignored) {}
-
-        webView.setOnLongClickListener(createImageLongClickListener(webView));
-        webView.setWebViewClient(new SpoonWebViewClient(this));
-        webView.setWebChromeClient(new SpoonWebChromeClient(this));
-
-        BlobDownloader downloaderBridge = new BlobDownloader(this);
-        webView.addJavascriptInterface(downloaderBridge, "AndroidDownloader");
-
-        webView.setDownloadListener(new android.webkit.DownloadListener() {
-            @Override
-            public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
-                if (url == null) return;
-
-                if (url.startsWith("blob:")) {
-                    String safeDisposition = contentDisposition != null ? contentDisposition.replace("'", "\\'") : "";
-                    String safeMime = mimeType != null ? mimeType.replace("'", "\\'") : "";
-
-                    String script = "javascript:(function() {" +
-                        "var url = '" + url + "';" +
-                        "var blob = window.spoonBlobStore ? window.spoonBlobStore[url] : null;" +
-
-                        "function processBlob(b) {" +
-                            "var mime = b.type || '" + safeMime + "';" +
-                            "var filename = '" + safeDisposition + "'.match(/filename=[\"']?([^\"';]+)[\"']?/i);" +
-                            "filename = filename ? filename[1] : 'downloaded_file';" +
-                            "if (filename === 'downloaded_file') {" +
-                                "if (mime.includes('json')) filename += '.json';" +
-                                "else if (mime.includes('pdf')) filename += '.pdf';" +
-                                "else if (mime.includes('text')) filename += '.txt';" +
-                                "else filename += '.bin';" +
-                            "}" +
-                            "var reader = new FileReader();" +
-                            "reader.readAsDataURL(b);" +
-                            "reader.onloadend = function() {" +
-                                "AndroidDownloader.saveBase64ToFile(reader.result, mime, filename);" +
-                            "}" +
-                        "}" +
-
-                        "if (blob) {" +
-                            "processBlob(blob);" +
-                        "} else {" +
-                            "fetch(url).then(function(r){return r.blob();}).then(processBlob).catch(function(e) {" +
-                                "alert('Blob download failed. The site bypassed the memory hook.');" +
-                            "});" +
-                        "}" +
-                    "})()";
-
-                    webView.evaluateJavascript(script, null);
-                    android.widget.Toast.makeText(MainActivity.this, "Extracting file...", android.widget.Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                try {
-                    String targetFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType);
-                    String lowerUrl = url.toLowerCase();
-
-                    boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf")) ||
-                                            lowerUrl.contains(".pdf") ||
-                                            (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
-
-                    if (targetFileName.endsWith(".bin") || targetFileName.equals("downloadfile")) {
-                        if (isActuallyPdf) {
-                            targetFileName = targetFileName.replace(".bin", "").replace("downloadfile", "download") + ".pdf";
-                        } else {
-                            String extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
-                            if (extension != null) {
-                                targetFileName = targetFileName.replace(".bin", "").replace("downloadfile", "download") + "." + extension;
-                            }
-                        }
-                    }
-
-                    if (isActuallyPdf && !targetFileName.toLowerCase().endsWith(".pdf")) {
-                        targetFileName += ".pdf";
-                    }
-
-                    if (targetFileName.startsWith(".")) {
-                        targetFileName = targetFileName.substring(1) + ".txt";
-                    }
-
-                    if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md")) targetFileName += ".md";
-                    if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
-
-                    targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
-
-                    String safeMimeType = (mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType;
-
-                    if (isActuallyPdf && safeMimeType.equals("application/octet-stream")) {
-                        safeMimeType = "application/pdf";
-                    }
-
-                    final String finalTargetFileName = targetFileName;
-                    final String finalSafeMimeType = safeMimeType;
-
-                    new android.app.AlertDialog.Builder(MainActivity.this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                            .setTitle("Download File")
-                            .setMessage("Do you want to download " + finalTargetFileName + "?")
-                            .setPositiveButton("Download", (dialog, item) -> {
-                                try {
-                                    android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(android.net.Uri.parse(url));
-
-                                    String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
-                                    if (cookies != null) request.addRequestHeader("Cookie", cookies);
-                                    if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
-
-                                    request.setMimeType(finalSafeMimeType);
-
-                                    request.setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, finalTargetFileName);
-                                    request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-                                    request.setTitle(finalTargetFileName);
-
-                                    android.app.DownloadManager manager = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                                    if (manager != null) {
-                                        manager.enqueue(request);
-                                        android.widget.Toast.makeText(MainActivity.this, "Download started...", android.widget.Toast.LENGTH_SHORT).show();
-                                    }
-                                } catch (Exception e) {
-                                    triggerExternalDownload(url, finalSafeMimeType);
-                                }
-                            })
-                            .setNeutralButton("External Only", (dialog, item) -> triggerExternalDownload(url, finalSafeMimeType))
-                            .setNegativeButton("Cancel", null)
-                            .show();
-
-                } catch (Exception err) {
-                    android.widget.Toast.makeText(MainActivity.this, "Download manager initialization failed", android.widget.Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-
-        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            java.util.Set<String> allowedOrigins = java.util.Collections.singleton("*");
-
-            androidx.webkit.WebViewCompat.addWebMessageListener(webView, "spoonVaultMessage", allowedOrigins,
-                (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
-                    try {
-                        String currentUrl = view.getUrl();
-                        if (currentUrl == null || !currentUrl.startsWith("file:///android_asset/vault.html")) {
-                            return;
-                        }
-
-                        String msg = message.getData();
-
-                        if ("FETCH_ALL_VAULT_DATA".equals(msg)) {
-                            String allAccounts = secureCredentialManager.getAllCredentialsAsJson();
-                            replyProxy.postMessage(allAccounts != null ? allAccounts : "[]");
-                        } else if (msg != null && msg.startsWith("{")) {
-                            org.json.JSONObject obj = new org.json.JSONObject(msg);
-                            String action = obj.optString("action");
-                            String host = obj.optString("host");
-                            String user = obj.optString("username");
-
-                            if ("SAVE_LOGIN".equals(action)) {
-                                String pass = obj.optString("password");
-                                secureCredentialManager.saveCredentials(host, user, pass);
-                            } else if ("DELETE_LOGIN".equals(action)) {
-                                secureCredentialManager.deleteCredentials(host, user);
-                            }
-                        }
-                    } catch (Exception e) {
-                    }
-                }
-            );
-        }
-        androidx.core.view.ViewCompat.setNestedScrollingEnabled(webView, true);
-        return webView;
-    }
-
-    public void handleDeadRenderProcess(android.webkit.WebView deadWebView) {
-        if (deadWebView == null) return;
-
-        for (int i = 0; i < tabList.size(); i++) {
-            if (tabList.get(i).getWebView() == deadWebView) {
-                if (browserContainer != null) {
-                    browserContainer.removeView(deadWebView);
-                }
-
-                deadWebView.removeAllViews();
-                deadWebView.destroy();
-
-                android.widget.Toast.makeText(this, "Tab closed automatically to free up device memory.", android.widget.Toast.LENGTH_LONG).show();
-                closeTab(i);
-                break;
-            }
-        }
-    }
-
-    @Override
-    public void onTrimMemory(int level) {
-        super.onTrimMemory(level);
-
-        if (level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ||
-            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-
-            for (TabState tab : tabList) {
-                if (tab != null && tab.getWebView() != null) {
-                    android.webkit.WebView wv = tab.getWebView();
-                    if (wv.getVisibility() == android.view.View.GONE) {
-                        wv.clearCache(false);
-                    }
-                }
-            }
-        }
-    }
-
-    private void createNewTab() {
-        createNewTab(false);
-    }
-
-    public void createNewTab(boolean isIncognito) {
-        WebView webView = createConfiguredWebView();
-        webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        }
-        webView.setDrawingCacheEnabled(false);
-        android.webkit.WebSettings settings = webView.getSettings();
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            settings.setMediaPlaybackRequiresUserGesture(false);
-        }
-
-        if (isIncognito) {
-            settings.setSaveFormData(false);
-            settings.setDomStorageEnabled(false);
-            settings.setCacheMode(android.webkit.WebSettings.LOAD_NO_CACHE);
-        } else {
-            settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
-        }
-
-        TabState newTab = new TabState(webView, isIncognito);
-        tabList.add(newTab);
-        currentTabPosition = tabList.size() - 1;
-
-        if (browserContainer != null) {
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            );
-
-            webView.setVisibility(View.GONE);
-            browserContainer.addView(webView, params);
-        }
-
-        switchToTab(currentTabPosition);
-    }
-
-    private void updateTabCountersUI() {
-        if (tabList == null || tabList.isEmpty()) {
-            if (tabIndicator != null) tabIndicator.setText("0/0");
-            if (tabBadgeButton != null) tabBadgeButton.setText("0/0");
-            return;
-        }
-
-        String counterText = (currentTabPosition + 1) + "/" + tabList.size();
-
-        if (tabIndicator != null) tabIndicator.setText(counterText);
-        if (tabBadgeButton != null) tabBadgeButton.setText(counterText);
-    }
-
-    public void openUrlInNewTab(String url) {
-        runOnUiThread(() -> {
-            createNewTab();
-            android.webkit.WebView newTab = tabList.get(currentTabPosition).getWebView();
-            newTab.loadUrl(url);
-            android.widget.Toast.makeText(MainActivity.this, "Opened in new tab", android.widget.Toast.LENGTH_SHORT).show();
-        });
-    }
-
-    public void switchToTab(int index) {
-        if (index < 0 || index >= tabList.size()) return;
-        currentTabPosition = index;
-
-        for (int i = 0; i < tabList.size(); i++) {
-            android.webkit.WebView wv = tabList.get(i).getWebView();
-            if (wv != null) {
-                if (i == index) {
-                    wv.setVisibility(android.view.View.VISIBLE);
-                    wv.onResume();
-                    wv.resumeTimers();
-                    String url = wv.getUrl();
-                    if (addressBar != null) {
-                        addressBar.setText((url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
-
-                        if (tabList.get(i).isIncognito()) {
-                            addressBar.setBackgroundColor(android.graphics.Color.parseColor("#3c1f40"));
-                            addressBar.setHint("Incognito Search or URL");
-                        } else {
-                            addressBar.setBackgroundColor(android.graphics.Color.parseColor("#222222"));
-                            addressBar.setHint("Search or enter address");
-                        }
-                    }
-                } else {
-                    wv.setVisibility(android.view.View.GONE);
-                    wv.onPause();
-                }
-            }
-        }
-
-        updateTabCountersUI();
-        updateScreenShield();
-
-        WebView activeWv = tabList.get(index).getWebView();
-        if (activeWv != null) {
-            String host = activeWv.getUrl() != null ? Uri.parse(activeWv.getUrl()).getHost() : null;
-            boolean desktop = isDesktopHostEnabled(host);
-            applyDesktopUa(activeWv, desktop);
-        }
-    }
-
-    public void closeTab(int index) {
-        if (index < 0 || index >= tabList.size()) return;
-
-        if (tabList.size() == 1) {
-            showExitConfirmationDialog();
-            return;
-        }
-
-        TabState tabToRemove = tabList.get(index);
-        android.webkit.WebView wvToDestroy = tabToRemove.getWebView();
-
-        if (tabToRemove.isIncognito()) {
-            if (wvToDestroy != null) {
-                wvToDestroy.clearCache(true);
-                wvToDestroy.clearFormData();
-                wvToDestroy.clearHistory();
-                android.webkit.WebStorage.getInstance().deleteAllData();
-            }
-            android.webkit.CookieManager.getInstance().removeAllCookies(null);
-            android.webkit.CookieManager.getInstance().flush();
-        }
-
-        if (wvToDestroy != null) {
-            if (browserContainer != null) {
-                browserContainer.removeView(wvToDestroy);
-            }
-            wvToDestroy.removeAllViews();
-            wvToDestroy.destroy();
-        }
-
-        tabList.remove(index);
-
-        if (tabAdapter != null) {
-            tabAdapter.notifyItemRemoved(index);
-            tabAdapter.notifyItemRangeChanged(0, tabList.size());
-        }
-
-        if (index < currentTabPosition) {
-            currentTabPosition--;
-        }
-        else if (currentTabPosition >= tabList.size()) {
-            currentTabPosition = tabList.size() - 1;
-        }
-
-        switchToTab(currentTabPosition);
-    }
-
-    private ArrayList<BrowserItem> buildTabItems() {
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        for (TabState tabState : tabList) {
-            WebView webView = tabState.getWebView();
-            if (webView == null) continue;
-            String url = webView.getUrl();
-            String title = webView.getTitle();
-            if (title == null || title.isEmpty()) {
-                title = (url == null || url.isEmpty() || url.equals("about:blank")) ? "New Tab" : url;
-            }
-            items.add(new BrowserItem(title, url));
-        }
-        return items;
-    }
-
-    private void showTabSwitcher() {
-        android.webkit.WebView currentWv = getCurrentWebView();
-        if (currentWv != null) {
-            currentWv.pauseTimers();
-        }
-
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-            TabState currentTab = tabList.get(currentTabPosition);
-            android.webkit.WebView tabWv = currentTab.getWebView();
-
-            if (tabWv != null) {
-                currentTab.setTitle(tabWv.getTitle() != null ? tabWv.getTitle() : "New Tab");
-                currentTab.setUrl(tabWv.getUrl() != null ? tabWv.getUrl() : "");
-
-                captureWebViewSnapshotAsync(tabWv, bitmap -> {
-                    currentTab.setThumbnail(bitmap);
-                    if (tabAdapter != null) {
-                        tabAdapter.notifyItemChanged(currentTabPosition);
-                    }
-                });
-            }
-        }
-
-        if (tabSwitcherOverlay == null) {
-            android.view.LayoutInflater inflater = android.view.LayoutInflater.from(this);
-            android.view.ViewGroup root = findViewById(android.R.id.content);
-            tabSwitcherOverlay = inflater.inflate(R.layout.layout_tab_switcher, root, false);
-            root.addView(tabSwitcherOverlay);
-
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT_WATCH) {
-                tabSwitcherOverlay.setOnApplyWindowInsetsListener((v, insets) -> {
-                    android.view.View titleBar = v.findViewById(R.id.tabTitleBar);
-                    if (titleBar != null) {
-                        int statusBarHeight = insets.getSystemWindowInsetTop();
-                        android.view.ViewGroup.LayoutParams params = titleBar.getLayoutParams();
-                        params.height = (int) (56 * getResources().getDisplayMetrics().density) + statusBarHeight;
-                        titleBar.setLayoutParams(params);
-                        titleBar.setPadding(
-                            titleBar.getPaddingLeft(),
-                            statusBarHeight,
-                            titleBar.getPaddingRight(),
-                            titleBar.getPaddingBottom()
-                        );
-                    }
-                    return insets;
-                });
-                tabSwitcherOverlay.requestApplyInsets();
-            }
-
-            tabSwitcherOverlay.findViewById(R.id.btnNewTab).setOnClickListener(v -> {
-                createNewTab();
+            public void onNewTabRequested() {
+                tabManager.createNewTab();
                 showHome();
-                hideTabSwitcher();
-            });
-
-            tabSwitcherOverlay.findViewById(R.id.btnBackToBrowser).setOnClickListener(v -> hideTabSwitcher());
-        }
-
-        tabAdapter = new TabAdapter(tabList, new TabAdapter.OnTabActionListener() {
-            @Override
-            public void onTabSelected(int position) {
-                switchToTab(position);
-                hideTabSwitcher();
             }
 
             @Override
-            public void onTabClosed(int position) {
-                closeTab(position);
+            public void onAllTabsClosed() {
+                sessionManager.showExitConfirmationDialog();
+            }
+        });
 
-                if (tabSwitcherOverlay != null) {
-                    androidx.viewpager2.widget.ViewPager2 tabsViewPager = tabSwitcherOverlay.findViewById(R.id.tabsViewPager);
-                    if (tabsViewPager != null) {
-                        tabsViewPager.post(() -> tabsViewPager.requestTransform());
+        // --- HistoryController ---------------------------------------------
+        historyController = new HistoryController(
+                this, dbHelper, backgroundExecutor,
+                new HistoryController.Callbacks() {
+                    @Override
+                    public void onNavigate(@NonNull String url) {
+                        openUrl(url);
                     }
-                }
 
-                if (tabList.isEmpty()) {
-                    createNewTab();
-                    showHome();
-                    hideTabSwitcher();
-                }
-            }
-        });
-
-        androidx.viewpager2.widget.ViewPager2 tabsViewPager = tabSwitcherOverlay.findViewById(R.id.tabsViewPager);
-        tabsViewPager.setAdapter(tabAdapter);
-
-        tabsViewPager.setOffscreenPageLimit(3);
-        androidx.viewpager2.widget.CompositePageTransformer transformer = new androidx.viewpager2.widget.CompositePageTransformer();
-        transformer.addTransformer(new androidx.viewpager2.widget.MarginPageTransformer(24));
-        transformer.addTransformer((page, position) -> {
-            float r = 1 - Math.abs(position);
-            page.setScaleY(0.85f + r * 0.15f);
-            page.setAlpha(0.5f + r * 0.5f);
-        });
-        tabsViewPager.setPageTransformer(transformer);
-
-        tabsViewPager.setCurrentItem(currentTabPosition, false);
-
-        if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.GONE);
-        tabSwitcherOverlay.setVisibility(android.view.View.VISIBLE);
-    }
-
-    private void hideTabSwitcher() {
-        if (tabSwitcherOverlay != null) {
-            tabSwitcherOverlay.setVisibility(android.view.View.GONE);
-        }
-        if (webViewContainer != null) webViewContainer.setVisibility(android.view.View.VISIBLE);
-        WebView wv = getCurrentWebView();
-        if (wv != null) {
-            wv.resumeTimers();
-        }
-    }
-
-    private void showHistoryDialog() {
-        if (dbHelper == null) return;
-
-        java.util.List<String[]> historyData = dbHelper.getAllHistory();
-
-        if (historyData.isEmpty()) {
-            android.widget.Toast.makeText(this, "History is empty", android.widget.Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        java.util.ArrayList<BrowserItem> items = new java.util.ArrayList<>();
-        for (String[] entry : historyData) {
-            String url = entry[0];
-            String title = entry[1];
-            items.add(new BrowserItem(title != null && !title.isEmpty() ? title : url, url));
-        }
-
-        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        android.widget.ListView listView = new android.widget.ListView(this);
-        listView.setAdapter(adapter);
-
-        listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
-        listView.setOnItemLongClickListener((parent, view, which, id) -> {
-            String[] options = {"Open in New Tab", "Add Bookmark"};
-            new android.app.AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
-                if (item == 0) {
-                    createNewTab();
-                    openUrl(items.get(which).url);
-                } else if (item == 1) {
-                    String url = items.get(which).url;
-                    dbHelper.addBookmark(url, items.get(which).title);
-                    android.widget.Toast.makeText(MainActivity.this, "Bookmark added", android.widget.Toast.LENGTH_SHORT).show();
-                }
-            }).show();
-            return true;
-        });
-
-        new android.app.AlertDialog.Builder(this).setTitle("Global History").setView(listView).show();
-    }
-
-    private void openUrl(String url) {
-        android.webkit.WebView wv = getCurrentWebView();
-        if (wv != null && url != null) {
-            String host = null;
-            try { host = Uri.parse(url).getHost(); } catch (Exception ignored) {}
-            boolean desktop = isDesktopHostEnabled(host);
-            applyDesktopUa(wv, desktop);
-
-            String query = url.trim();
-            if (query.isEmpty()) return;
-
-            if (query.startsWith("about:") || query.startsWith("file:") || query.startsWith("javascript:") || query.startsWith("data:")) {
-                wv.loadUrl(query);
-                return;
-            }
-
-            if (android.util.Patterns.WEB_URL.matcher(query).matches() || (query.contains(".") && !query.contains(" "))) {
-                if (!query.startsWith("http://") && !query.startsWith("https://")) {
-                    query = "https://" + query;
-                }
-                wv.loadUrl(query);
-            } else {
-                String searchUrl = getSearchUrlFor(query);
-                wv.loadUrl(searchUrl);
-            }
-        }
-    }
-
-    private String getAppVersion() {
-        try {
-            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (Exception e) {
-            return "?";
-        }
-    }
-
-    public void saveHistory() {
-
-    }
-
-    private void saveFilterLists() {
-        prefs.edit().putString(KEY_FILTER_LISTS, TextUtils.join("\n", filterLists)).apply();
-
-        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-    }
-
-    private void saveOpenTabs() {
-        ArrayList<String> safeUrls = new ArrayList<>();
-        for (TabState tabState : tabList) {
-
-            if (tabState.isIncognito()) continue;
-
-            WebView webView = tabState.getWebView();
-            String url = webView.getUrl();
-            if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
-                safeUrls.add(url);
-            }
-        }
-
-        backgroundExecutor.execute(() -> {
-            prefs.edit().putString(KEY_OPEN_TABS, TextUtils.join("\n", safeUrls)).apply();
-        });
-    }
-
-    private void saveCurrentTab() {
-        prefs.edit().putInt(KEY_CURRENT_TAB, currentTabPosition).apply();
-    }
-
-    private void showFilterListsDialog() {
-        EditText input = new EditText(this);
-        new AlertDialog.Builder(this)
-                .setTitle("Subscribe Filter List")
-                .setMessage("Subscribed: " + filterLists.size() + "\n\nEnter filter list URL")
-                .setView(input)
-                .setPositiveButton("Save", (d, w) -> {
-                    String url = input.getText().toString().trim();
-                    if (!url.isEmpty() && !filterLists.contains(url)) {
-                        filterLists.add(url);
-                        AdBlockEngine.checkAndRefreshFilters(this, backgroundExecutor, filterLists, true);
-                        saveFilterLists();
+                    @Override
+                    public void openInNewTab(@NonNull String url) {
+                        tabManager.openUrlInNewTab(url);
                     }
-                })
-                .setNeutralButton("More", (d, w) -> showFilterListOptions())
-                .setNegativeButton("Cancel", null)
-                .show();
-    }
+                });
 
-    private void showFilterListOptions() {
-        String[] options = {"View Subscriptions", "Add Custom Filter List", "Update All Subscriptions"};
-
-        new AlertDialog.Builder(this)
-                .setTitle("Filter Lists")
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) {
-                        showSubscribedFilterLists();
-
-                    } else if (which == 1) {
-
-                        android.widget.EditText input = new android.widget.EditText(this);
-                        input.setHint("https://...");
-
-                        new AlertDialog.Builder(this)
-                                .setTitle("Add Filter List")
-                                .setView(input)
-                                .setPositiveButton("Add", (d, w) -> {
-                                    String url = input.getText().toString().trim();
-                                    if (!url.isEmpty() && !filterLists.contains(url)) {
-                                        filterLists.add(url);
-                                        saveFilterLists();
-                                        Toast.makeText(this, "Downloading list...", Toast.LENGTH_SHORT).show();
-
-                                        AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
-                                    }
-                                })
-                                .setNegativeButton("Cancel", null)
-                                .show();
-
-                    } else if (which == 2) {
-
-                        if (filterLists.isEmpty()) {
-                            Toast.makeText(this, "No lists to update", Toast.LENGTH_SHORT).show();
-                        } else {
-                            Toast.makeText(this, "Updating filter lists in background...", Toast.LENGTH_SHORT).show();
-
-                            AdBlockEngine.checkAndRefreshFilters(MainActivity.this, backgroundExecutor, filterLists, true);
-                        }
-                    }
-                })
-                .show();
-    }
-
-    private void showSubscribedFilterLists() {
-        if (filterLists.isEmpty()) {
-            Toast.makeText(this, "No filter lists subscribed", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        ListView listView = new ListView(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, filterLists);
-        listView.setAdapter(adapter);
-
-        listView.setOnItemLongClickListener((parent, view, which, id) -> {
-            String url = filterLists.get(which);
-            new AlertDialog.Builder(this)
-                    .setTitle("Remove Filter List")
-                    .setMessage(url)
-                    .setPositiveButton("Remove", (d, w) -> {
-                        filterLists.remove(url);
-                        adapter.notifyDataSetChanged();
-                        saveFilterLists();
-                        AdBlockEngine.removeFilterList(MainActivity.this, url, filterLists, backgroundExecutor);
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
-            return true;
-        });
-
-        new AlertDialog.Builder(this).setTitle("Subscribed Filter Lists").setView(listView).setPositiveButton("OK", null).show();
-    }
-
-    private void showAbout() {
-        com.google.android.material.bottomsheet.BottomSheetDialog bottomSheet =
-            new com.google.android.material.bottomsheet.BottomSheetDialog(this);
-
-        android.widget.LinearLayout root = new android.widget.LinearLayout(this);
-        root.setOrientation(android.widget.LinearLayout.VERTICAL);
-        root.setPadding(64, 64, 64, 80);
-        root.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundColor(android.graphics.Color.parseColor("#1C1C1E"));
-
-        android.widget.ImageView icon = new android.widget.ImageView(this);
-        icon.setImageResource(R.mipmap.ic_launcher);
-        android.widget.LinearLayout.LayoutParams iconParams = new android.widget.LinearLayout.LayoutParams(180, 180);
-        iconParams.setMargins(0, 32, 0, 16);
-        root.addView(icon, iconParams);
-
-        android.widget.TextView version = new android.widget.TextView(this);
-        version.setText("Version " + getAppVersion());
-        version.setTextSize(14);
-        version.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
-        version.setGravity(android.view.Gravity.CENTER_HORIZONTAL);
-        android.widget.LinearLayout.LayoutParams versionParams = new android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        versionParams.setMargins(0, 0, 0, 48);
-        root.addView(version, versionParams);
-
-        android.widget.LinearLayout statsContainer = new android.widget.LinearLayout(this);
-        statsContainer.setOrientation(android.widget.LinearLayout.VERTICAL);
-        statsContainer.setBackgroundColor(android.graphics.Color.parseColor("#2C2C2E"));
-
-        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
-        shape.setShape(android.graphics.drawable.GradientDrawable.RECTANGLE);
-        shape.setCornerRadii(new float[] { 32, 32, 32, 32, 32, 32, 32, 32 });
-        shape.setColor(android.graphics.Color.parseColor("#2C2C2E"));
-        statsContainer.setBackground(shape);
-
-        android.widget.LinearLayout.LayoutParams statsParams = new android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
-        statsParams.setMargins(32, 0, 32, 48);
-
-        String webViewVer = "Unknown";
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            android.content.pm.PackageInfo pi = android.webkit.WebView.getCurrentWebViewPackage();
-            if (pi != null) webViewVer = pi.versionName;
-        }
-
-        statsContainer.addView(createStatRow("WebView Engine", webViewVer, true));
-        statsContainer.addView(createStatRow("Tabs Open", String.valueOf(tabList.size()), true));
-        statsContainer.addView(createStatRow("Bookmarks Saved", String.valueOf(dbHelper != null ? dbHelper.getBookmarkCount() : 0), true));
-        statsContainer.addView(createStatRow("History Items", String.valueOf(dbHelper != null ? dbHelper.getHistoryCount() : 0), true));
-
-        android.view.View adblockRow = createStatRow("AdBlock Rules", "Loading...", false);
-        statsContainer.addView(adblockRow);
-
-        android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
-        Runnable updater = new Runnable() {
-            @Override
-            public void run() {
-                if (bottomSheet.isShowing()) {
-                    android.widget.TextView txt = adblockRow.findViewWithTag("AdBlock Rules");
-                    if (txt != null) {
-                        txt.setText(String.valueOf(AdBlockEngine.getBlocklistSize()));
-                    }
-                    handler.postDelayed(this, 1000);
-                }
-            }
-        };
-        handler.postDelayed(updater, 1000);
-
-        root.addView(statsContainer, statsParams);
-
-        android.widget.TextView signature = new android.widget.TextView(this);
-        signature.setText("Built one green commit at a time.\nDesigned to evolve dynamically with Android WebView.\n\n- with love, Plaban.");
-        signature.setTextSize(13);
-        signature.setGravity(android.view.Gravity.CENTER);
-        signature.setTextColor(android.graphics.Color.parseColor("#636366"));
-        signature.setLineSpacing(0, 1.2f);
-        root.addView(signature);
-
-        bottomSheet.setContentView(root);
-
-        android.view.View bottomSheetInternal = bottomSheet.findViewById(com.google.android.material.R.id.design_bottom_sheet);
-        if (bottomSheetInternal != null) {
-            bottomSheetInternal.setBackgroundColor(android.graphics.Color.TRANSPARENT);
-        }
-
-        bottomSheet.show();
-    }
-
-    private android.view.View createStatRow(String labelText, String valueText, boolean drawDivider) {
-        android.widget.LinearLayout row = new android.widget.LinearLayout(this);
-        row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
-        row.setPadding(40, 32, 40, 32);
-
-        android.widget.TextView label = new android.widget.TextView(this);
-        label.setText(labelText);
-        label.setTextColor(android.graphics.Color.WHITE);
-        label.setTextSize(15);
-        android.widget.LinearLayout.LayoutParams labelParams = new android.widget.LinearLayout.LayoutParams(
-            0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        row.addView(label, labelParams);
-
-        android.widget.TextView value = new android.widget.TextView(this);
-        value.setText(valueText);
-        value.setTextColor(android.graphics.Color.parseColor("#8E8E93"));
-        value.setTextSize(15);
-        value.setTag(labelText);
-        value.setGravity(android.view.Gravity.END);
-        row.addView(value);
-
-        if (drawDivider) {
-            android.widget.LinearLayout wrapper = new android.widget.LinearLayout(this);
-            wrapper.setOrientation(android.widget.LinearLayout.VERTICAL);
-            wrapper.addView(row);
-
-            android.view.View divider = new android.view.View(this);
-            divider.setBackgroundColor(android.graphics.Color.parseColor("#3A3A3C"));
-            android.widget.LinearLayout.LayoutParams divParams = new android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, 2);
-            divParams.setMargins(40, 0, 0, 0);
-            wrapper.addView(divider, divParams);
-
-            return wrapper;
-        }
-
-        return row;
-    }
-
-    private void showBookmarks() {
-        if (dbHelper == null) return;
-
-        java.util.List<String> bookmarkUrls = dbHelper.getAllBookmarksUrls();
-
-        if (bookmarkUrls.isEmpty()) {
-            android.widget.Toast.makeText(this, "No bookmarks saved", android.widget.Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        java.util.ArrayList<BrowserItem> items = new java.util.ArrayList<>();
-        for (String url : bookmarkUrls) {
-            items.add(new BrowserItem(url, url));
-        }
-
-        BrowserItemAdapter adapter = new BrowserItemAdapter(this, items);
-        android.widget.ListView listView = new android.widget.ListView(this);
-        listView.setAdapter(adapter);
-
-        listView.setOnItemClickListener((parent, view, which, id) -> openUrl(items.get(which).url));
-        listView.setOnItemLongClickListener((parent, view, which, id) -> {
-            String[] options = {"Open", "Open in New Tab", "Remove Bookmark"};
-            new android.app.AlertDialog.Builder(this).setItems(options, (dialog, item) -> {
-                if (item == 0) {
-                    openUrl(items.get(which).url);
-                } else if (item == 1) {
-                    createNewTab();
-                    openUrl(items.get(which).url);
-                } else if (item == 2) {
-                    dbHelper.removeBookmark(items.get(which).url);
-                    android.widget.Toast.makeText(MainActivity.this, "Bookmark removed", android.widget.Toast.LENGTH_SHORT).show();
-                }
-            }).show();
-            return true;
-        });
-
-        new android.app.AlertDialog.Builder(this).setTitle("Bookmarks").setView(listView).show();
-    }
-
-    private void showHome() {
-        if (cachedHomeHtml == null) {
-            float widthDp = getResources().getConfiguration().screenWidthDp;
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("<html>")
-              .append("<body style='margin:0;background:#000;color:white;font-family:sans-serif;text-align:center;'>")
-              .append("<div style='padding-top:20%;'>")
-              .append("<h1 style='font-size:48px;margin-bottom:40px;'>Spoon Browser</h1>");
-
-            if (widthDp >= 600) {
-                sb.append("<input id='q' type='text' placeholder='Search privately...' style='width:72%;padding:20px;border:none;border-radius:18px;background:#1f1f1f;color:white;font-size:18px;outline:none;'/>");
+        // --- MenuController ------------------------------------------------
+        menuController = new MenuController(this, prefs, new MenuController.Callbacks() {
+            @Override public void newTab(boolean incognito) {
+                tabManager.createNewTab(incognito);
+                showHome();
             }
 
-            sb.append("</div>")
-              .append("<script>")
-              .append("function goSearch(){")
-              .append("  var inputEl = document.getElementById('q');")
-              .append("  var q = inputEl.value;")
-              .append("  if(!q) return;")
-              .append("  inputEl.blur();")
-              .append("  inputEl.value = '';")
-              .append("  inputEl.placeholder = 'Searching...';")
-              .append("  window.location.href='spoonsearch://' + encodeURIComponent(q);")
-              .append("}")
-              .append("var inputEl = document.getElementById('q');")
-              .append("if(inputEl) {")
-              .append("  inputEl.addEventListener('keydown',function(e){")
-              .append("    if(e.key==='Enter'){goSearch();}")
-              .append("  });")
-              .append("}")
-              .append("</script>")
-              .append("</body></html>");
+            @Override public void reload() {
+                WebView wv = tabManager.getCurrentWebView();
+                if (wv != null) wv.reload();
+            }
 
-            cachedHomeHtml = sb.toString();
+            @Override public void openDownloads() { openSystemDownloads(); }
+
+            @Override public void findInPage() {
+                menuController.showFindInPageDialog(tabManager.getCurrentWebView());
+            }
+
+            @Override public void showBookmarks() { historyController.showBookmarks(); }
+
+            @Override public void addBookmark() {
+                WebView wv = tabManager.getCurrentWebView();
+                if (wv != null) historyController.addBookmark(wv.getUrl(), wv.getTitle());
+            }
+
+            @Override public void showHistory() { historyController.showHistoryDialog(); }
+
+            @Override public void clearHistory() { historyController.clearHistory(); }
+
+            @Override public void clearCache() {
+                WebView wv = tabManager.getCurrentWebView();
+                if (wv != null) wv.clearCache(true);
+                Toast.makeText(MainActivity.this, "Cache cleared",
+                        Toast.LENGTH_SHORT).show();
+            }
+
+            @Override public void showFilterLists() { showFilterListsDialog(); }
+
+            @Override public void toggleFilterEngine() {
+                boolean on = AdBlockEngine.checkIsEngineEnabled(MainActivity.this);
+                AdBlockEngine.setEngineEnabled(MainActivity.this, !on);
+                Toast.makeText(MainActivity.this,
+                        !on ? "Filterlists Enabled" : "Filterlists Disabled",
+                        Toast.LENGTH_SHORT).show();
+                WebView wv = tabManager.getCurrentWebView();
+                if (wv != null) wv.reload();
+            }
+
+            @Override public void toggleDesktopMode() {
+                NavigationHelper.toggleDesktopMode(
+                        MainActivity.this,
+                        tabManager.getCurrentWebView(),
+                        getCurrentHost(),
+                        () -> Toast.makeText(MainActivity.this,
+                                "No site loaded", Toast.LENGTH_SHORT).show());
+            }
+
+            @Override public boolean isDesktopEnabledForCurrentSite() {
+                return NavigationHelper.isDesktopHostEnabled(
+                        MainActivity.this, getCurrentHost());
+            }
+
+            @Override public void showSavedPasswords() { showSavedPasswordsDialog(); }
+
+            @Override public void importPasswords() {
+                passwordImportLauncher.launch("text/*");
+            }
+
+            @Override public void exportPasswords() {
+                exportCsvLauncher.launch("spoon_passwords.csv");
+            }
+
+            @Override public void showVaultForCurrentSite() {
+                MainActivity.this.showVaultForCurrentSite();
+            }
+
+            @Override public void toggleStartupAnimation() {
+                toggleStartupAnimationInternal();
+            }
+
+            @Override public void exit() { sessionManager.exitNow(); }
+
+            @Nullable @Override public WebView getCurrentWebView() {
+                return tabManager.getCurrentWebView();
+            }
+
+            @NonNull @Override public Context getContext() { return MainActivity.this; }
+
+            @NonNull @Override public SharedPreferences getPreferences() { return prefs; }
+        });
+
+        // Wire the buttons that need a controller reference.
+        if (menuButton != null) {
+            menuButton.setOnClickListener(v -> menuController.showMainMenu(v));
         }
-
-        WebView wv = getCurrentWebView();
-        if (wv != null) {
-            wv.loadDataWithBaseURL("about:blank", cachedHomeHtml, "text/html", "UTF-8", null);
+        if (tabIndicator != null) {
+            tabIndicator.setOnClickListener(v -> tabManager.showTabSwitcher());
+        }
+        if (tabBadgeButton != null) {
+            tabBadgeButton.setOnClickListener(v -> tabManager.showTabSwitcher());
         }
     }
 
-    public WebView getCurrentWebView() {
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-            return tabList.get(currentTabPosition).getWebView();
-        }
-        return null;
+    private void toggleStartupAnimationInternal() {
+        SharedPreferences sp = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        boolean enabled = sp.getBoolean("show_splash_screen", true);
+        sp.edit().putBoolean("show_splash_screen", !enabled).apply();
+        Toast.makeText(this,
+                !enabled ? "Startup Animation Enabled" : "Startup Animation Disabled",
+                Toast.LENGTH_SHORT).show();
     }
 
-    public TabState getCurrentTabState() {
-        if (currentTabPosition >= 0 && currentTabPosition < tabList.size()) {
-            return tabList.get(currentTabPosition);
-        }
-        return null;
-    }
+    private void updateAddressBarForTab(@Nullable WebView webView, @Nullable TabState state) {
+        if (addressBar == null) return;
 
-    public void updateTabBadgeCount() {
-        if (tabBadgeButton != null && tabList != null) {
-            runOnUiThread(() -> {
-                tabBadgeButton.setText(String.valueOf(tabList.size()));
-            });
-        }
-    }
+        String url = webView != null ? webView.getUrl() : null;
+        addressBar.setText(
+                (url == null || url.isEmpty() || "about:blank".equals(url)) ? "" : url);
 
-    private String getCurrentHost() {
-        WebView wv = getCurrentWebView();
-        if (wv == null || wv.getUrl() == null) return null;
-        return Uri.parse(wv.getUrl()).getHost();
-    }
-
-    public static String normalizeDesktopHost(String host) {
-        if (host == null) return "";
-        String lower = host.toLowerCase();
-        if (lower.equals("youtube.com") || lower.endsWith(".youtube.com") || lower.equals("youtu.be")) {
-            return "youtube.com";
-        }
-        return lower;
-    }
-
-    public boolean isDesktopHostEnabled(String host) {
-        if (host == null || host.isEmpty()) return false;
-        String normalized = normalizeDesktopHost(host);
-        return getSharedPreferences("browser_prefs", MODE_PRIVATE)
-                .getStringSet("desktop_sites", new HashSet<>()).contains(normalized);
-    }
-
-    private boolean isDesktopForCurrentHost() {
-        String host = getCurrentHost();
-        return isDesktopHostEnabled(host);
-    }
-
-    private void applyDesktopUa(WebView wv, boolean desktop) {
-        if (wv == null || wv.getSettings() == null) return;
-        wv.getSettings().setUserAgentString(desktop ? DESKTOP_UA : MOBILE_UA);
-        wv.getSettings().setUseWideViewPort(true);
-        wv.getSettings().setLoadWithOverviewMode(true);
-    }
-
-    private void applyDesktopModeForCurrentSite() {
-        WebView wv = getCurrentWebView();
-        if (wv == null) return;
-        boolean desktop = isDesktopForCurrentHost();
-        applyDesktopUa(wv, desktop);
-        wv.reload();
-    }
-
-    private void toggleDesktopMode() {
-        String host = getCurrentHost();
-        if (host == null || host.isEmpty()) {
-            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String normalized = normalizeDesktopHost(host);
-        SharedPreferences browserPrefs = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-        HashSet<String> desktopSites = new HashSet<>(
-                browserPrefs.getStringSet("desktop_sites", new HashSet<>()));
-
-        boolean wasDesktop = desktopSites.contains(normalized);
-        if (wasDesktop) {
-            desktopSites.remove(normalized);
+        if (state != null && state.isIncognito()) {
+            addressBar.setBackgroundColor(Color.parseColor("#3c1f40"));
+            addressBar.setHint("Incognito Search or URL");
         } else {
-            desktopSites.add(normalized);
-        }
-        browserPrefs.edit().putStringSet("desktop_sites", desktopSites).apply();
-
-        if (normalized.equals("youtube.com")) {
-            android.webkit.CookieManager.getInstance().removeAllCookies(null);
-            android.webkit.CookieManager.getInstance().flush();
+            addressBar.setBackgroundColor(Color.parseColor("#222222"));
+            addressBar.setHint("Search or enter address");
         }
 
-        applyDesktopModeForCurrentSite();
-    }
-
-    public void requestWebPermissions(String[] permissions) {
-        if (webPermissionLauncher != null) {
-            webPermissionLauncher.launch(permissions);
-        }
-    }
-
-    public void triggerManualDownload(String url, String mime) {
-        try {
-            android.content.Intent intent = new android.content.Intent(
-                    android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse(url)
-            );
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        } catch (Exception e) {
-            android.widget.Toast.makeText(this, "No external app found", android.widget.Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void updateAddressBarSuggestions(String query) {
-        if (query == null || query.trim().isEmpty()) {
-            addressBarAdapter.clear();
-            addressBarAdapter.notifyDataSetChanged();
-            try {
-                if (addressBar != null && addressBar.isAttachedToWindow()) {
-                    addressBar.dismissDropDown();
-                }
-            } catch (Exception ignored) {}
-            return;
-        }
-
-        if (dbHelper == null) return;
-
-        executeSafely(() -> {
-            java.util.List<String[]> rawResults = dbHelper.getMatchingHistory(query);
-
-            java.util.List<Suggestion> cleanSuggestions = new java.util.ArrayList<>();
-            java.util.Set<String> addedUrls = new java.util.HashSet<>();
-            java.util.Set<String> addedHosts = new java.util.HashSet<>();
-
-            for (String[] row : rawResults) {
-                String rawUrl = row[0];
-                try {
-                    android.net.Uri uri = android.net.Uri.parse(rawUrl);
-                    String host = uri.getHost();
-                    if (host != null) {
-                        String cleanHost = host.replaceFirst("^www\\.", "");
-                        if (cleanHost.toLowerCase().contains(query.toLowerCase()) && !addedHosts.contains(cleanHost)) {
-                            cleanSuggestions.add(new Suggestion(cleanHost, cleanHost));
-                            addedHosts.add(cleanHost);
-                            addedUrls.add(cleanHost);
-                        }
-                    }
-                } catch (Exception ignored) {}
-            }
-
-            int deepLinkLimit = 3;
-            int currentDeepLinks = 0;
-
-            for (String[] row : rawResults) {
-                if (currentDeepLinks >= deepLinkLimit) break;
-
-                String rawUrl = row[0];
-                String title = (row[1] != null && !row[1].isEmpty()) ? row[1] : rawUrl;
-                String displayUrl = rawUrl.replaceFirst("^https?://(www\\.)?", "");
-
-                if (!addedUrls.contains(displayUrl) && !addedHosts.contains(displayUrl)) {
-                    cleanSuggestions.add(new Suggestion(title, displayUrl));
-                    addedUrls.add(displayUrl);
-                    currentDeepLinks++;
-                }
-            }
-
-            runOnUiThread(() -> {
-                addressBarAdapter.clear();
-                addressBarAdapter.addAll(cleanSuggestions);
-                addressBarAdapter.notifyDataSetChanged();
-
-                try {
-                    if (addressBar != null && addressBar.isAttachedToWindow()) {
-                        if (addressBarAdapter.getCount() > 0) {
-                            addressBar.showDropDown();
-                        } else {
-                            addressBar.dismissDropDown();
-                        }
-                    }
-                } catch (Exception ignored) {}
-            });
-        });
-    }
-
-    private void navigate() {
-        String input = addressBar.getText() != null ? addressBar.getText().toString().trim() : "";
-        if (input.isEmpty()) return;
-        openUrl(input);
-        addressBar.clearFocus();
-    }
-
-    private void showVaultForCurrentSite() {
-        WebView wv = getCurrentWebView();
-        if (wv == null || wv.getUrl() == null) {
-            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        String host = Uri.parse(wv.getUrl()).getHost();
-        if (host == null || host.isEmpty()) {
-            Toast.makeText(this, "No site loaded", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        java.util.List<String[]> accounts = parseAccountsForHost(host);
-
-        if (accounts.isEmpty()) {
-            Toast.makeText(this, "No saved password for " + host, Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        ListView listView = new ListView(this);
-        listView.setDivider(new ColorDrawable(Color.parseColor("#333333")));
-        listView.setDividerHeight(1);
-        listView.setAdapter(new CredentialAdapter(accounts, host));
-
-        new AlertDialog.Builder(this)
-                .setTitle("Saved accounts for " + host)
-                .setView(listView)
-                .setNegativeButton("Close", null)
-                .show();
-    }
-
-    private java.util.List<String[]> parseAccountsForHost(String host) {
-        java.util.List<String[]> accounts = new java.util.ArrayList<>();
-        if (secureCredentialManager == null) return accounts;
-
-        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
-        java.util.List<String> variants = new java.util.ArrayList<>();
-        variants.add(host);
-        variants.add(host.startsWith("www.") ? host.substring(4) : "www." + host);
-
-        for (String variant : variants) {
-            try {
-                org.json.JSONArray arr = new org.json.JSONArray(
-                        secureCredentialManager.getAllAccountsForHost(variant));
-                for (int i = 0; i < arr.length(); i++) {
-                    org.json.JSONObject obj = arr.getJSONObject(i);
-                    String username = obj.optString("username", "");
-                    String password = obj.optString("password", "");
-                    if (!username.isEmpty() && seen.add(variant + "\u0001" + username)) {
-                        accounts.add(new String[]{username, password});
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-
-        return accounts;
-    }
-
-    private void copyTextToClipboard(String value, String message) {
-        if (value == null) value = "";
-        if (clipboardManager != null) {
-            clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_copy", value));
-        }
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-    }
-
-    private Button makeSmallButton(String text) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextColor(Color.WHITE);
-        button.setAllCaps(false);
-        button.setTextSize(12);
-
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor("#2a2a2a"));
-        bg.setCornerRadius(dp(8));
-        button.setBackground(bg);
-
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(56), dp(40));
-        params.setMargins(dp(4), 0, 0, 0);
-        button.setLayoutParams(params);
-        return button;
-    }
-
-    private class CredentialAdapter extends android.widget.BaseAdapter {
-        private final java.util.List<String[]> accounts;
-        private final String host;
-
-        CredentialAdapter(java.util.List<String[]> accounts, String host) {
-            this.accounts = accounts;
-            this.host = host;
-        }
-
-        @Override
-        public int getCount() {
-            return accounts.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return accounts.get(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return position;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            String[] account = accounts.get(position);
-            String username = account[0];
-            String password = account[1];
-
-            LinearLayout row = new LinearLayout(MainActivity.this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(16), dp(8), dp(16), dp(8));
-
-            TextView userView = new TextView(MainActivity.this);
-            userView.setText(username);
-            userView.setTextColor(Color.WHITE);
-            userView.setTextSize(15);
-            LinearLayout.LayoutParams userParams = new LinearLayout.LayoutParams(
-                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-            row.addView(userView, userParams);
-
-            Button copyId = makeSmallButton("ID");
-            copyId.setOnClickListener(v ->
-                    copyTextToClipboard(username, "Username copied for " + host));
-            row.addView(copyId);
-
-            Button copyPass = makeSmallButton("Pass");
-            copyPass.setOnClickListener(v ->
-                    copyTextToClipboard(password, "Password copied for " + host));
-            row.addView(copyPass);
-
-            return row;
-        }
-    }
-
-    private void triggerExternalDownload(String url, String mime) {
-        triggerManualDownload(url, mime);
-    }
-
-    private void captureWebViewSnapshotAsync(WebView webView, Consumer<Bitmap> callback) {
-        if (webView == null) {
-            callback.accept(null);
-            return;
-        }
-
-        runOnUiThread(() -> {
-            try {
-                int width = webView.getWidth();
-                int height = webView.getHeight();
-                if (width <= 0 || height <= 0) {
-                    callback.accept(null);
-                    return;
-                }
-                Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-                android.graphics.Canvas canvas = new android.graphics.Canvas(bmp);
-                webView.draw(canvas);
-                callback.accept(bmp);
-            } catch (Exception e) {
-                callback.accept(null);
-            }
-        });
-    }
-
-    private static class Suggestion {
-        final String title;
-        final String url;
-        Suggestion(String title, String url) {
-            this.title = title;
-            this.url = url;
-        }
-
-        @Override
-        public String toString() {
-            return url != null ? url : title;
-        }
-    }
-
-    private static class SuggestionAdapter extends ArrayAdapter<Suggestion> {
-        SuggestionAdapter(Context context, java.util.List<Suggestion> items) {
-            super(context, android.R.layout.simple_list_item_1, items);
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            TextView text = (TextView) super.getView(position, convertView, parent);
-            Suggestion s = getItem(position);
-            if (s != null) {
-                text.setText(s.url != null ? s.url : s.title);
-            }
-            return text;
-        }
-
-        @Override
-        public Filter getFilter() {
-            return new Filter() {
-                @Override
-                protected FilterResults performFiltering(CharSequence constraint) {
-                    FilterResults results = new FilterResults();
-                    results.values = new ArrayList<>();
-                    results.count = 0;
-                    return results;
-                }
-
-                @Override
-                protected void publishResults(CharSequence constraint, FilterResults results) {
-                    notifyDataSetChanged();
-                }
-            };
-        }
-    }
-
-    private class PasswordAutosaveBridge {
-        @android.webkit.JavascriptInterface
-        public void saveCredentials(String host, String username, String password) {
-            if (secureCredentialManager != null) {
-                secureCredentialManager.saveCredentials(host, username, password);
-            }
-        }
-
-        @android.webkit.JavascriptInterface
-        public String getUsername(String host) {
-            return secureCredentialManager != null ? secureCredentialManager.getUsername(host) : null;
-        }
-
-        @android.webkit.JavascriptInterface
-        public String getPassword(String host) {
-            return secureCredentialManager != null ? secureCredentialManager.getPassword(host) : null;
-        }
-    }
-}
+        if (webView != null) {
+            String host = webView.getUrl() != null
+                    ? Uri.parse(webView.getUrl()).getHost() : null;
+            boolean desktop = NavigationHelper.isDesktopHostEnabled(this, host
