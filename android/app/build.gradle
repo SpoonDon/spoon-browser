@@ -1,5 +1,9 @@
 apply plugin: 'com.android.application'
 
+// ---------------------------------------------------------------------------
+// Signing config lookup
+// Priority: keystore.properties (local dev) > SIGNING_* env vars (CI)
+// ---------------------------------------------------------------------------
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
@@ -15,7 +19,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 90
-        versionName "3.2.4 (Babon)"
+        versionName "3.2.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -24,12 +28,19 @@ android {
 
     signingConfigs {
         release {
+            // --- Local keystore.properties path ---
             if (keystoreProperties["storeFile"] != null) {
                 storeFile file(keystoreProperties["storeFile"])
                 storePassword keystoreProperties["storePassword"]
                 keyAlias keystoreProperties["keyAlias"]
-                keyPassword keystoreProperties["storePassword"]
-            } else if (System.getenv("SIGNING_STORE_FILE") != null) {
+                // FIX: previously read storePassword. Falls back to storePassword
+                // only if keyPassword is not explicitly provided.
+                keyPassword keystoreProperties["keyPassword"] != null
+                        ? keystoreProperties["keyPassword"]
+                        : keystoreProperties["storePassword"]
+            }
+            // --- CI environment variable path ---
+            else if (System.getenv("SIGNING_STORE_FILE") != null) {
                 storeFile file(System.getenv("SIGNING_STORE_FILE"))
                 storePassword System.getenv("SIGNING_STORE_PASSWORD")
                 keyAlias System.getenv("SIGNING_KEY_ALIAS")
@@ -40,15 +51,23 @@ android {
 
     buildTypes {
         release {
-            if (keystoreProperties["storeFile"] != null || System.getenv("SIGNING_STORE_FILE") != null) {
+            def hasSigning = keystoreProperties["storeFile"] != null
+                    || System.getenv("SIGNING_STORE_FILE") != null
+            if (hasSigning) {
                 signingConfig signingConfigs.release
             }
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                    'proguard-rules.pro'
         }
     }
 
+    // Java 21 is required by Capacitor 8.x and supported by AGP 8.13.
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
 }
 
 dependencies {
@@ -56,24 +75,27 @@ dependencies {
     implementation "androidx.viewpager2:viewpager2:1.1.0"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
-    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion" 
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation "androidx.security:security-crypto:1.1.0"
-    implementation "androidx.lifecycle:lifecycle-runtime:$androidxLifecycleVersion"   
+    implementation "androidx.lifecycle:lifecycle-runtime:$androidxLifecycleVersion"
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
-    testImplementation "junit:junit:$junitVersion"
-    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
-    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation 'androidx.cardview:cardview:1.0.0'
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     implementation 'com.google.android.material:material:1.14.0'
+
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
 }
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+// ---------------------------------------------------------------------------
+// Google Services: only apply if a real, non-empty google-services.json exists.
+// Avoids reading the entire file just to test existence.
+// If you are not using Firebase, remove this block AND the
+// com.google.gms:google-services classpath from android/build.gradle.
+// ---------------------------------------------------------------------------
+def gservicesFile = file('google-services.json')
+if (gservicesFile.exists() && gservicesFile.length() > 0) {
+    apply plugin: 'com.google.gms.google-services'
 }

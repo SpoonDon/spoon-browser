@@ -1,25 +1,37 @@
-# ==============================================================================
-# Spoon Browser - Production R8/ProGuard Optimization Profile
-# ==============================================================================
+# ===========================================================================
+# Spoon Browser - R8 / ProGuard configuration
+# ===========================================================================
 
-# 1. Core Code Optimization & Shrinking Directives
+# --- Core optimization ------------------------------------------------------
 -allowaccessmodification
--flattenpackagehierarchy
+-repackageclasses ''
 
-# 2. Advanced Metadata Retention (Preserves reflection architectures)
--keepattributes JavaScriptInterface,Annotation,Signature,InnerClasses,EnclosingMethod
-
-# 3. Production Diagnostics & Stack Trace De-obfuscation
+# --- Metadata retention ----------------------------------------------------
+# JavascriptInterface : required so R8 keeps @JavascriptInterface methods
+# Annotation          : needed by AndroidX Security Crypto (Tink) and others
+# Signature, InnerClasses, EnclosingMethod : needed by reflection paths
+-keepattributes JavascriptInterface,Annotation,Signature,InnerClasses,EnclosingMethod
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# 4. Strict Android WebKit & WebView Engine Protection
--keep class android.webkit.** { *; }
+# --- JavaScript bridges ----------------------------------------------------
+# This is the correct, standard rule.
+# Do NOT add "-keep class android.webkit.** { *; }" - framework classes
+# live on the boot classpath and cannot be obfuscated regardless.
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# 5. Maintain View constructors for XML layout inflaters
+# Explicitly anchor our bridges so R8 cannot inline/merge them into an
+# inaccessible location. Cheap insurance against future refactoring.
+-keep class com.spoondon.browser.BlobDownloader {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keep class com.spoondon.browser.MainActivity$PasswordAutosaveBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
+# --- XML layout inflater support -------------------------------------------
 -keepclasseswithmembers class * {
     public <init>(android.content.Context, android.util.AttributeSet);
 }
@@ -27,14 +39,15 @@
     public <init>(android.content.Context, android.util.AttributeSet, int);
 }
 
-# 6. Suppress safe compiler warning noise from core dependencies
+# --- Strip verbose logs from release builds --------------------------------
+# Keep w() and e() so you still get warnings/errors in the field.
+-assumenosideeffects class android.util.Log {
+    public static *** d(...);
+    public static *** v(...);
+    public static *** i(...);
+}
+
+# --- Suppress warnings from transitive dependencies ------------------------
 -dontwarn android.webkit.**
-
-
-# SpoonVault Security Framework - Ignore compile-time lint annotations used by Tink Crypto
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.annotation.**
-
--keepclassmembers class com.spoondon.browser.BlobDownloader {
-    @android.webkit.JavascriptInterface <methods>;
-}
