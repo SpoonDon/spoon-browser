@@ -1,225 +1,261 @@
 # Spoon Browser — God-Object Split Plan
 
-**Status:** Slices 1, 2, and 3 delivered.
-Slices 4–5 speced below.
+**Status:** Slices 1, 2, 3, 4 delivered.
+Slice 5 remains, then the security batch.
 
 Goal: reduce `MainActivity.java` from ~2000 lines to a ~300-line orchestrator.
-Each slice is independently buildable and reversible.
 
 ---
 
-## Slice 1 — DELIVERED ✅
+## Slices 1–3 — DELIVERED ✅
 
-Files: `TabManager.java`, `DownloadHandler.java`.
-See earlier version of this doc for migration steps.
-
----
-
-## Slice 2 — DELIVERED ✅
-
-File: `ToolbarController.java`.
-See earlier version of this doc for migration steps.
+Files: `TabManager`, `DownloadHandler`, `ToolbarController`,
+`VaultController`, `AdBlockController`, `HistoryController`.
+See earlier versions of this doc for migration steps.
 
 ---
 
-## Slice 3 — DELIVERED ✅
+## Slice 4 — DELIVERED ✅
 
 ### New files
-- `android/app/src/main/java/com/spoondon/browser/VaultController.java`
-- `android/app/src/main/java/com/spoondon/browser/AdBlockController.java`
-- `android/app/src/main/java/com/spoondon/browser/HistoryController.java`
+- `android/app/src/main/java/com/spoondon/browser/PermissionController.java`
+- `android/app/src/main/java/com/spoondon/browser/MenuController.java`
+
+### Rewritten file
+- `android/app/src/main/java/com/spoondon/browser/SpoonWebChromeClient.java`
+  (now takes a `PermissionController` and delegates all permission callbacks)
 
 ### Fields to remove from `MainActivity.java`
 
 ```java
-// Adblock prefs keys — now in AdBlockController
-private static final String KEY_FILTER_LISTS = "filter_lists";
-private static final String KEY_FILTER_REFRESH_TIME = "filter_refresh_time";
-```
+// Now in PermissionController
+private androidx.activity.result.ActivityResultLauncher<String[]> webPermissionLauncher;
+public android.webkit.PermissionRequest currentPermissionRequest;
+public android.webkit.GeolocationPermissions.Callback currentGeolocationCallback;
+public String currentGeolocationOrigin;
+public android.webkit.ValueCallback<android.net.Uri[]> mFilePathCallback;
+public static final int FILECHOOSER_RESULTCODE = 100;
 
-Everything else (filterLists list, dbHelper, secureCredentialManager) stays
-on MainActivity and is passed *by reference* to the controllers.
+// Now in MenuController
+private static final String KEY_SEARCH_ENGINE = "search_engine";
+```
 
 ### Methods to delete from `MainActivity.java`
 
-**Vault:**
+**Menu-related:**
 
-- `showVaultForCurrentSite()`
-- `parseAccountsForHost(String)`
-- `showSavedPasswordsDialog()`
-- `copyTextToClipboard(String, String)`
-- `makeSmallButton(String)` — only used by CredentialAdapter
-- Inner class `CredentialAdapter`
+- `setupMenuButton()`
+- `showSearchEngineDialog()`
+- `getSearchUrlFor(String)`
+- `showFindInPageDialog()`
+- `showAbout()`
+- `createStatRow(...)`
+- `getAppVersion()`
+- The `findInPageBar` field and its cleanup logic
+- The private `showMainMenu(View)` helper introduced in slice 2
 
-**AdBlock:**
+**Permission-related:**
 
-- `showFilterListsDialog()`
-- `showFilterListOptions()`
-- `showSubscribedFilterLists()`
-- `saveFilterLists()`
+- The entire `webPermissionLauncher` registration block in `onCreate`
+- The `webPermissionLauncher.launch(...)` body
+- `requestWebPermissions(String[])` — replaced by
+`permissionController` calls from `SpoonWebChromeClient`
+- Any `onActivityResult` override used for the file chooser
+(now handled by `ActivityResultContracts.StartActivityForResult`)
 
-**History:**
+### Fields to keep in `MainActivity.java`
 
-- `showHistoryDialog()`
-- `showBookmarks()`
-- `migrateLegacyBookmarksToDatabase()`
+`customView` and `customViewCallback` remain on MainActivity because they
+are shared between the fullscreen flow and other UI state. `SpoonWebChromeClient`
+calls thin setter methods on MainActivity (see below) instead of touching
+them directly.
 
 ### New fields in `MainActivity.java`
 
 ```
-VaultController vaultController;
-AdBlockController adBlockController;
-HistoryController historyController;
+PermissionController permissionController;
+MenuController menuController;
 ```
 
-### Wiring in `onCreate` — add AFTER the slice-2 toolbar block
+### Wiring in `onCreate` — add BEFORE `createConfiguredWebView` is ever called
 
 ```
-// --- Slice 3: extracted UI controllers ---
-vaultController = new VaultController(this,
-        secureCredentialManager,
-        backgroundExecutor,
-        new VaultController.Callbacks() {
-            @Nullable @Override
-            public String getCurrentHost() {
-                WebView wv = tabManager.getCurrentWebView();
-                if (wv == null || wv.getUrl() == null) return null;
-                return Uri.parse(wv.getUrl()).getHost();
-            }
+// --- Slice 4: permission + menu controllers ---
+permissionController = new PermissionController(this);
 
-            @Override
-            public void copyToClipboard(@NonNull String value, @NonNull String message) {
-                if (clipboardManager != null) {
-                    clipboardManager.setPrimaryClip(
-                            ClipData.newPlainText("spoon_copy", value));
-                }
-                Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
-            }
-        });
+menuController = new MenuController(this, prefs, new MenuController.Callbacks() {
 
-adBlockController = new AdBlockController(
-        this, filterLists, backgroundExecutor, prefs);
-
-historyController = new HistoryController(
-        this, dbHelper, backgroundExecutor,
-        new HistoryController.Callbacks() {
-            @Override public void onNavigate(@NonNull String url) { openUrl(url); }
-            @Override public void openInNewTab(@NonNull String url) {
-                tabManager.openUrlInNewTab(url);
-            }
-        });
-```
-
-### Replace the old `migrateLegacyBookmarksToDatabase()` call
-
-Search `onCreate` for:
-
-```
-migrateLegacyBookmarksToDatabase();
-```
-
-Replace with:
-
-```
-historyController.migrateLegacyBookmarksToDatabase();
-```
-
-### Update references in `showMainMenu(View)` (from slice 2)
-
-The menu handler currently calls these old method names. Update:
-
-| Old call ↕▾ | New call ↕▾ |
-|---|---|
-| −`showSavedPasswordsDialog()` | `vaultController.showSavedPasswordsDialog()` |
-| `showBookmarks()` | `historyController.showBookmarks()` |
-| `showHistoryDialog()` | `historyController.showHistoryDialog()` |
-| `dbHelper.clearHistory(); Toast...` | `historyController.clearHistory()` |
-| `dbHelper.addBookmark(wv.getUrl(), wv.getTitle()); Toast...` | `historyController.addBookmark(wv.getUrl(), wv.getTitle())` |
-| `showFilterListsDialog()` | `adBlockController.showFilterListsDialog()` |
-| The inline enable/disable toggle block | `adBlockController.toggleEngine(getCurrentWebView())` |
-| The menu label check `AdBlockEngine.checkIsEngineEnabled(this)` | `adBlockController.isEngineEnabled()` |
-| `showVaultForCurrentSite()` | `vaultController.showVaultForCurrentSite()` |
-⚙
-
-### Update the "Passwords" menu option
-
-The current handler:
-
-```
-case "Passwords":
-    String[] options = {"Saved Passwords", "Import from CSV", "Export to CSV"};
-    new AlertDialog.Builder(this).setItems(options, (dialog, which) -> {
-        if (which == 0) {
-            createNewTab();
-            openUrl("file:///android_asset/vault.html");
-        } else if (which == 1) {
-            passwordImportLauncher.launch("text/*");
-        } else if (which == 2) {
-            exportCsvLauncher.launch("spoon_passwords.csv");
+    @Override public void newTab(boolean incognito) {
+        tabManager.createNewTab(incognito);
+        showHome();
+    }
+    @Override public void reload() {
+        WebView wv = tabManager.getCurrentWebView();
+        if (wv != null) wv.reload();
+    }
+    @Override public void openDownloads() {
+        try {
+            Intent i = new Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
+            i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(MainActivity.this, "No download manager found",
+                    Toast.LENGTH_SHORT).show();
         }
-    }).show();
-    return true;
+    }
+    @Override public void findInPage() {
+        menuController.showFindInPageDialog(tabManager.getCurrentWebView());
+    }
+    @Override public void showBookmarks() {
+        historyController.showBookmarks();
+    }
+    @Override public void addBookmark() {
+        WebView wv = tabManager.getCurrentWebView();
+        if (wv != null && wv.getUrl() != null) {
+            historyController.addBookmark(wv.getUrl(), wv.getTitle());
+        }
+    }
+    @Override public void showHistory() {
+        historyController.showHistoryDialog();
+    }
+    @Override public void clearHistory() {
+        historyController.clearHistory();
+    }
+    @Override public void clearCache() {
+        WebView wv = tabManager.getCurrentWebView();
+        if (wv != null) wv.clearCache(true);
+        Toast.makeText(MainActivity.this, "Cache cleared", Toast.LENGTH_SHORT).show();
+    }
+    @Override public void showFilterLists() {
+        adBlockController.showFilterListsDialog();
+    }
+    @Override public void toggleFilterEngine() {
+        adBlockController.toggleEngine(tabManager.getCurrentWebView());
+    }
+    @Override public void toggleDesktopMode() {
+        MainActivity.this.toggleDesktopMode();
+    }
+    @Override public boolean isDesktopEnabledForCurrentSite() {
+        String host = getCurrentHost();
+        return isDesktopHostEnabled(host);
+    }
+    @Override public void showSavedPasswords() {
+        vaultController.showSavedPasswordsDialog();
+    }
+    @Override public void importPasswords() {
+        passwordImportLauncher.launch("text/*");
+    }
+    @Override public void exportPasswords() {
+        exportCsvLauncher.launch("spoon_passwords.csv");
+    }
+    @Override public void showVaultForCurrentSite() {
+        vaultController.showVaultForCurrentSite();
+    }
+    @Override public void toggleStartupAnimation() {
+        android.content.SharedPreferences splashPrefs =
+                getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        boolean was = splashPrefs.getBoolean("show_splash_screen", true);
+        splashPrefs.edit().putBoolean("show_splash_screen", !was).apply();
+        Toast.makeText(MainActivity.this,
+                !was ? "Startup Animation Enabled" : "Startup Animation Disabled",
+                Toast.LENGTH_SHORT).show();
+    }
+    @Override public void exit() {
+        clearSessionOnExit = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            android.webkit.CookieManager.getInstance().flush();
+        }
+        prefs.edit().remove("open_tabs").remove("current_tab").apply();
+        finishAndRemoveTask();
+    }
+    @Override public WebView getCurrentWebView() { return tabManager.getCurrentWebView(); }
+    @Override public Context getContext() { return MainActivity.this; }
+    @Override public SharedPreferences getPreferences() { return prefs; }
+});
 ```
 
-Leave the "Import from CSV" / "Export to CSV" branches unchanged (they use
-Activity Result launchers still owned by MainActivity). Only "Saved Passwords"
-should now route to `vaultController.showSavedPasswordsDialog()` *or* the
-vault.html tab — your call. Recommend keeping the vault.html tab since it's
-the richer UX.
+### Update the slice-2 ToolbarController callback
 
-### Bugfix shipped in this slice
+Replace:
 
-`VaultController.showSavedPasswordsDialog()` now reads from
-`SecureCredentialManager.getAllCredentialsAsJson()` instead of directly
-parsing the legacy `secure_vault.dat` file. The legacy file is deleted on
-first launch by `migrateLegacyVault()`, so the old code always showed "No
-passwords saved yet" for anyone past first-run. Behavior is now correct.
+```
+@Override public void onMenuClicked(@NonNull View anchor) {
+    showMainMenu(anchor);
+}
+```
 
-### Smoke tests for slice 3
+with:
 
-- Menu → Passwords → Saved Passwords shows the real list
-- Tap an entry → shows username + password → Delete removes it and refreshes
-- On a site with saved credentials, `🔑 Vault / Autofill` shows the picker
-- Copy ID / Copy Pass copy to clipboard (60s auto-clear still works)
-- Menu → Filter Lists → add a URL, view subscriptions, remove one
-- Menu → Enable/Disable Filterlists toggles and reloads the page
-- Menu → History / Bookmarks / Add Bookmark / Clear History all work
-- On upgrade from a pre-3.x install, bookmarks migrate once
+```
+@Override public void onMenuClicked(@NonNull View anchor) {
+    menuController.showMainMenu(anchor);
+}
+```
 
----
+### New helper methods on MainActivity (used by MenuController + SpoonWebChromeClient)
 
-## Slice 4 — PermissionController + MenuController
+```
+void setToolbarVisible(boolean visible) {
+    if (toolbarController != null && toolbarController.getRootView() != null) {
+        toolbarController.getRootView().setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+}
 
-### `PermissionController.java`
+void setBrowserVisible(boolean visible) {
+    if (browserContainer != null) {
+        browserContainer.setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+}
 
-Extract:
+void attachFullscreenView(View view) {
+    if (root != null && view != null && view.getParent() == null) {
+        root.addView(view);
+    }
+}
 
-- `webPermissionLauncher` field + `registerForActivityResult` call
-- `currentPermissionRequest` / `currentGeolocation*` fields
-- `requestWebPermissions(String[])`
-- `mFilePathCallback` + `FILECHOOSER_RESULTCODE`
-- `onActivityResult` file-chooser handling
+void detachFullscreenView(View view) {
+    if (root != null && view != null
+            && view.getParent() instanceof ViewGroup) {
+        ((ViewGroup) view.getParent()).removeView(view);
+    }
+}
 
-`SpoonWebChromeClient` gains a `PermissionController` dep instead of calling
-`activity.requestWebPermissions(...)` directly. This is the biggest change in
-slice 4 — SpoonWebChromeClient.java needs a small refactor.
+int getTabCount()      { return tabManager != null ? tabManager.getTabCount() : 0; }
+int getBookmarkCount() { return dbHelper != null ? dbHelper.getBookmarkCount() : 0; }
+int getHistoryCount()  { return dbHelper != null ? dbHelper.getHistoryCount() : 0; }
+```
 
-### `MenuController.java`
+### Update `createConfiguredWebView()`
 
-Extract the body of `showMainMenu(View)` plus:
+Change:
 
-- `showSearchEngineDialog()`
-- `showAbout()` / `createStatRow(...)`
-- `showFindInPageDialog()`
-- `getSearchUrlFor(String)` + `KEY_SEARCH_ENGINE` handling
-- `getAppVersion()`
+```
+webView.setWebChromeClient(new SpoonWebChromeClient(this));
+```
 
-Constructor deps (all interface-typed to keep it testable):
+to:
 
-- `TabManager`, `ToolbarController`, `HistoryController`,
-`AdBlockController`, `VaultController`, `BrowserDatabaseHelper`
-- A small `Callbacks` interface for: `onExit()`, `onReload()`, `onClearCache()`,
-`onToggleDesktop()`, `openUrl(String)`, `showSearchEngine()`, etc.
+```
+webView.setWebChromeClient(new SpoonWebChromeClient(this, permissionController));
+```
+
+### Delete these fields/methods (replaced by MenuController)
+
+The fullscreen-video block in `SpoonWebChromeClient` used to touch
+`activity.toolbar`, `activity.browserContainer`, `activity.root` directly.
+Those are now private and accessed via the helper methods above.
+
+### Smoke tests for slice 4
+
+- Menu → every item triggers the correct action
+- Menu → Passwords → Saved Passwords / Import / Export all work
+- Menu → Search Engine switches the default
+- Menu → About shows WebView version + live adblock rule count
+- Menu → Find in Page opens the overlay and highlights
+- On a site requesting camera/mic → OS permission prompt appears
+- On a site requesting geolocation → OS permission prompt appears
+- Click `<input type="file">` → file chooser opens, selected file is delivered
+- YouTube video in fullscreen → enters and exits correctly
 
 ---
 
@@ -237,18 +273,14 @@ Extract:
 
 Extract:
 
-- `openUrl(String)` — the URL-vs-search decision + auto-HTTPS upgrade
+- `openUrl(String)` — URL-vs-search decision + auto-HTTPS upgrade
 - `normalizeDesktopHost(String)`
 - `isDesktopHostEnabled(Context, String)`
 - `applyDesktopUa(WebView, boolean)`
 
-Pure functions over Context / WebView — static utility is the right shape.
-
 ---
 
 ## After slice 5 — security batch (A/B/C + items #1–#8)
-
-Once `MainActivity` is ~300 lines, the security batch becomes surgical:
 
 | Fix ↕▾ | File ↕▾ | Effort ↕▾ |
 |---|---|---|
@@ -262,11 +294,10 @@ Once `MainActivity` is ~300 lines, the security batch becomes surgical:
 
 ---
 
-## Safety notes for each slice
+## Safety notes
 
-1. **Build after every slice.** Do not stack slices without a green CI run.
-2. **Commit granularly.** One slice per commit.
-3. **Smoke test each slice** using the checklist under that slice's section.
-4. **Do NOT touch the WebView client during refactor.** Leave
-`SpoonWebViewClient` / `SpoonWebChromeClient` alone until slice 4.
+1. Build after every slice. Green CI before the next slice.
+2. Commit granularly — one slice per commit.
+3. Do NOT touch `SpoonWebViewClient` during refactor (only `SpoonWebChromeClient`
+was touched in slice 4, and only for permission delegation).
 
