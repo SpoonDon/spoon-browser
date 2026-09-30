@@ -129,6 +129,15 @@ public class SpoonWebViewClient extends WebViewClient {
 
         url = cleanUrl(url);
 
+        // Reject page-initiated file:// and content:// navigations. Local
+        // file access is disabled on the WebView (see WebViewFactory), so
+        // these could not load anyway — intercepting here prevents the
+        // fallthrough into the intent:// handler below, which would
+        // otherwise try to open the URI in an external app.
+        if (url.startsWith("file:") || url.startsWith("content:")) {
+            return true;
+        }
+
         if (url.startsWith("spoonsearch://")) {
             try {
                 String query = java.net.URLDecoder.decode(url.substring(14), "UTF-8");
@@ -147,10 +156,7 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
-        // Cleartext policy — three tiers:
-        //   1. Compiled or user whitelist → load as-is.
-        //   2. Approved this session     → load as-is.
-        //   3. Otherwise                 → interstitial.
+        // Cleartext policy — three tiers.
         if (url.startsWith("http://")) {
             String rawHost = extractHostFromHttpUrl(url);
 
@@ -296,8 +302,6 @@ public class SpoonWebViewClient extends WebViewClient {
         super.doUpdateVisitedHistory(view, url, isReload);
         injectBlobHook(view);
 
-        // Skip interstitial base URLs — the interstitial loads with
-        // about:blank as its base, and we do not want that in history.
         if (url == null || url.isEmpty() || url.equals("about:blank")) return;
 
         if (VaultUrls.isVaultUrl(url)) return;

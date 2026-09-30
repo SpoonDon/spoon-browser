@@ -37,9 +37,14 @@ import java.util.concurrent.Executors;
 /**
  * Thin Activity shell for Spoon Browser.
  *
- * Backlog item #2 (2026-09-30): applyTabToToolbar updated to pass Context
- * to NavigationHelper.applyDesktopUa. The full UA decision path now lives
- * exclusively in NavigationHelper.
+ * Hardening pass (2026-09-30):
+ *   - Removed dead public fields addressContainer and securityIcon. They
+ *     were kept "for API compatibility" during the refactor but no code
+ *     path has referenced them since ToolbarController took over the
+ *     address bar and no lock-icon was ever wired.
+ *   - WebView file:// access disabled in WebViewFactory.
+ *   - NavigationHelper.openUrl and SpoonWebViewClient now reject file:,
+ *     content:, javascript:, data: schemes (see those files).
  */
 public class MainActivity extends AppCompatActivity {
 

@@ -20,16 +20,12 @@ import java.util.function.Function;
  *   1. Deciding what a typed string should do (navigate vs search).
  *   2. Applying the per-host desktop User-Agent.
  *
- * Everything here is a static pure function of its inputs (plus an optional
- * Context for the mobile-UA lookup). No Activity reference is retained.
- *
- * Backlog item #2 (2026-09-30): the desktop-UA path is now the single source
- * of truth. SpoonWebViewClient no longer contains an inline UA block — it
- * delegates to applyDesktopUa here. Mobile UA now uses the system WebView
- * UA (cached once per process) instead of a frozen Chrome string, matching
- * what SpoonWebViewClient used to do inline. The frozen MOBILE_UA remains
- * only as a fallback for the (unlikely) case where getDefaultUserAgent
- * fails.
+ * Hardening pass (2026-09-30): openUrl no longer passes file:, javascript:,
+ * data:, or content: URLs through to the WebView. Only about: URLs are
+ * honoured directly; everything else is either navigated or routed to the
+ * search engine. This closes the "paste javascript: into the address bar"
+ * execution vector and matches the WebView's file-access posture (see
+ * WebViewFactory: setAllowFileAccess(false)).
  */
 public final class NavigationHelper {
 
@@ -48,23 +44,12 @@ public final class NavigationHelper {
     private static final String BROWSER_PREFS = "browser_prefs";
     private static final String KEY_DESKTOP_SITES = "desktop_sites";
 
-    /**
-     * Cached system WebView UA, cleaned of the "; wv" marker and the
-     * "Version/x.x" prefix. Volatile because applyDesktopUa can theoretically
-     * be called from any thread that has a WebView — though in practice all
-     * callers are on the main thread.
-     */
     private static volatile String cachedMobileUa;
 
     // ------------------------------------------------------------------------
     // Host normalization / desktop-site bookkeeping
     // ------------------------------------------------------------------------
 
-    /**
-     * Collapses known alias hosts to a single canonical form so that toggling
-     * desktop mode on {@code m.youtube.com} also affects {@code youtu.be},
-     * {@code www.youtube.com}, etc.
-     */
     @NonNull
     public static String normalizeDesktopHost(@Nullable String host) {
         if (host == null) return "";
@@ -89,15 +74,6 @@ public final class NavigationHelper {
     // User-Agent
     // ------------------------------------------------------------------------
 
-    /**
-     * Returns the current WebView's system UA string, with the "; wv" marker
-     * and "Version/x.x" prefix stripped. Cached after the first call because
-     * {@link WebSettings#getDefaultUserAgent(Context)} is documented as
-     * expensive — it can force WebView initialization.
-     *
-     * Falls back to the frozen MOBILE_UA constant if the system lookup
-     * throws or returns an empty string.
-     */
     @NonNull
     public static String getMobileUa(@NonNull Context ctx) {
         String cached = cachedMobileUa;
@@ -107,7 +83,6 @@ public final class NavigationHelper {
         try {
             ua = WebSettings.getDefaultUserAgent(ctx);
         } catch (Exception ignored) {
-            // WebView not initialized, or the system UA is unavailable.
         }
 
         if (ua == null || ua.isEmpty()) {
@@ -121,17 +96,6 @@ public final class NavigationHelper {
         return ua;
     }
 
-    /**
-     * Switches a WebView between the mobile and desktop UA and adjusts the
-     * viewport settings that pair with each mode.
-     *
-     * Fixed 2026-09-30: the mobile branch now sets
-     * {@code useWideViewPort(false)} and {@code loadWithOverviewMode(false)},
-     * matching SpoonWebViewClient's previous inline behavior. Previously this
-     * method unconditionally set both to {@code true}, which caused mobile
-     * pages to render zoomed-out when this helper was called from any code
-     * path other than the SWVC inline block.
-     */
     public static void applyDesktopUa(@Nullable WebView wv,
                                       boolean desktop,
                                       @NonNull Context ctx) {
@@ -153,13 +117,6 @@ public final class NavigationHelper {
     // Desktop-mode toggle (per host)
     // ------------------------------------------------------------------------
 
-    /**
-     * Toggles desktop mode for {@code host}, persists the change, reloads
-     * {@code wv}, and fires {@code onNoHost} when the host is empty.
-     *
-     * YouTube serves a different session per UA, so the cookies are flushed
-     * before the reload to avoid a stale signed-in identity.
-     */
     public static void toggleDesktopMode(@NonNull Context ctx,
                                          @Nullable WebView wv,
                                          @Nullable String host,
@@ -198,14 +155,24 @@ public final class NavigationHelper {
     // ------------------------------------------------------------------------
 
     /**
-     * Loads {@code input} in {@code wv}:
+     * Loads {@code input} in {@code wv}.
      *
-     *   - internal schemes (about:, file:, javascript:, data:) pass through
-     *   - looks-like-a-URL goes to https:// (unless already scheme-prefixed)
-     *   - anything else is handed to {@code searchUrlResolver}
-     *
-     * The WebView's UA is set from the per-host desktop preference before
-     * loading. The caller owns {@code wv} and must pass a non-null resolver.
+     * Scheme policy (hardening pass 2026-09-30):
+     *   - about:     passed through to the WebView (used for about:blank)
+     *   - file:      rejected silently — file access is disabled on the
+     *                WebView, and pasting a file:// URL should not attempt
+     *                a navigation.
+     *   - javascript: rejected silently — this was a raw code-execution
+     *                vector when typed into the address bar.
+     *   - data:      rejected silently — commonly used for phishing pages
+     *                that present a fake lock and host forms entirely in
+     *                the URL. Legitimate data: URLs still work when loaded
+     *                by page content (this check only applies to address-bar
+     *                and intent navigation).
+     *   - content:   rejected silently — content:// is for the file chooser,
+     *                not for user typing.
+     *   - http(s) or bare hostname: navigated.
+     *   - anything else: routed to the search engine.
      */
     public static void openUrl(@NonNull WebView wv,
                                @Nullable String input,
@@ -223,11 +190,16 @@ public final class NavigationHelper {
         String query = input.trim();
         if (query.isEmpty()) return;
 
-        if (query.startsWith("about:")
-                || query.startsWith("file:")
-                || query.startsWith("javascript:")
-                || query.startsWith("data:")) {
+        if (query.startsWith("about:")) {
             wv.loadUrl(query);
+            return;
+        }
+
+        // Rejected schemes — no toast to avoid noise from accidental pastes.
+        if (query.startsWith("file:")
+                || query.startsWith("javascript:")
+                || query.startsWith("data:")
+                || query.startsWith("content:")) {
             return;
         }
 

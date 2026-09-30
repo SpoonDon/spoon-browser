@@ -21,8 +21,14 @@ import java.util.Set;
 /**
  * Builds and configures WebViews.
  *
- * Backlog item #3 (2026-09-30): registers CleartextBridge so the cleartext
- * interstitial page can call back into the app.
+ * Hardening pass (2026-09-30):
+ *   - setAllowFileAccess(false): file:// browsing is no longer supported.
+ *     The vault moved to WebViewAssetLoader over a synthetic HTTPS origin,
+ *     the home page uses loadDataWithBaseURL, and downloads go through
+ *     DownloadManager. Nothing in the app needs file:// access anymore,
+ *     and file:// is a well-known WebView escape vector.
+ *   - setAllowContentAccess(true) is retained — file-chooser (input
+ *     type=file) and CSV import/export rely on content:// URIs.
  */
 public class WebViewFactory {
 
@@ -31,7 +37,6 @@ public class WebViewFactory {
     private final PermissionController permissionController;
     private final DownloadHandler downloadHandler;
 
-    /** Loader is stateless; a single instance is reused for every WebView. */
     private final WebViewAssetLoader assetLoader;
 
     public WebViewFactory(@NonNull MainActivity activity,
@@ -84,7 +89,10 @@ public class WebViewFactory {
         ws.setUseWideViewPort(true);
         ws.setLoadWithOverviewMode(true);
         ws.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.NORMAL);
-        ws.setAllowFileAccess(true);
+
+        // Hardening: file:// access off, content:// on.
+        ws.setAllowFileAccess(false);
+        ws.setAllowContentAccess(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
             ws.setAllowFileAccessFromFileURLs(false);
             ws.setAllowUniversalAccessFromFileURLs(false);
@@ -150,7 +158,8 @@ public class WebViewFactory {
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         }
 
-        settings.setAllowFileAccess(true);
+        // Hardening: file:// access off, content:// on.
+        settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccessFromFileURLs(false);
         settings.setAllowUniversalAccessFromFileURLs(false);
