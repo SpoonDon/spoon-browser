@@ -39,12 +39,9 @@ import java.util.Set;
  * picker, the "Find in Page" overlay, and the "Trusted cleartext hosts"
  * manager.
  *
- * Bug fix (2026-09-30): the "Filter Lists" manage entry and the
- * "Enable/Disable Filterlists" toggle were merged into a single menu item
- * because the toggle label was applied with getItem(10).setTitle() on the
- * item that had just been added as "Filter Lists". The menu is now built
- * with MenuItem references instead of index-based lookups, so this cannot
- * regress when items are reordered.
+ * 2026-09-30: "Downloads" now opens {@code DownloadsController}'s list.
+ * The system downloads app is still reachable from the dialog's positive
+ * button.
  */
 public class MenuController {
 
@@ -56,7 +53,7 @@ public class MenuController {
     public interface Callbacks {
         void newTab(boolean incognito);
         void reload();
-        void openDownloads();
+        void showDownloads();
         void findInPage();
 
         void showBookmarks();
@@ -109,7 +106,7 @@ public class MenuController {
                 android.R.style.Widget_Material_Light_PopupMenu);
         PopupMenu popup = new PopupMenu(wrapper, anchor, Gravity.END);
 
-        // Static entries — no dynamic labels, no state.
+        // Static entries.
         popup.getMenu().add("New Tab");
         popup.getMenu().add("New Incognito Tab");
         popup.getMenu().add("Reload");
@@ -120,13 +117,9 @@ public class MenuController {
         popup.getMenu().add("History");
         popup.getMenu().add("Clear History");
         popup.getMenu().add("Clear Cache");
-
-        // Filter-list management — opens the subscription dialog.
-        // This is separate from the enable/disable toggle below.
         popup.getMenu().add("Filter Lists");
 
-        // Dynamic-label toggles. Captured as MenuItem references so we
-        // never rely on positional indices to update them.
+        // Dynamic-label toggles.
         boolean filterEnabled = AdBlockEngine.checkIsEngineEnabled(activity);
         MenuItem filterToggle = popup.getMenu().add(
                 filterEnabled ? "Disable Filterlists" : "Enable Filterlists");
@@ -135,7 +128,6 @@ public class MenuController {
         MenuItem desktopToggle = popup.getMenu().add(
                 desktopOn ? "Desktop Site [ON]" : "Desktop Site [OFF]");
 
-        // Static entries continued.
         popup.getMenu().add("Trusted cleartext hosts");
         popup.getMenu().add("Passwords");
         popup.getMenu().add("🔑 Vault (Copy)");
@@ -144,8 +136,6 @@ public class MenuController {
         popup.getMenu().add("Startup Animation");
         popup.getMenu().add("Exit");
 
-        // References are kept so future code can update labels in-place
-        // without touching the menu again. Currently unused but harmless.
         filterToggle.setCheckable(false);
         desktopToggle.setCheckable(false);
 
@@ -155,7 +145,7 @@ public class MenuController {
                 case "New Tab":                   callbacks.newTab(false); return true;
                 case "New Incognito Tab":         callbacks.newTab(true);  return true;
                 case "Reload":                    callbacks.reload(); return true;
-                case "Downloads":                 callbacks.openDownloads(); return true;
+                case "Downloads":                 callbacks.showDownloads(); return true;
                 case "Find in Page":              callbacks.findInPage(); return true;
                 case "Bookmarks":                 callbacks.showBookmarks(); return true;
                 case "Add Bookmark":              callbacks.addBookmark(); return true;

@@ -2,7 +2,6 @@ package com.spoondon.browser;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.DownloadManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Environment;
@@ -14,28 +13,33 @@ import android.webkit.WebView;
 import android.widget.Toast;
 
 /**
- * Handles WebView download callbacks:
- *   1. blob: URLs        -> evaluate a JS bridge script that streams the blob
- *                           to BlobDownloader.saveBase64ToFile().
- *   2. Direct URLs       -> DownloadManager, with filename sanitization and
- *                           PDF/MIME repair.
- *   3. External fallback -> ACTION_VIEW intent if DownloadManager fails.
+ * Handles WebView download callbacks.
  *
- * Extracted from MainActivity (god-object split, slice 1).
+ * Updated 2026-09-30 to fix "downloads silently fail":
+ *   - enqueue is now delegated to {@link DownloadsController}, which
+ *     registers a BroadcastReceiver so failures surface as a toast.
+ *   - the current page URL is added as a Referer header. Many CDNs 403
+ *     a request without one.
+ *   - filename sanitization was moved into DownloadsController and
+ *     strengthened (colons, control chars, reserved chars).
  */
 public class DownloadHandler implements DownloadListener {
 
     private final Activity activity;
     private final WebViewProvider webViewProvider;
+    private final DownloadsController downloadsController;
 
     public interface WebViewProvider {
         /** @return the currently active WebView (may be null). */
         WebView get();
     }
 
-    public DownloadHandler(Activity activity, WebViewProvider webViewProvider) {
+    public DownloadHandler(Activity activity,
+                           WebViewProvider webViewProvider,
+                           DownloadsController downloadsController) {
         this.activity = activity;
         this.webViewProvider = webViewProvider;
+        this.downloadsController = downloadsController;
     }
 
     /** Install this handler on a freshly created WebView. */
@@ -57,9 +61,11 @@ public class DownloadHandler implements DownloadListener {
             String targetFileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
             String lowerUrl = url.toLowerCase();
 
-            boolean isActuallyPdf = (mimeType != null && mimeType.equalsIgnoreCase("application/pdf"))
-                    || lowerUrl.contains(".pdf")
-                    || (contentDisposition != null && contentDisposition.toLowerCase().contains(".pdf"));
+            boolean isActuallyPdf =
+                    (mimeType != null && mimeType.equalsIgnoreCase("application/pdf"))
+                            || lowerUrl.contains(".pdf")
+                            || (contentDisposition != null
+                                && contentDisposition.toLowerCase().contains(".pdf"));
 
             if (targetFileName.endsWith(".bin") || targetFileName.equals("downloadfile")) {
                 if (isActuallyPdf) {
@@ -80,13 +86,12 @@ public class DownloadHandler implements DownloadListener {
             if (targetFileName.startsWith(".")) {
                 targetFileName = targetFileName.substring(1) + ".txt";
             }
-            if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md"))   targetFileName += ".md";
+            if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md"))     targetFileName += ".md";
             if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
 
-            targetFileName = targetFileName.replace("/", "_").replace("\\", "_");
-
             String safeMime = (mimeType == null || mimeType.isEmpty())
-                    ? "application/octet-stream" : mimeType;
+                    ? "application/octet-stream"
+                    : mimeType;
             if (isActuallyPdf && safeMime.equals("application/octet-stream")) {
                 safeMime = "application/pdf";
             }
@@ -98,8 +103,10 @@ public class DownloadHandler implements DownloadListener {
             new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                     .setTitle("Download File")
                     .setMessage("Do you want to download " + finalName + "?")
-                    .setPositiveButton("Download", (d, i) -> enqueueDownload(url, finalUserAgent, finalMime, finalName))
-                    .setNeutralButton("External Only", (d, i) -> triggerExternalDownload(url, finalMime))
+                    .setPositiveButton("Download",
+                            (d, i) -> enqueueDownload(url, finalUserAgent, finalMime, finalName))
+                    .setNeutralButton("External Only",
+                            (d, i) -> triggerExternalDownload(url, finalMime))
                     .setNegativeButton("Cancel", null)
                     .show();
 
@@ -110,24 +117,21 @@ public class DownloadHandler implements DownloadListener {
     }
 
     private void enqueueDownload(String url, String userAgent, String mime, String fileName) {
+        String referer = null;
         try {
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-            String cookies = CookieManager.getInstance().getCookie(url);
-            if (cookies != null) request.addRequestHeader("Cookie", cookies);
-            if (userAgent != null) request.addRequestHeader("User-Agent", userAgent);
-            request.setMimeType(mime);
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setTitle(fileName);
+            WebView wv = webViewProvider != null ? webViewProvider.get() : null;
+            if (wv != null) referer = wv.getUrl();
+        } catch (Exception ignored) {}
 
-            DownloadManager manager = (DownloadManager)
-                    activity.getSystemService(Activity.DOWNLOAD_SERVICE);
-            if (manager != null) {
-                manager.enqueue(request);
-                Toast.makeText(activity, "Download started...", Toast.LENGTH_SHORT).show();
-            }
-        } catch (Exception e) {
+        if (downloadsController == null) {
+            // Fallback: no controller wired. Try the external path.
             triggerExternalDownload(url, mime);
+            return;
+        }
+
+        long id = downloadsController.enqueue(url, userAgent, mime, fileName, referer);
+        if (id == -1) {
+            // enqueue already reported the error to the user.
         }
     }
 
@@ -145,7 +149,7 @@ public class DownloadHandler implements DownloadListener {
     // Blob URL handling
     // ------------------------------------------------------------------------
     private void handleBlobDownload(String url, String contentDisposition, String mimeType) {
-        WebView webView = webViewProvider.get();
+        WebView webView = webViewProvider != null ? webViewProvider.get() : null;
         if (webView == null) return;
 
         String safeDisposition = contentDisposition != null

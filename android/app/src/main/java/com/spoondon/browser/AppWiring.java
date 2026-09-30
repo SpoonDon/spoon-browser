@@ -19,8 +19,9 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
- * Backlog item #2 (2026-09-30): applyTabToToolbar now calls the
- * Context-aware NavigationHelper.applyDesktopUa.
+ * 2026-09-30: added DownloadsController. MenuController's "Downloads"
+ * now routes to it; the system downloads app is still reachable from
+ * inside the Downloads dialog.
  */
 public class AppWiring {
 
@@ -39,6 +40,7 @@ public class AppWiring {
     // ------------------------------------------------------------------------
     // Controllers
     // ------------------------------------------------------------------------
+    private DownloadsController downloadsController;
     private DownloadHandler downloadHandler;
     private WebViewFactory webViewFactory;
     private HomePageRenderer homePageRenderer;
@@ -73,7 +75,12 @@ public class AppWiring {
     // ========================================================================
 
     public void initialize() {
-        downloadHandler = new DownloadHandler(activity, activity::getCurrentWebView);
+        // ---- DownloadsController (needed by DownloadHandler) -------------
+        downloadsController = new DownloadsController(activity);
+
+        // ---- DownloadHandler ----------------------------------------------
+        downloadHandler = new DownloadHandler(
+                activity, activity::getCurrentWebView, downloadsController);
 
         webViewFactory = new WebViewFactory(
                 activity, credentials, permissionController, downloadHandler);
@@ -199,7 +206,9 @@ public class AppWiring {
                 if (wv != null) wv.reload();
             }
 
-            @Override public void openDownloads() { openSystemDownloads(); }
+            @Override public void showDownloads() {
+                downloadsController.showDownloadsDialog();
+            }
 
             @Override public void findInPage() {
                 menuController.showFindInPageDialog(tabManager.getCurrentWebView());
@@ -310,14 +319,16 @@ public class AppWiring {
         if (downloadHandler != null) downloadHandler.triggerExternalDownload(url, mime);
     }
 
-    private void openSystemDownloads() {
-        try {
-            Intent intent = new Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            activity.startActivity(intent);
-        } catch (android.content.ActivityNotFoundException e) {
-            Toast.makeText(activity, "No download manager found", Toast.LENGTH_SHORT).show();
-        }
+    // ========================================================================
+    // Download receiver lifecycle
+    // ========================================================================
+
+    public void registerDownloadsReceiver() {
+        if (downloadsController != null) downloadsController.register();
+    }
+
+    public void unregisterDownloadsReceiver() {
+        if (downloadsController != null) downloadsController.unregister();
     }
 
     // ========================================================================
@@ -331,4 +342,5 @@ public class AppWiring {
     @NonNull public MenuController getMenuController() { return menuController; }
     @NonNull public VaultController getVaultController() { return vaultController; }
     @NonNull public WebViewFactory getWebViewFactory() { return webViewFactory; }
+    @NonNull public DownloadsController getDownloadsController() { return downloadsController; }
 }

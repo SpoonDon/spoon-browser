@@ -1,10 +1,12 @@
 package com.spoondon.browser;
 
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -26,6 +28,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -37,14 +40,8 @@ import java.util.concurrent.Executors;
 /**
  * Thin Activity shell for Spoon Browser.
  *
- * Hardening pass (2026-09-30):
- *   - Removed dead public fields addressContainer and securityIcon. They
- *     were kept "for API compatibility" during the refactor but no code
- *     path has referenced them since ToolbarController took over the
- *     address bar and no lock-icon was ever wired.
- *   - WebView file:// access disabled in WebViewFactory.
- *   - NavigationHelper.openUrl and SpoonWebViewClient now reject file:,
- *     content:, javascript:, data: schemes (see those files).
+ * 2026-09-30: added POST_NOTIFICATIONS launcher. DownloadsController
+ * requests the permission the first time a download starts.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -74,10 +71,13 @@ public class MainActivity extends AppCompatActivity {
     // File pickers + clipboard
     private ActivityResultLauncher<String> passwordImportLauncher;
     private ActivityResultLauncher<String> exportCsvLauncher;
+    private ActivityResultLauncher<String> notificationPermissionLauncher;
     private ClipboardManager clipboardManager;
     private android.os.Handler clipboardHandler;
     private Runnable clipboardClearRunnable;
     private ClipboardManager.OnPrimaryClipChangedListener clipChangedListener;
+
+    private boolean notificationPermissionRequested = false;
 
     // ========================================================================
     // Lifecycle
@@ -95,6 +95,15 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         sessionManager = new SessionManager(this);
 
+        // Notification permission launcher must be registered before
+        // onStart, so do it here before wiring.initialize().
+        notificationPermissionLauncher = registerForActivityResult(
+                new ActivityResultContracts.RequestPermission(),
+                granted -> {
+                    // Silent — the download proceeds either way, the
+                    // notification just won't be visible on API 33+.
+                });
+
         registerFilePickers();
         registerClipboardWatcher();
         setupRootLayout();
@@ -109,6 +118,7 @@ public class MainActivity extends AppCompatActivity {
                 backgroundExecutor,
                 filterLists);
         wiring.initialize();
+        wiring.registerDownloadsReceiver();
 
         assembleLayout();
 
@@ -150,6 +160,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override protected void onDestroy() {
+        if (wiring != null) wiring.unregisterDownloadsReceiver();
         if (sessionManager != null) sessionManager.onDestroy();
         if (backgroundExecutor != null) backgroundExecutor.shutdownNow();
         if (wiring != null) wiring.getTabManager().destroyAll();
@@ -377,6 +388,29 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
+    // Notification permission
+    // ========================================================================
+
+    /**
+     * Request POST_NOTIFICATIONS on API 33+ so DownloadManager progress
+     * notifications appear. Only asks once per process lifetime. Silently
+     * no-ops below API 33.
+     */
+    public void ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (notificationPermissionRequested) return;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        notificationPermissionRequested = true;
+        try {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+        } catch (Exception ignored) {
+        }
+    }
+
+    // ========================================================================
     // Public API
     // ========================================================================
 
@@ -452,103 +486,4 @@ public class MainActivity extends AppCompatActivity {
         if (passwordImportLauncher != null) passwordImportLauncher.launch("text/*");
     }
 
-    public void launchPasswordExport() {
-        if (exportCsvLauncher != null) exportCsvLauncher.launch("spoon_passwords.csv");
-    }
-
-    public void toggleStartupAnimation() {
-        SharedPreferences sp = getSharedPreferences("browser_prefs", MODE_PRIVATE);
-        boolean enabled = sp.getBoolean("show_splash_screen", true);
-        sp.edit().putBoolean("show_splash_screen", !enabled).apply();
-        Toast.makeText(this,
-                !enabled ? "Startup Animation Enabled" : "Startup Animation Disabled",
-                Toast.LENGTH_SHORT).show();
-    }
-
-    public void copyToClipboard(@NonNull String value, @NonNull String message) {
-        if (clipboardManager != null) {
-            clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_copy", value));
-        }
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-    }
-
-    public String getSearchUrlFor(String query) {
-        return wiring != null ? wiring.getSearchUrlFor(query) : "";
-    }
-
-    public void triggerManualDownload(String url, String mime) {
-        if (wiring != null) wiring.triggerManualDownload(url, mime);
-    }
-
-    public boolean isDesktopHostEnabled(String host) {
-        return NavigationHelper.isDesktopHostEnabled(this, host);
-    }
-
-    public ExecutorService getBackgroundExecutor() {
-        return backgroundExecutor;
-    }
-
-    public void setAddressBarText(String url) {
-        if (wiring != null) wiring.getToolbarController().setAddress(url);
-    }
-
-    public void executeSafely(Runnable task) {
-        if (backgroundExecutor != null
-                && !backgroundExecutor.isShutdown()
-                && !backgroundExecutor.isTerminated()) {
-            try {
-                backgroundExecutor.execute(task);
-            } catch (java.util.concurrent.RejectedExecutionException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    // ========================================================================
-    // Fullscreen video support
-    // ========================================================================
-
-    public void setToolbarVisible(boolean visible) {
-        if (wiring == null) return;
-        View bar = wiring.getToolbarController().getRootView();
-        if (bar != null) bar.setVisibility(visible ? View.VISIBLE : View.GONE);
-    }
-
-    public void setBrowserVisible(boolean visible) {
-        if (browserWrapper != null) {
-            browserWrapper.setVisibility(visible ? View.VISIBLE : View.GONE);
-        }
-    }
-
-    public void attachFullscreenView(View view) {
-        if (view == null || root == null) return;
-        if (view.getParent() instanceof ViewGroup) {
-            ((ViewGroup) view.getParent()).removeView(view);
-        }
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        root.addView(view, params);
-    }
-
-    public void detachFullscreenView(View view) {
-        if (view == null || root == null) return;
-        root.removeView(view);
-    }
-
-    // ========================================================================
-    // Vault / screen shield
-    // ========================================================================
-
-    public boolean isVaultActive() {
-        WebView wv = getCurrentWebView();
-        return wv != null && VaultUrls.isVaultUrl(wv.getUrl());
-    }
-
-    public void updateScreenShield() {
-        if (isVaultActive()) {
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        } else {
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        }
-    }
-}
+    public void launch
