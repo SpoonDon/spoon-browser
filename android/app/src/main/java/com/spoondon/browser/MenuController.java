@@ -11,9 +11,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.ContextThemeWrapper;
 import android.view.Gravity;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -37,8 +39,12 @@ import java.util.Set;
  * picker, the "Find in Page" overlay, and the "Trusted cleartext hosts"
  * manager.
  *
- * Batch D (2026-09-30): new "Trusted cleartext hosts" menu entry with an
- * add/remove dialog backed by CleartextPreferences.
+ * Bug fix (2026-09-30): the "Filter Lists" manage entry and the
+ * "Enable/Disable Filterlists" toggle were merged into a single menu item
+ * because the toggle label was applied with getItem(10).setTitle() on the
+ * item that had just been added as "Filter Lists". The menu is now built
+ * with MenuItem references instead of index-based lookups, so this cannot
+ * regress when items are reordered.
  */
 public class MenuController {
 
@@ -103,33 +109,45 @@ public class MenuController {
                 android.R.style.Widget_Material_Light_PopupMenu);
         PopupMenu popup = new PopupMenu(wrapper, anchor, Gravity.END);
 
-        popup.getMenu().add("New Tab");                       // 0
-        popup.getMenu().add("New Incognito Tab");             // 1
-        popup.getMenu().add("Reload");                        // 2
-        popup.getMenu().add("Downloads");                     // 3
-        popup.getMenu().add("Find in Page");                  // 4
-        popup.getMenu().add("Bookmarks");                     // 5
-        popup.getMenu().add("Add Bookmark");                  // 6
-        popup.getMenu().add("History");                       // 7
-        popup.getMenu().add("Clear History");                 // 8
-        popup.getMenu().add("Clear Cache");                   // 9
-        popup.getMenu().add("Filter Lists");                  // 10
-        popup.getMenu().add("Desktop Site [OFF]");            // 11
-        popup.getMenu().add("Trusted cleartext hosts");       // 12
-        popup.getMenu().add("Passwords");                     // 13
-        popup.getMenu().add("🔑 Vault (Copy)");                // 14
-        popup.getMenu().add("Search Engine");                 // 15
-        popup.getMenu().add("About");                         // 16
-        popup.getMenu().add("Startup Animation");             // 17
-        popup.getMenu().add("Exit");                          // 18
+        // Static entries — no dynamic labels, no state.
+        popup.getMenu().add("New Tab");
+        popup.getMenu().add("New Incognito Tab");
+        popup.getMenu().add("Reload");
+        popup.getMenu().add("Downloads");
+        popup.getMenu().add("Find in Page");
+        popup.getMenu().add("Bookmarks");
+        popup.getMenu().add("Add Bookmark");
+        popup.getMenu().add("History");
+        popup.getMenu().add("Clear History");
+        popup.getMenu().add("Clear Cache");
 
+        // Filter-list management — opens the subscription dialog.
+        // This is separate from the enable/disable toggle below.
+        popup.getMenu().add("Filter Lists");
+
+        // Dynamic-label toggles. Captured as MenuItem references so we
+        // never rely on positional indices to update them.
         boolean filterEnabled = AdBlockEngine.checkIsEngineEnabled(activity);
-        popup.getMenu().getItem(10)
-                .setTitle(filterEnabled ? "Disable Filterlists" : "Enable Filterlists");
+        MenuItem filterToggle = popup.getMenu().add(
+                filterEnabled ? "Disable Filterlists" : "Enable Filterlists");
 
         boolean desktopOn = callbacks.isDesktopEnabledForCurrentSite();
-        popup.getMenu().getItem(11)
-                .setTitle(desktopOn ? "Desktop Site [ON]" : "Desktop Site [OFF]");
+        MenuItem desktopToggle = popup.getMenu().add(
+                desktopOn ? "Desktop Site [ON]" : "Desktop Site [OFF]");
+
+        // Static entries continued.
+        popup.getMenu().add("Trusted cleartext hosts");
+        popup.getMenu().add("Passwords");
+        popup.getMenu().add("🔑 Vault (Copy)");
+        popup.getMenu().add("Search Engine");
+        popup.getMenu().add("About");
+        popup.getMenu().add("Startup Animation");
+        popup.getMenu().add("Exit");
+
+        // References are kept so future code can update labels in-place
+        // without touching the menu again. Currently unused but harmless.
+        filterToggle.setCheckable(false);
+        desktopToggle.setCheckable(false);
 
         popup.setOnMenuItemClickListener(item -> {
             String title = item.getTitle().toString();
@@ -182,7 +200,7 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // Trusted cleartext hosts (batch D)
+    // Trusted cleartext hosts
     // ------------------------------------------------------------------------
     private void showCleartextHostsDialog() {
         Set<String> hosts = CleartextPreferences.getUserHosts(activity);
@@ -204,7 +222,7 @@ public class MenuController {
         }
 
         ListView listView = new ListView(activity);
-        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 activity, android.R.layout.simple_list_item_1, list);
         listView.setAdapter(adapter);
 
@@ -217,7 +235,7 @@ public class MenuController {
                         CleartextPreferences.removeUserHost(activity, host);
                         Toast.makeText(activity, "Removed " + host,
                                 Toast.LENGTH_SHORT).show();
-                        showCleartextHostsDialog();   // refresh
+                        showCleartextHostsDialog();
                     })
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -244,7 +262,6 @@ public class MenuController {
                     String raw = input.getText().toString().trim();
                     if (raw.isEmpty()) return;
 
-                    // Normalize before storing so the list stays canonical.
                     String normalized = raw.toLowerCase(Locale.ROOT);
                     if (normalized.contains("://")) {
                         normalized = normalized.substring(normalized.indexOf("://") + 3);
@@ -261,7 +278,7 @@ public class MenuController {
                     CleartextPreferences.addUserHost(activity, normalized);
                     Toast.makeText(activity, "Added " + normalized,
                             Toast.LENGTH_SHORT).show();
-                    showCleartextHostsDialog();   // refresh
+                    showCleartextHostsDialog();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
