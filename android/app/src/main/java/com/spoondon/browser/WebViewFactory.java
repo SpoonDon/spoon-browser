@@ -266,16 +266,13 @@ public class WebViewFactory {
     // ------------------------------------------------------------------------
     // JS bridge
     // ------------------------------------------------------------------------
-    private class PasswordAutosaveBridge {    
-        @android.webkit.JavascriptInterface    
+
+    private class PasswordAutosaveBridge {
+        @android.webkit.JavascriptInterface
         public void saveCredentials(String host, String username, String password) {
-        // --- DIAGNOSTIC ---        
-            android.widget.Toast.makeText(activity,
-                "Save called: " + host + " ready=" + (credentials != null), android.widget.Toast.LENGTH_LONG).show();
-        // ------------------        
-            if (credentials != null) {            
-                credentials.saveCredentials(host, username, password);        
-            }    
+            if (credentials != null) {
+                credentials.saveCredentials(host, username, password);
+            }
         }
     }
 }
