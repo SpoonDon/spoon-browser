@@ -156,8 +156,8 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
-        String cleanUrl = url.split("\\?")[0].split("#")[0].toLowerCase(Locale.ROOT);
-        if (cleanUrl.matches(".*\\.(mp4|webm|mkv|avi|mov|flv|wmv|ts|png|jpg|jpeg|gif|webp|apk|zip|rar|7z|pdf|iso)$")) {
+        String cleanUrl = url.split("\?")[0].split("#")[0].toLowerCase(Locale.ROOT);
+        if (cleanUrl.matches(".*\.(mp4|webm|mkv|avi|mov|flv|wmv|ts|apk|zip|rar|7z|pdf|iso|dmg|exe|msi|tar|gz|md|json|csv)$")) {
             String mime = android.webkit.MimeTypeMap.getSingleton()
                     .getMimeTypeFromExtension(
                             android.webkit.MimeTypeMap.getFileExtensionFromUrl(cleanUrl));
