@@ -22,6 +22,20 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
+# --- Tink / EncryptedSharedPreferences -------------------------------------
+# androidx.security:security-crypto uses Tink internally. Tink performs
+# runtime registry lookups by class name, so R8 will strip key-manager
+# implementations it believes are unused. Anchor the whole tree.
+-keep class com.google.crypto.tink.** { *; }
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.protobuf.** { *; }
+-dontwarn com.google.crypto.tink.**
+
+# Preserve Tink's reflective errorprone/annotation shims
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn org.joda.time.**
+
 # Explicitly anchor our bridges so R8 cannot inline/merge them into an
 # inaccessible location. Cheap insurance against future refactoring.
 -keep class com.spoondon.browser.BlobDownloader {
