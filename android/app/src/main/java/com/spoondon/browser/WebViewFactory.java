@@ -24,11 +24,21 @@ import java.util.Set;
  * Hardening pass (2026-09-30):
  *   - setAllowFileAccess(false): file:// browsing is no longer supported.
  *     The vault moved to WebViewAssetLoader over a synthetic HTTPS origin,
- *     the home page uses loadDataWithBaseURL, and downloads go through
- *     DownloadManager. Nothing in the app needs file:// access anymore,
- *     and file:// is a well-known WebView escape vector.
+ *     the home page uses loadDataWithBaseURL, and downloads go through the
+ *     custom DownloadEngine. Nothing in the app needs file:// access
+ *     anymore, and file:// is a well-known WebView escape vector.
  *   - setAllowContentAccess(true) is retained — file-chooser (input
  *     type=file) and CSV import/export rely on content:// URIs.
+ *
+ * JS bridges registered here:
+ *   - AndroidDownloader  : BlobDownloader.saveBase64ToFile
+ *   - SpoonVault         : PasswordAutosaveBridge.saveCredentials
+ *   - SpoonCleartext     : CleartextBridge.proceed/upgrade/cancel
+ *   - SpoonScroll        : ScrollBridge.setAtTop (pull-to-refresh state)
+ *
+ * The Vault WebMessageListener (spoonVaultMessage) is origin-scoped to
+ * VaultUrls.ORIGIN and handles FETCH_ALL_VAULT_DATA / SAVE_LOGIN /
+ * DELETE_LOGIN from the vault.html document.
  */
 public class WebViewFactory {
 
@@ -124,6 +134,7 @@ public class WebViewFactory {
         webView.addJavascriptInterface(new BlobDownloader(activity), "AndroidDownloader");
         webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
         webView.addJavascriptInterface(new CleartextBridge(webView), "SpoonCleartext");
+        webView.addJavascriptInterface(new ScrollBridge(), "SpoonScroll");
 
         downloadHandler.attach(webView);
 
@@ -264,7 +275,7 @@ public class WebViewFactory {
     }
 
     // ------------------------------------------------------------------------
-    // JS bridge
+    // JS bridges
     // ------------------------------------------------------------------------
 
     private class PasswordAutosaveBridge {
@@ -273,6 +284,26 @@ public class WebViewFactory {
             if (credentials != null) {
                 credentials.saveCredentials(host, username, password);
             }
+        }
+    }
+
+    /**
+     * Reports page scroll state to native so SwipeRefreshLayout only
+     * intercepts pull gestures when the document (or an inner scroller)
+     * is at the top. Injected by SpoonWebViewClient.injectScrollHook().
+     *
+     * Always posts to the UI thread — JS bridge methods arrive on a
+     * WebView-owned background thread.
+     */
+    private class ScrollBridge {
+        @android.webkit.JavascriptInterface
+        public void setAtTop(boolean atTop) {
+            if (activity == null) return;
+            activity.runOnUiThread(() -> {
+                if (activity.swipeRefresh != null) {
+                    activity.swipeRefresh.setEnabled(atTop);
+                }
+            });
         }
     }
 }
