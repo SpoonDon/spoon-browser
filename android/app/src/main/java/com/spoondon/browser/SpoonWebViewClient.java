@@ -421,25 +421,24 @@ public class SpoonWebViewClient extends WebViewClient {
         view.evaluateJavascript(buildAutosaveScript(), null);
     }
 
-    // ------------------------------------------------------------------------
-    // Password autosave injection
-    // ------------------------------------------------------------------------
-
-    /**
-     * Multi-step-login aware autosave. Handles Google / Microsoft / Amazon /
-     * banks where the username and password are entered on different page
-     * loads of the SAME origin.
+        /**
+     * Multi-step-login and shadow-DOM aware autosave.
      *
-     * Key mechanics:
-     *   - Guard against duplicate attachment (onPageFinished fires more than
-     *     once per navigation on many sites; the old script re-added listeners
-     *     every time, N calls per click after a long session).
-     *   - sessionStorage persists the last-typed username across same-origin
-     *     navigation, so the password page can still save with the email.
-     *   - pagehide/beforeunload give us a last-chance save for SPAs that
-     *     navigate without a submit or a click on a recognised button.
-     *   - capture:true so we see events even if the site calls
-     *     stopPropagation (Google's sign-in JS does this in places).
+     * Handles:
+     *   - Google / Microsoft / Amazon / banks: username and password entered
+     *     on different page loads of the SAME origin (sessionStorage bridge).
+     *   - Material / Web Components frameworks: input elements are wrapped
+     *     inside element.shadowRoot and are invisible to plain
+     *     document.querySelector. deepQuery() walks the shadow tree.
+     *   - SPA transitions where no form submit or button click fires: a
+     *     2-second sweep saves once the password field loses focus.
+     *
+     * Guards:
+     *   - window.__spoonAutosaveAttached prevents duplicate listener
+     *     attachment on repeat onPageFinished calls.
+     *   - lastSavedSig suppresses redundant saves of the same tuple.
+     *   - capture:true so we see events even when the page calls
+     *     stopPropagation (Google's sign-in JS does this).
      */
     @NonNull
     private static String buildAutosaveScript() {
@@ -449,7 +448,31 @@ public class SpoonWebViewClient extends WebViewClient {
                 "var SS_KEY = '__spoon_pending_user__';" +
                 "var host = window.location.hostname || '';" +
                 "var lastKnownUser = '';" +
+                "var lastSavedSig = '';" +
                 "try { lastKnownUser = sessionStorage.getItem(SS_KEY) || ''; } catch(e) {}" +
+
+                // Recursive shadow-root-aware query.
+                "function deepQuery(sel, root) {" +
+                "  root = root || document;" +
+                "  try { var direct = root.querySelector(sel); if (direct) return direct; } catch(e) {}" +
+                "  var all = root.querySelectorAll('*');" +
+                "  for (var i = 0; i < all.length; i++) {" +
+                "    var sr = all[i].shadowRoot;" +
+                "    if (sr) { var hit = deepQuery(sel, sr); if (hit) return hit; }" +
+                "  }" +
+                "  return null;" +
+                "}" +
+
+                // Resolve the actual INPUT node through shadow boundaries.
+                "function inputFromEvent(e) {" +
+                "  var path = e.composedPath ? e.composedPath() : [e.target];" +
+                "  for (var i = 0; i < path.length; i++) {" +
+                "    var n = path[i];" +
+                "    if (n && n.tagName === 'INPUT') return n;" +
+                "  }" +
+                "  return e.target;" +
+                "}" +
+
                 "function rememberUser(v) {" +
                 "  if (!v) return;" +
                 "  lastKnownUser = v;" +
@@ -459,18 +482,19 @@ public class SpoonWebViewClient extends WebViewClient {
                 "  lastKnownUser = '';" +
                 "  try { sessionStorage.removeItem(SS_KEY); } catch(e) {}" +
                 "}" +
+
                 "function readUserBox() {" +
-                "  return document.querySelector(" +
-                "    'input[type=email], ' +" +
-                "    'input[name=username], ' +" +
-                "    'input[name=login], ' +" +
-                "    'input[name=identifier], ' +" +
-                "    'input[autocomplete=username], ' +" +
-                "    'input[type=text]');" +
+                "  return deepQuery('input[type=email]')" +
+                "    || deepQuery('input[name=username]')" +
+                "    || deepQuery('input[name=login]')" +
+                "    || deepQuery('input[name=identifier]')" +
+                "    || deepQuery('input[autocomplete=username]')" +
+                "    || deepQuery('input[type=text]');" +
                 "}" +
                 "function readPassBox() {" +
-                "  return document.querySelector('input[type=password]');" +
+                "  return deepQuery('input[type=password]');" +
                 "}" +
+
                 "function trySave() {" +
                 "  try {" +
                 "    var passBox = readPassBox();" +
@@ -478,12 +502,16 @@ public class SpoonWebViewClient extends WebViewClient {
                 "    var userBox = readUserBox();" +
                 "    var finalUser = (userBox && userBox.value) ? userBox.value : lastKnownUser;" +
                 "    if (!finalUser) return;" +
+                "    var sig = host + '|' + finalUser + '|' + passBox.value;" +
+                "    if (sig === lastSavedSig) return;" +
+                "    lastSavedSig = sig;" +
                 "    SpoonVault.saveCredentials(host, finalUser, passBox.value);" +
                 "    forgetUser();" +
                 "  } catch(e) {}" +
                 "}" +
+
                 "document.addEventListener('input', function(e) {" +
-                "  var t = e.target;" +
+                "  var t = inputFromEvent(e);" +
                 "  if (!t || t.tagName !== 'INPUT') return;" +
                 "  var type = (t.type || '').toLowerCase();" +
                 "  var name = (t.name || '').toLowerCase();" +
@@ -492,17 +520,40 @@ public class SpoonWebViewClient extends WebViewClient {
                 "    rememberUser(t.value);" +
                 "  }" +
                 "}, true);" +
+
                 "document.addEventListener('submit', function() { trySave(); }, true);" +
+
                 "document.addEventListener('click', function(e) {" +
-                "  var t = e.target;" +
-                "  if (!t || !t.closest) return;" +
-                "  if (t.closest('button, input[type=submit], [role=button]')) trySave();" +
+                "  var path = e.composedPath ? e.composedPath() : [e.target];" +
+                "  for (var i = 0; i < path.length; i++) {" +
+                "    var n = path[i];" +
+                "    if (!n || !n.tagName) continue;" +
+                "    var tag = n.tagName.toUpperCase();" +
+                "    if (tag === 'BUTTON' || tag === 'INPUT' ||" +
+                "        (n.getAttribute && n.getAttribute('role') === 'button')) {" +
+                "      trySave();" +
+                "      return;" +
+                "    }" +
+                "  }" +
                 "}, true);" +
+
                 "document.addEventListener('keydown', function(e) {" +
                 "  if (e.key === 'Enter') trySave();" +
                 "}, true);" +
+
                 "window.addEventListener('pagehide', trySave);" +
                 "window.addEventListener('beforeunload', trySave);" +
+
+                // Fallback sweep for SPA transitions where no click fires
+                // and the user simply tabbed away from the password field.
+                "if (window.__spoonAutosaveSweep) clearInterval(window.__spoonAutosaveSweep);" +
+                "window.__spoonAutosaveSweep = setInterval(function() {" +
+                "  try {" +
+                "    var pb = readPassBox();" +
+                "    if (pb && pb.value && !pb.matches(':focus')) trySave();" +
+                "  } catch(e) {}" +
+                "}, 2000);" +
+
                 "})();";
     }
 
