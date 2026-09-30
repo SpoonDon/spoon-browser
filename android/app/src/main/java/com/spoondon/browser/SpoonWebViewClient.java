@@ -20,6 +20,19 @@ import java.io.ByteArrayInputStream;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Spoon's WebViewClient. Handles:
+ *   - AdBlock network interception (via AdBlockEngine.shouldBlock)
+ *   - Vault URL short-circuit (VaultUrls)
+ *   - Cleartext policy three-tier decision (whitelist / session / interstitial)
+ *   - URL cleaning (tracking params)
+ *   - Blob-URL download hook
+ *   - WebRTC IP leak sanitizer
+ *   - Cosmetic CSS injection
+ *   - Password autosave injection (multi-step + shadow-DOM aware)
+ *   - Pull-to-refresh scroll hook (SpoonScroll bridge)
+ *   - History recording (with dedup)
+ */
 public class SpoonWebViewClient extends WebViewClient {
     private final MainActivity activity;
     private final WebViewAssetLoader assetLoader;
@@ -251,14 +264,11 @@ public class SpoonWebViewClient extends WebViewClient {
 
         boolean vaultPage = VaultUrls.isVaultUrl(url);
 
-        if (activity.swipeRefresh != null && url != null) {
-            String lowerUrl = url.toLowerCase(Locale.ROOT);
-            boolean isSpaSite = lowerUrl.contains("youtube.com") ||
-                    lowerUrl.contains("twitter.com") ||
-                    lowerUrl.contains("x.com") ||
-                    lowerUrl.contains("reddit.com") ||
-                    lowerUrl.contains("instagram.com");
-            activity.swipeRefresh.setEnabled(!isSpaSite && !vaultPage);
+        if (activity.swipeRefresh != null) {
+            // Optimistic default; the injected scroll hook (injectScrollHook)
+            // will correct this as soon as the new document reports its
+            // scroll position. On the vault page we always disable.
+            activity.swipeRefresh.setEnabled(!vaultPage);
         }
         injectBlobHook(view);
 
@@ -374,6 +384,48 @@ public class SpoonWebViewClient extends WebViewClient {
         }
     }
 
+    /**
+     * Reports scroll position back to native so SwipeRefreshLayout only
+     * intercepts the pull gesture when the page is actually at the top.
+     *
+     * Why this replaces the old host-based heuristic: SPAs scroll a
+     * container element, not the document. A capture-phase listener on
+     * document catches scroll events from any descendant, and isAtTop()
+     * walks up from the event target to detect inner-container scroll
+     * state. This is the closest DOM-only signal we can get.
+     */
+    public void injectScrollHook(WebView view) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) return;
+        view.evaluateJavascript(
+                "javascript:(function() {" +
+                "  if (window.__spoonScrollHooked) return;" +
+                "  window.__spoonScrollHooked = true;" +
+                "  var lastAtTop = true;" +
+                "  function isAtTop(e) {" +
+                "    try {" +
+                "      if (window.scrollY > 1) return false;" +
+                "      var de = document.scrollingElement || document.documentElement;" +
+                "      if (de && de.scrollTop > 1) return false;" +
+                "      var t = e && e.target;" +
+                "      while (t && t !== document.body && t !== document.documentElement) {" +
+                "        if (t.scrollTop > 1) return false;" +
+                "        t = t.parentElement;" +
+                "      }" +
+                "    } catch(err) {}" +
+                "    return true;" +
+                "  }" +
+                "  function report(e) {" +
+                "    var atTop = isAtTop(e);" +
+                "    if (atTop === lastAtTop) return;" +
+                "    lastAtTop = atTop;" +
+                "    try { SpoonScroll.setAtTop(atTop); } catch(err) {}" +
+                "  }" +
+                "  document.addEventListener('scroll', report, true);" +
+                "  window.addEventListener('scroll', report, {passive: true});" +
+                "})();",
+                null);
+    }
+
     @Override
     public void onPageFinished(WebView view, String url) {
         String webrtcSanitizer = "javascript:(function() {" +
@@ -419,16 +471,21 @@ public class SpoonWebViewClient extends WebViewClient {
         }
 
         view.evaluateJavascript(buildAutosaveScript(), null);
+        injectScrollHook(view);
     }
 
-        /**
+    // ------------------------------------------------------------------------
+    // Password autosave injection
+    // ------------------------------------------------------------------------
+
+    /**
      * Multi-step-login and shadow-DOM aware autosave.
      *
      * Handles:
      *   - Google / Microsoft / Amazon / banks: username and password entered
      *     on different page loads of the SAME origin (sessionStorage bridge).
      *   - Material / Web Components frameworks: input elements are wrapped
-     *     inside element.shadowRoot and are invisible to plain
+     *     inside element.shadowRoot and invisible to plain
      *     document.querySelector. deepQuery() walks the shadow tree.
      *   - SPA transitions where no form submit or button click fires: a
      *     2-second sweep saves once the password field loses focus.
@@ -450,8 +507,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "var lastKnownUser = '';" +
                 "var lastSavedSig = '';" +
                 "try { lastKnownUser = sessionStorage.getItem(SS_KEY) || ''; } catch(e) {}" +
-
-                // Recursive shadow-root-aware query.
                 "function deepQuery(sel, root) {" +
                 "  root = root || document;" +
                 "  try { var direct = root.querySelector(sel); if (direct) return direct; } catch(e) {}" +
@@ -462,8 +517,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "  }" +
                 "  return null;" +
                 "}" +
-
-                // Resolve the actual INPUT node through shadow boundaries.
                 "function inputFromEvent(e) {" +
                 "  var path = e.composedPath ? e.composedPath() : [e.target];" +
                 "  for (var i = 0; i < path.length; i++) {" +
@@ -472,7 +525,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "  }" +
                 "  return e.target;" +
                 "}" +
-
                 "function rememberUser(v) {" +
                 "  if (!v) return;" +
                 "  lastKnownUser = v;" +
@@ -482,7 +534,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "  lastKnownUser = '';" +
                 "  try { sessionStorage.removeItem(SS_KEY); } catch(e) {}" +
                 "}" +
-
                 "function readUserBox() {" +
                 "  return deepQuery('input[type=email]')" +
                 "    || deepQuery('input[name=username]')" +
@@ -494,7 +545,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "function readPassBox() {" +
                 "  return deepQuery('input[type=password]');" +
                 "}" +
-
                 "function trySave() {" +
                 "  try {" +
                 "    var passBox = readPassBox();" +
@@ -509,7 +559,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "    forgetUser();" +
                 "  } catch(e) {}" +
                 "}" +
-
                 "document.addEventListener('input', function(e) {" +
                 "  var t = inputFromEvent(e);" +
                 "  if (!t || t.tagName !== 'INPUT') return;" +
@@ -520,9 +569,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 "    rememberUser(t.value);" +
                 "  }" +
                 "}, true);" +
-
                 "document.addEventListener('submit', function() { trySave(); }, true);" +
-
                 "document.addEventListener('click', function(e) {" +
                 "  var path = e.composedPath ? e.composedPath() : [e.target];" +
                 "  for (var i = 0; i < path.length; i++) {" +
@@ -536,16 +583,11 @@ public class SpoonWebViewClient extends WebViewClient {
                 "    }" +
                 "  }" +
                 "}, true);" +
-
                 "document.addEventListener('keydown', function(e) {" +
                 "  if (e.key === 'Enter') trySave();" +
                 "}, true);" +
-
                 "window.addEventListener('pagehide', trySave);" +
                 "window.addEventListener('beforeunload', trySave);" +
-
-                // Fallback sweep for SPA transitions where no click fires
-                // and the user simply tabbed away from the password field.
                 "if (window.__spoonAutosaveSweep) clearInterval(window.__spoonAutosaveSweep);" +
                 "window.__spoonAutosaveSweep = setInterval(function() {" +
                 "  try {" +
@@ -553,7 +595,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 "    if (pb && pb.value && !pb.matches(':focus')) trySave();" +
                 "  } catch(e) {}" +
                 "}, 2000);" +
-
                 "})();";
     }
 
