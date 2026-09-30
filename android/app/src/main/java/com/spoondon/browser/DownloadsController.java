@@ -30,18 +30,12 @@ import java.util.List;
 /**
  * Owns every DownloadManager interaction.
  *
- * Added 2026-09-30 alongside the fix for "downloads silently fail and the
- * user has no way to see what happened".
- *
  * Responsibilities:
  *   - enqueue(url, ua, mime, filename, referer) with proper headers
  *   - register/unregister a BroadcastReceiver for ACTION_DOWNLOAD_COMPLETE
  *   - show a live downloads list with progress, complete/failed states
  *   - open / share / remove a download
  *   - request POST_NOTIFICATIONS on API 33+ so system notifications appear
- *
- * DownloadManager.query() with no filter returns only downloads initiated
- * by this app, so no ID bookkeeping is needed across sessions.
  *
  * Threading: all public methods must be called on the main thread.
  */
@@ -111,10 +105,6 @@ public class DownloadsController {
     /**
      * Start a download. Returns the DownloadManager id, or -1 if it could
      * not be started. Never throws.
-     *
-     * @param referer the URL of the page that initiated the download. Some
-     *                CDNs 403 requests without a Referer. Pass null if the
-     *                download did not come from a page (e.g. address bar).
      */
     public long enqueue(@NonNull String url,
                         @Nullable String userAgent,
@@ -157,8 +147,6 @@ public class DownloadsController {
 
             long id = downloadManager.enqueue(request);
 
-            // Ask for the notification permission the first time we start
-            // a download. The download itself does not depend on it.
             activity.ensureNotificationPermission();
 
             Toast.makeText(activity, "Download started: " + safeName,
@@ -173,21 +161,13 @@ public class DownloadsController {
         }
     }
 
-    /**
-     * Strips characters that some filesystems or DownloadManager versions
-     * reject, and collapses the result. Never returns null or empty.
-     */
     @NonNull
     private static String sanitizeFileName(@NonNull String name) {
         String s = name;
-        // Reserved + control characters.
         s = s.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_");
-        // Strip leading and trailing dots and spaces.
         s = s.replaceAll("^[.\\s]+", "").replaceAll("[.\\s]+$", "");
-        // Collapse underscore runs.
         s = s.replaceAll("_{2,}", "_");
         if (s.isEmpty()) s = "download";
-        // Cap length; preserve extension.
         if (s.length() > 180) {
             String ext = "";
             int dot = s.lastIndexOf('.');
@@ -210,7 +190,9 @@ public class DownloadsController {
 
         Cursor c = null;
         try {
-            c = downloadManager.query();
+            // DownloadManager.query(Query) — passing null returns every
+            // download this app has initiated.
+            c = downloadManager.query(null);
             if (c == null) return items;
 
             int idCol = c.getColumnIndex(DownloadManager.COLUMN_ID);
@@ -238,7 +220,6 @@ public class DownloadsController {
                 try { c.close(); } catch (Exception ignored) {}
             }
         }
-        // Newest first.
         Collections.reverse(items);
         return items;
     }
@@ -294,10 +275,6 @@ public class DownloadsController {
         }
     }
 
-    /**
-     * Removes the download from the list. For completed downloads this also
-     * deletes the file. For in-flight downloads it cancels them.
-     */
     public void remove(long id) {
         if (downloadManager == null) return;
         try {
@@ -327,7 +304,6 @@ public class DownloadsController {
         }
         Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
 
-        // Refresh the dialog if it is open.
         if (activeDialog != null && activeDialog.isShowing() && activeAdapter != null) {
             activeAdapter.setItems(queryAll());
         }
@@ -472,15 +448,15 @@ public class DownloadsController {
 
     private static String describeReason(int reason) {
         switch (reason) {
-            case DownloadManager.ERROR_CANNOT_RESUME:      return "cannot resume";
-            case DownloadManager.ERROR_DEVICE_NOT_FOUND:   return "storage unavailable";
+            case DownloadManager.ERROR_CANNOT_RESUME:       return "cannot resume";
+            case DownloadManager.ERROR_DEVICE_NOT_FOUND:    return "storage unavailable";
             case DownloadManager.ERROR_FILE_ALREADY_EXISTS: return "file already exists";
-            case DownloadManager.ERROR_FILE_ERROR:         return "file write error";
-            case DownloadManager.ERROR_HTTP_DATA_ERROR:    return "HTTP data error";
-            case DownloadManager.ERROR_INSUFFICIENT_SPACE: return "not enough space";
-            case DownloadManager.ERROR_TOO_MANY_REDIRECTS: return "too many redirects";
+            case DownloadManager.ERROR_FILE_ERROR:          return "file write error";
+            case DownloadManager.ERROR_HTTP_DATA_ERROR:     return "HTTP data error";
+            case DownloadManager.ERROR_INSUFFICIENT_SPACE:  return "not enough space";
+            case DownloadManager.ERROR_TOO_MANY_REDIRECTS:  return "too many redirects";
             case DownloadManager.ERROR_UNHANDLED_HTTP_CODE: return "HTTP " + reason;
-            case DownloadManager.ERROR_UNKNOWN:            return "unknown error";
+            case DownloadManager.ERROR_UNKNOWN:             return "unknown error";
             default:                                        return "error code " + reason;
         }
     }
@@ -586,7 +562,4 @@ public class DownloadsController {
             if (bytes < 1024) return bytes + " B";
             if (bytes < 1024L * 1024) return (bytes / 1024) + " KB";
             if (bytes < 1024L * 1024 * 1024) return (bytes / (1024 * 1024)) + " MB";
-            return (bytes / (1024L * 1024 * 1024)) + " GB";
-        }
-    }
-}
+            return (bytes / (1024L * 1024 * 1024
