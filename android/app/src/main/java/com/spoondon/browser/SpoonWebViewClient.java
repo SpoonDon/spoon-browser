@@ -4,7 +4,6 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
-import android.util.Base64;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceRequest;
@@ -18,8 +17,6 @@ import androidx.annotation.Nullable;
 import androidx.webkit.WebViewAssetLoader;
 
 import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -244,7 +241,7 @@ public class SpoonWebViewClient extends WebViewClient {
         }
     }
 
-    // ------------------------------------------------------------------------
+        // ------------------------------------------------------------------------
     // Page lifecycle
     // ------------------------------------------------------------------------
 
@@ -421,52 +418,92 @@ public class SpoonWebViewClient extends WebViewClient {
             view.evaluateJavascript(injectScript, null);
         }
 
-        String script = "javascript:(function() {" +
-                "document.addEventListener('submit', function(e) {" +
-                "var passBox = e.target.querySelector('input[type=password]');" +
-                "var userBox = e.target.querySelector('input[type=text], input[type=email], input[name=username], input[name=login]');" +
-                "if (passBox && passBox.value && userBox && userBox.value) {" +
-                "SpoonVault.saveCredentials(window.location.hostname, userBox.value, passBox.value);" +
-                "}" +
-                "});" +
+        view.evaluateJavascript(buildAutosaveScript(), null);
+    }
+
+    // ------------------------------------------------------------------------
+    // Password autosave injection
+    // ------------------------------------------------------------------------
+
+    /**
+     * Multi-step-login aware autosave. Handles Google / Microsoft / Amazon /
+     * banks where the username and password are entered on different page
+     * loads of the SAME origin.
+     *
+     * Key mechanics:
+     *   - Guard against duplicate attachment (onPageFinished fires more than
+     *     once per navigation on many sites; the old script re-added listeners
+     *     every time, N calls per click after a long session).
+     *   - sessionStorage persists the last-typed username across same-origin
+     *     navigation, so the password page can still save with the email.
+     *   - pagehide/beforeunload give us a last-chance save for SPAs that
+     *     navigate without a submit or a click on a recognised button.
+     *   - capture:true so we see events even if the site calls
+     *     stopPropagation (Google's sign-in JS does this in places).
+     */
+    @NonNull
+    private static String buildAutosaveScript() {
+        return "javascript:(function() {" +
+                "if (window.__spoonAutosaveAttached) return;" +
+                "window.__spoonAutosaveAttached = true;" +
+                "var SS_KEY = '__spoon_pending_user__';" +
+                "var host = window.location.hostname || '';" +
                 "var lastKnownUser = '';" +
+                "try { lastKnownUser = sessionStorage.getItem(SS_KEY) || ''; } catch(e) {}" +
+                "function rememberUser(v) {" +
+                "  if (!v) return;" +
+                "  lastKnownUser = v;" +
+                "  try { sessionStorage.setItem(SS_KEY, v); } catch(e) {}" +
+                "}" +
+                "function forgetUser() {" +
+                "  lastKnownUser = '';" +
+                "  try { sessionStorage.removeItem(SS_KEY); } catch(e) {}" +
+                "}" +
+                "function readUserBox() {" +
+                "  return document.querySelector(" +
+                "    'input[type=email], ' +" +
+                "    'input[name=username], ' +" +
+                "    'input[name=login], ' +" +
+                "    'input[name=identifier], ' +" +
+                "    'input[autocomplete=username], ' +" +
+                "    'input[type=text]');" +
+                "}" +
+                "function readPassBox() {" +
+                "  return document.querySelector('input[type=password]');" +
+                "}" +
+                "function trySave() {" +
+                "  try {" +
+                "    var passBox = readPassBox();" +
+                "    if (!passBox || !passBox.value) return;" +
+                "    var userBox = readUserBox();" +
+                "    var finalUser = (userBox && userBox.value) ? userBox.value : lastKnownUser;" +
+                "    if (!finalUser) return;" +
+                "    SpoonVault.saveCredentials(host, finalUser, passBox.value);" +
+                "    forgetUser();" +
+                "  } catch(e) {}" +
+                "}" +
                 "document.addEventListener('input', function(e) {" +
-                "var t = e.target;" +
-                "if (t.tagName === 'INPUT') {" +
-                "var type = t.type ? t.type.toLowerCase() : '';" +
-                "var name = t.name ? t.name.toLowerCase() : '';" +
-                "if (type === 'email' || type === 'text' || name === 'username' || name === 'identifier') {" +
-                "lastKnownUser = t.value;" +
-                "}" +
-                "}" +
-                "});" +
-                "function extractAndSave() {" +
-                "var passBox = document.querySelector('input[type=password]');" +
-                "if (passBox && passBox.value) {" +
-                "var userBox = document.querySelector('input[type=email], input[name=username], input[name=login], input[type=text]');" +
-                "var finalUser = (userBox && userBox.value) ? userBox.value : lastKnownUser;" +
-                "if (!finalUser && window.location.hostname.includes('google.com')) {" +
-                "var profileDiv = document.querySelector('#profileIdentifier');" +
-                "if (profileDiv) finalUser = profileDiv.innerText.trim();" +
-                "}" +
-                "if (finalUser && passBox.value) {" +
-                "SpoonVault.saveCredentials(window.location.hostname, finalUser, passBox.value);" +
-                "}" +
-                "}" +
-                "}" +
+                "  var t = e.target;" +
+                "  if (!t || t.tagName !== 'INPUT') return;" +
+                "  var type = (t.type || '').toLowerCase();" +
+                "  var name = (t.name || '').toLowerCase();" +
+                "  if (type === 'email' || type === 'text' ||" +
+                "      name === 'username' || name === 'identifier' || name === 'login') {" +
+                "    rememberUser(t.value);" +
+                "  }" +
+                "}, true);" +
+                "document.addEventListener('submit', function() { trySave(); }, true);" +
                 "document.addEventListener('click', function(e) {" +
-                "var t = e.target;" +
-                "if (t.closest('button') || t.closest('input[type=submit]') || t.closest('[role=button]')) {" +
-                "extractAndSave();" +
-                "}" +
-                "});" +
+                "  var t = e.target;" +
+                "  if (!t || !t.closest) return;" +
+                "  if (t.closest('button, input[type=submit], [role=button]')) trySave();" +
+                "}, true);" +
                 "document.addEventListener('keydown', function(e) {" +
-                "if (e.key === 'Enter') {" +
-                "extractAndSave();" +
-                "}" +
-                "});" +
+                "  if (e.key === 'Enter') trySave();" +
+                "}, true);" +
+                "window.addEventListener('pagehide', trySave);" +
+                "window.addEventListener('beforeunload', trySave);" +
                 "})();";
-        view.evaluateJavascript(script, null);
     }
 
     // ------------------------------------------------------------------------
