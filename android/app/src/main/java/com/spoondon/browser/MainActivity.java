@@ -33,6 +33,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,6 +44,13 @@ import java.util.concurrent.Executors;
  * Owns the Android lifecycle, the root view tree, file pickers, the
  * clipboard watcher, and the small public API surface that
  * SpoonWebViewClient, SpoonWebChromeClient, and AppWiring call into.
+ *
+ * 2026-09-30 - Session restore wired:
+ *   - onCreate calls sessionManager.setTabSource(...) immediately after
+ *     wiring.initialize() so onPause can persist tabs.
+ *   - onCreate reads persisted tabs via sessionManager.loadPersistedTabs()
+ *     and either rehydrates them (restoreTabs) or starts fresh with the
+ *     home page. Only runs on savedInstanceState == null.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -130,8 +138,38 @@ public class MainActivity extends AppCompatActivity {
 
         wiring.getHistoryController().migrateLegacyBookmarksToDatabase();
         loadFilterListsIntoMemory();
-        wiring.getTabManager().createNewTab();
-        wiring.showHome();
+
+        // Wire session persistence AFTER the TabManager exists. This must
+        // happen before the first onPause, otherwise the first pause is
+        // silently skipped (safe, but no restore on next launch).
+        sessionManager.setTabSource(new SessionManager.TabSource() {
+            @NonNull @Override
+            public List<PersistedTab> snapshotTabs() {
+                return wiring.getTabManager().snapshotForPersistence();
+            }
+            @Override
+            public int getActiveIndex() {
+                return wiring.getTabManager().getCurrentPosition();
+            }
+        });
+
+        // Cold-start session restore. Only run on first creation.
+        // Config changes are declared in the manifest, so the
+        // savedInstanceState != null branch is defensive - if the OS
+        // somehow recreates us, we start clean rather than crash.
+        if (savedInstanceState == null) {
+            List<PersistedTab> restored = sessionManager.loadPersistedTabs();
+            if (restored.isEmpty()) {
+                wiring.getTabManager().createNewTab();
+                wiring.showHome();
+            } else {
+                int active = sessionManager.loadPersistedActiveIndex();
+                wiring.getTabManager().restoreTabs(restored, active);
+            }
+        } else if (wiring.getTabManager().isEmpty()) {
+            wiring.getTabManager().createNewTab();
+            wiring.showHome();
+        }
 
         warmUpBackgroundWork();
         installBackHandler();
