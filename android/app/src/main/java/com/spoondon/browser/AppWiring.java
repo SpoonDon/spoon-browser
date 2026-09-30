@@ -19,9 +19,12 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
- * 2026-09-30: added DownloadsController. MenuController's "Downloads"
- * now routes to it; the system downloads app is still reachable from
- * inside the Downloads dialog.
+ * 2026-09-30 (downloads redirect fix): triggerManualDownload no longer
+ * calls DownloadHandler.triggerExternalDownload directly. It now routes
+ * through DownloadHandler.onDownloadStart so the user sees the standard
+ * download dialog and the in-app OkHttp engine is used. Previously every
+ * extension-matched URL was fired as ACTION_VIEW at the OS, which opened
+ * whichever browser is the system default and downloaded there.
  */
 public class AppWiring {
 
@@ -315,8 +318,31 @@ public class AppWiring {
         return menuController != null ? menuController.getSearchUrlFor(query) : "";
     }
 
+    /**
+     * Called from SpoonWebViewClient when a navigation URL ends in a
+     * known download extension, and from MainActivity.triggerManualDownload.
+     *
+     * 2026-09-30 fix: previously this called DownloadHandler.triggerExternalDownload
+     * directly, which fired ACTION_VIEW and handed the URL to the OS default
+     * browser (the "downloads open in another browser" bug). Now it routes
+     * through DownloadHandler.onDownloadStart so the user sees the standard
+     * Save / External / Cancel dialog, and the default Save path uses the
+     * in-app OkHttp DownloadEngine.
+     */
     public void triggerManualDownload(String url, String mime) {
-        if (downloadHandler != null) downloadHandler.triggerExternalDownload(url, mime);
+        if (downloadHandler == null || url == null) return;
+
+        String ua = null;
+        try {
+            WebView wv = tabManager != null ? tabManager.getCurrentWebView() : null;
+            if (wv != null) ua = wv.getSettings().getUserAgentString();
+        } catch (Exception ignored) {}
+
+        String safeMime = (mime == null || mime.isEmpty())
+                ? "application/octet-stream"
+                : mime;
+
+        downloadHandler.onDownloadStart(url, ua, null, safeMime, -1L);
     }
 
     // ========================================================================

@@ -21,14 +21,16 @@ import java.util.Set;
 /**
  * Builds and configures WebViews.
  *
- * Hardening pass (2026-09-30):
- *   - setAllowFileAccess(false): file:// browsing is no longer supported.
- *     The vault moved to WebViewAssetLoader over a synthetic HTTPS origin,
- *     the home page uses loadDataWithBaseURL, and downloads go through the
- *     custom DownloadEngine. Nothing in the app needs file:// access
- *     anymore, and file:// is a well-known WebView escape vector.
- *   - setAllowContentAccess(true) is retained — file-chooser (input
- *     type=file) and CSV import/export rely on content:// URIs.
+ * 2026-09-30 (image long-press fix):
+ *   - createImageLongClickListener no longer fires ACTION_VIEW. That was
+ *     routing image URLs to the OS default browser — the long-press
+ *     sibling of the download redirect bug. It now goes through
+ *     DownloadHandler.onDownloadStart so the same Save / System / Cancel
+ *     dialog appears and the default Save path uses the in-app engine.
+ *
+ * Hardening pass (2026-09-30) retained:
+ *   - setAllowFileAccess(false), setAllowContentAccess(true).
+ *   - MIXED_CONTENT_NEVER_ALLOW.
  *
  * JS bridges registered here:
  *   - AndroidDownloader  : BlobDownloader.saveBase64ToFile
@@ -217,22 +219,36 @@ public class WebViewFactory {
     // Long-press image handling
     // ------------------------------------------------------------------------
 
+    /**
+     * Long-press on an image now opens the standard download dialog rather
+     * than firing ACTION_VIEW at the OS. The ACTION_VIEW path was leaking
+     * images to whichever browser is the system default.
+     */
     private View.OnLongClickListener createImageLongClickListener(WebView webView) {
         return v -> {
             WebView.HitTestResult result = webView.getHitTestResult();
-            if (result != null
-                    && (result.getType() == WebView.HitTestResult.IMAGE_TYPE
-                        || result.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
-                try {
-                    activity.startActivity(
-                            new Intent(Intent.ACTION_VIEW, Uri.parse(result.getExtra())));
-                } catch (Exception e) {
-                    Toast.makeText(activity, "Cannot download image",
-                            Toast.LENGTH_SHORT).show();
-                }
-                return true;
+            if (result == null) return false;
+
+            int type = result.getType();
+            if (type != WebView.HitTestResult.IMAGE_TYPE
+                    && type != WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE) {
+                return false;
             }
-            return false;
+
+            String imageUrl = result.getExtra();
+            if (imageUrl == null || imageUrl.isEmpty()) return false;
+
+            if (downloadHandler != null) {
+                String ua = null;
+                try {
+                    ua = webView.getSettings().getUserAgentString();
+                } catch (Exception ignored) {}
+                downloadHandler.onDownloadStart(imageUrl, ua, null, "image/*", -1L);
+            } else {
+                Toast.makeText(activity, "Download handler unavailable",
+                        Toast.LENGTH_SHORT).show();
+            }
+            return true;
         };
     }
 

@@ -2,10 +2,10 @@ package com.spoondon.browser;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Intent;
+import android.app.DownloadManager;
+import android.content.Context;
 import android.net.Uri;
 import android.os.Environment;
-import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.MimeTypeMap;
 import android.webkit.URLUtil;
@@ -15,13 +15,21 @@ import android.widget.Toast;
 /**
  * Handles WebView download callbacks.
  *
- * Updated 2026-09-30 to fix "downloads silently fail":
- *   - enqueue is now delegated to {@link DownloadsController}, which
- *     registers a BroadcastReceiver so failures surface as a toast.
- *   - the current page URL is added as a Referer header. Many CDNs 403
- *     a request without one.
- *   - filename sanitization was moved into DownloadsController and
- *     strengthened (colons, control chars, reserved chars).
+ * 2026-09-30 (external download fix):
+ *   - triggerExternalDownload no longer uses ACTION_VIEW. That intent
+ *     routes http(s) URLs to the OS default browser, which is exactly
+ *     the bug users were seeing: "downloads open in another chromium
+ *     browser". It now hands off to the system DownloadManager, which
+ *     is the semantically correct target for an "external download".
+ *
+ *   - onDownloadStart is now callable directly by AppWiring so the
+ *     extension-regex path in SpoonWebViewClient can show the same
+ *     dialog instead of bypassing the in-app engine.
+ *
+ * Earlier fixes retained:
+ *   - enqueue delegated to DownloadsController (OkHttp engine).
+ *   - Referer header captured from the current WebView.
+ *   - Filename sanitization in DownloadsController.
  */
 public class DownloadHandler implements DownloadListener {
 
@@ -105,7 +113,7 @@ public class DownloadHandler implements DownloadListener {
                     .setMessage("Do you want to download " + finalName + "?")
                     .setPositiveButton("Download",
                             (d, i) -> enqueueDownload(url, finalUserAgent, finalMime, finalName))
-                    .setNeutralButton("External Only",
+                    .setNeutralButton("System Downloader",
                             (d, i) -> triggerExternalDownload(url, finalMime))
                     .setNegativeButton("Cancel", null)
                     .show();
@@ -124,7 +132,8 @@ public class DownloadHandler implements DownloadListener {
         } catch (Exception ignored) {}
 
         if (downloadsController == null) {
-            // Fallback: no controller wired. Try the external path.
+            // No controller wired. Fall back to the system downloader
+            // rather than ACTION_VIEW (which would open a browser).
             triggerExternalDownload(url, mime);
             return;
         }
@@ -135,13 +144,43 @@ public class DownloadHandler implements DownloadListener {
         }
     }
 
+    /**
+     * Hands the URL to the system DownloadManager. This is the intended
+     * meaning of "external" for a download — NOT opening a browser via
+     * ACTION_VIEW.
+     */
     public void triggerExternalDownload(String url, String mime) {
+        if (url == null) return;
         try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            activity.startActivity(intent);
+            String fileName = URLUtil.guessFileName(url, null, mime);
+            if (fileName == null || fileName.isEmpty()) {
+                fileName = "download";
+            }
+
+            DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+            req.setTitle(fileName);
+            if (mime != null && !mime.isEmpty()) {
+                req.setMimeType(mime);
+            }
+            req.setNotificationVisibility(
+                    DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+            req.setAllowedOverMetered(true);
+            req.setAllowedOverRoaming(true);
+
+            DownloadManager dm = (DownloadManager)
+                    activity.getSystemService(Context.DOWNLOAD_SERVICE);
+            if (dm == null) {
+                Toast.makeText(activity, "System downloader unavailable",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
+            dm.enqueue(req);
+            Toast.makeText(activity, "Handed to system downloader",
+                    Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(activity, "No external app found", Toast.LENGTH_SHORT).show();
+            Toast.makeText(activity, "External download failed",
+                    Toast.LENGTH_SHORT).show();
         }
     }
 
