@@ -151,8 +151,6 @@ public class SpoonWebViewClient extends WebViewClient {
         }
 
         // Cleartext policy — see CleartextPolicy.java.
-        // Non-whitelisted http:// requests are silently upgraded to https://.
-        // Whitelisted hosts (compiled or user-added) load as-is.
         if (url.startsWith("http://")) {
             String rawHost = extractHostFromHttpUrl(url);
             if (CleartextPolicy.isCleartextAllowed(view.getContext(), rawHost)) {
@@ -274,30 +272,15 @@ public class SpoonWebViewClient extends WebViewClient {
                     (url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
         }
 
+        // UA + viewport decisions now live entirely in NavigationHelper.
+        // Previously this block duplicated the logic inline, which diverged
+        // from NavigationHelper.applyDesktopUa (notably: the helper set
+        // useWideViewPort(true) even on mobile). Fixed in backlog item #2.
         if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
             String host = Uri.parse(url).getHost();
             if (host != null) {
                 boolean desktop = activity.isDesktopHostEnabled(host);
-                if (desktop) {
-                    view.getSettings().setUserAgentString(
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                                    + "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-                    view.getSettings().setLoadWithOverviewMode(true);
-                    view.getSettings().setUseWideViewPort(true);
-                } else {
-                    String defaultUA = android.webkit.WebSettings.getDefaultUserAgent(activity);
-                    if (defaultUA != null) {
-                        defaultUA = defaultUA.replace("; wv", "")
-                                .replaceFirst("Version/[0-9.]+\\s", "");
-                        view.getSettings().setUserAgentString(defaultUA);
-                    } else {
-                        view.getSettings().setUserAgentString(
-                                "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 "
-                                        + "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
-                    }
-                    view.getSettings().setLoadWithOverviewMode(false);
-                    view.getSettings().setUseWideViewPort(false);
-                }
+                NavigationHelper.applyDesktopUa(view, desktop, activity);
             }
         }
         activity.updateScreenShield();

@@ -37,9 +37,9 @@ import java.util.concurrent.Executors;
 /**
  * Thin Activity shell for Spoon Browser.
  *
- * Security batch B (2026-09-30): isVaultActive() and openVault() now use
- * VaultUrls. The vault page is served by WebViewAssetLoader over the
- * synthetic HTTPS origin https://appassets.androidplatform.net.
+ * Backlog item #2 (2026-09-30): applyTabToToolbar updated to pass Context
+ * to NavigationHelper.applyDesktopUa. The full UA decision path now lives
+ * exclusively in NavigationHelper.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -381,12 +381,6 @@ public class MainActivity extends AppCompatActivity {
         NavigationHelper.openUrl(wv, url, this, wiring::getSearchUrlFor);
     }
 
-    /**
-     * Open the HTML vault page in a new tab.
-     *
-     * The vault is served by WebViewAssetLoader at VaultUrls.HTML — a
-     * synthetic HTTPS origin. It never touches the network.
-     */
     public void openVault() {
         TabManager tabs = wiring.getTabManager();
         tabs.createNewTab();
@@ -540,14 +534,6 @@ public class MainActivity extends AppCompatActivity {
     // Vault / screen shield
     // ========================================================================
 
-    /**
-     * True when the active tab is showing the vault page.
-     *
-     * Security batch B: the vault is no longer served from
-     * file:///android_asset/vault.html. It now lives at VaultUrls.HTML
-     * on the synthetic HTTPS origin. VaultUrls.isVaultUrl handles the
-     * exact-match and query/fragment cases.
-     */
     public boolean isVaultActive() {
         WebView wv = getCurrentWebView();
         return wv != null && VaultUrls.isVaultUrl(wv.getUrl());

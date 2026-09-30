@@ -19,13 +19,8 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
- * Owns the full controller graph: ToolbarController, TabManager,
- * HistoryController, VaultController, AdBlockController, MenuController,
- * WebViewFactory, DownloadHandler, HomePageRenderer, SuggestionProvider.
- *
- * Extracted from MainActivity (god-object split, slice 7 — final).
- * Security batch B (2026-09-30): added showVault() callback so the HTML
- * vault can be opened at its new HTTPS origin.
+ * Backlog item #2 (2026-09-30): applyTabToToolbar now calls the
+ * Context-aware NavigationHelper.applyDesktopUa.
  */
 public class AppWiring {
 
@@ -297,7 +292,7 @@ public class AppWiring {
         if (webView != null && webView.getUrl() != null) {
             String host = android.net.Uri.parse(webView.getUrl()).getHost();
             boolean desktop = NavigationHelper.isDesktopHostEnabled(activity, host);
-            NavigationHelper.applyDesktopUa(webView, desktop);
+            NavigationHelper.applyDesktopUa(webView, desktop, activity);
         }
     }
 
