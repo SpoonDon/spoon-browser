@@ -40,14 +40,17 @@ import java.util.concurrent.Executors;
 /**
  * Thin Activity shell for Spoon Browser.
  *
- * 2026-09-30: added POST_NOTIFICATIONS launcher. DownloadsController
- * requests the permission the first time a download starts.
+ * Owns the Android lifecycle, the root view tree, file pickers, the
+ * clipboard watcher, and the small public API surface that
+ * SpoonWebViewClient, SpoonWebChromeClient, and AppWiring call into.
  */
 public class MainActivity extends AppCompatActivity {
 
     private static final String PREFS_NAME = "spoon_browser";
 
+    // ------------------------------------------------------------------------
     // Core state
+    // ------------------------------------------------------------------------
     private SharedPreferences prefs;
     private final ExecutorService backgroundExecutor = Executors.newFixedThreadPool(4);
     private SecureCredentialManager secureCredentialManager;
@@ -57,18 +60,24 @@ public class MainActivity extends AppCompatActivity {
     private AppWiring wiring;
     private final CopyOnWriteArrayList<String> filterLists = new CopyOnWriteArrayList<>();
 
+    // ------------------------------------------------------------------------
     // View tree
+    // ------------------------------------------------------------------------
     LinearLayout root;
     LinearLayout browserContainer;
     FrameLayout browserWrapper;
     androidx.swiperefreshlayout.widget.SwipeRefreshLayout swipeRefresh;
     public ProgressBar progressBar;
 
-    // Fullscreen video state
+    // ------------------------------------------------------------------------
+    // Fullscreen video state (read/written by SpoonWebChromeClient)
+    // ------------------------------------------------------------------------
     View customView;
     WebChromeClient.CustomViewCallback customViewCallback;
 
+    // ------------------------------------------------------------------------
     // File pickers + clipboard
+    // ------------------------------------------------------------------------
     private ActivityResultLauncher<String> passwordImportLauncher;
     private ActivityResultLauncher<String> exportCsvLauncher;
     private ActivityResultLauncher<String> notificationPermissionLauncher;
@@ -95,13 +104,10 @@ public class MainActivity extends AppCompatActivity {
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         sessionManager = new SessionManager(this);
 
-        // Notification permission launcher must be registered before
-        // onStart, so do it here before wiring.initialize().
         notificationPermissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestPermission(),
                 granted -> {
-                    // Silent — the download proceeds either way, the
-                    // notification just won't be visible on API 33+.
+                    // Silent. Download proceeds either way.
                 });
 
         registerFilePickers();
@@ -131,40 +137,63 @@ public class MainActivity extends AppCompatActivity {
         installBackHandler();
     }
 
-    @Override protected void onNewIntent(Intent intent) {
+    @Override
+    protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
     }
 
-    @Override public void onResume() {
+    @Override
+    public void onResume() {
         super.onResume();
         handleIncomingIntent(getIntent());
         setIntent(new Intent());
-        if (wiring != null) wiring.getTabManager().resumeActiveTab();
+        if (wiring != null) {
+            wiring.getTabManager().resumeActiveTab();
+        }
     }
 
-    @Override protected void onPause() {
+    @Override
+    protected void onPause() {
         super.onPause();
-        if (sessionManager != null) sessionManager.onPause();
-        if (wiring != null) wiring.getTabManager().pauseActiveTab();
+        if (sessionManager != null) {
+            sessionManager.onPause();
+        }
+        if (wiring != null) {
+            wiring.getTabManager().pauseActiveTab();
+        }
     }
 
-    @Override protected void onStop() {
+    @Override
+    protected void onStop() {
         super.onStop();
-        if (sessionManager != null) sessionManager.onStop();
+        if (sessionManager != null) {
+            sessionManager.onStop();
+        }
     }
 
-    @Override public void onTrimMemory(int level) {
+    @Override
+    public void onTrimMemory(int level) {
         super.onTrimMemory(level);
-        if (wiring != null) wiring.getTabManager().onTrimMemory(level);
+        if (wiring != null) {
+            wiring.getTabManager().onTrimMemory(level);
+        }
     }
 
-    @Override protected void onDestroy() {
-        if (wiring != null) wiring.unregisterDownloadsReceiver();
-        if (sessionManager != null) sessionManager.onDestroy();
-        if (backgroundExecutor != null) backgroundExecutor.shutdownNow();
-        if (wiring != null) wiring.getTabManager().destroyAll();
-
+    @Override
+    protected void onDestroy() {
+        if (wiring != null) {
+            wiring.unregisterDownloadsReceiver();
+        }
+        if (sessionManager != null) {
+            sessionManager.onDestroy();
+        }
+        if (backgroundExecutor != null) {
+            backgroundExecutor.shutdownNow();
+        }
+        if (wiring != null) {
+            wiring.getTabManager().destroyAll();
+        }
         if (clipboardManager != null && clipChangedListener != null) {
             clipboardManager.removePrimaryClipChangedListener(clipChangedListener);
         }
@@ -175,7 +204,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // Setup
+    // Setup helpers
     // ========================================================================
 
     private void registerFilePickers() {
@@ -265,12 +294,17 @@ public class MainActivity extends AppCompatActivity {
         swipeRefresh.addView(browserContainer);
         swipeRefresh.setOnRefreshListener(() -> {
             WebView wv = getCurrentWebView();
-            if (wv != null) wv.reload();
-            else swipeRefresh.setRefreshing(false);
+            if (wv != null) {
+                wv.reload();
+            } else {
+                swipeRefresh.setRefreshing(false);
+            }
         });
         swipeRefresh.setOnChildScrollUpCallback((parent, child) -> {
             WebView wv = getCurrentWebView();
-            if (wv != null) return wv.getScrollY() > 0;
+            if (wv != null) {
+                return wv.getScrollY() > 0;
+            }
             return true;
         });
     }
@@ -282,7 +316,6 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout.LayoutParams wrapperParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         browserWrapper.setLayoutParams(wrapperParams);
-
         browserWrapper.addView(swipeRefresh);
 
         progressBar = new ProgressBar(this, null,
@@ -301,6 +334,7 @@ public class MainActivity extends AppCompatActivity {
                     Color.parseColor("#8ab4f8"),
                     android.graphics.PorterDuff.Mode.SRC_IN));
         }
+
         browserWrapper.addView(progressBar);
         root.addView(browserWrapper);
 
@@ -325,7 +359,9 @@ public class MainActivity extends AppCompatActivity {
         });
         backgroundExecutor.execute(() -> {
             try {
-                if (dbHelper != null) dbHelper.cleanupOldHistory(90);
+                if (dbHelper != null) {
+                    dbHelper.cleanupOldHistory(90);
+                }
             } catch (Exception ignored) {
             }
         });
@@ -378,7 +414,9 @@ public class MainActivity extends AppCompatActivity {
         if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
             String urlToLoad = intent.getData().toString();
             TabManager tabs = wiring.getTabManager();
-            if (tabs.isEmpty()) tabs.createNewTab();
+            if (tabs.isEmpty()) {
+                tabs.createNewTab();
+            }
             wiring.getToolbarController().setAddress(urlToLoad);
             openUrl(urlToLoad);
             setIntent(new Intent());
@@ -391,11 +429,6 @@ public class MainActivity extends AppCompatActivity {
     // Notification permission
     // ========================================================================
 
-    /**
-     * Request POST_NOTIFICATIONS on API 33+ so DownloadManager progress
-     * notifications appear. Only asks once per process lifetime. Silently
-     * no-ops below API 33.
-     */
     public void ensureNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return;
         if (notificationPermissionRequested) return;
@@ -411,7 +444,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ========================================================================
-    // Public API
+    // Public API surface called by other files
     // ========================================================================
 
     public void openUrl(@Nullable String url) {
@@ -429,26 +462,33 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    @Nullable public String getCurrentHost() {
+    @Nullable
+    public String getCurrentHost() {
         WebView wv = getCurrentWebView();
         if (wv == null || wv.getUrl() == null) return null;
         return Uri.parse(wv.getUrl()).getHost();
     }
 
-    @Nullable public WebView getCurrentWebView() {
+    @Nullable
+    public WebView getCurrentWebView() {
         return wiring != null ? wiring.getTabManager().getCurrentWebView() : null;
     }
 
-    @Nullable public TabState getCurrentTabState() {
+    @Nullable
+    public TabState getCurrentTabState() {
         return wiring != null ? wiring.getTabManager().getCurrentTabState() : null;
     }
 
     public void openUrlInNewTab(String url) {
-        if (wiring != null) wiring.getTabManager().openUrlInNewTab(url);
+        if (wiring != null) {
+            wiring.getTabManager().openUrlInNewTab(url);
+        }
     }
 
     public void handleDeadRenderProcess(WebView deadWebView) {
-        if (wiring != null) wiring.getTabManager().handleDeadRenderProcess(deadWebView);
+        if (wiring != null) {
+            wiring.getTabManager().handleDeadRenderProcess(deadWebView);
+        }
     }
 
     public int getTabCount() {
@@ -471,19 +511,134 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void showHome() {
-        if (wiring != null) wiring.showHome();
+        if (wiring != null) {
+            wiring.showHome();
+        }
     }
 
     public void showExitConfirmationDialog() {
-        if (sessionManager != null) sessionManager.showExitConfirmationDialog();
+        if (sessionManager != null) {
+            sessionManager.showExitConfirmationDialog();
+        }
     }
 
     public void exitBrowser() {
-        if (sessionManager != null) sessionManager.exitNow();
+        if (sessionManager != null) {
+            sessionManager.exitNow();
+        }
     }
 
     public void launchPasswordImport() {
-        if (passwordImportLauncher != null) passwordImportLauncher.launch("text/*");
+        if (passwordImportLauncher != null) {
+            passwordImportLauncher.launch("text/*");
+        }
     }
 
-    public void launch
+    public void launchPasswordExport() {
+        if (exportCsvLauncher != null) {
+            exportCsvLauncher.launch("spoon_passwords.csv");
+        }
+    }
+
+    public void toggleStartupAnimation() {
+        SharedPreferences sp = getSharedPreferences("browser_prefs", MODE_PRIVATE);
+        boolean enabled = sp.getBoolean("show_splash_screen", true);
+        sp.edit().putBoolean("show_splash_screen", !enabled).apply();
+        Toast.makeText(this,
+                !enabled ? "Startup Animation Enabled" : "Startup Animation Disabled",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    public void copyToClipboard(@NonNull String value, @NonNull String message) {
+        if (clipboardManager != null) {
+            clipboardManager.setPrimaryClip(ClipData.newPlainText("spoon_copy", value));
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    public String getSearchUrlFor(String query) {
+        return wiring != null ? wiring.getSearchUrlFor(query) : "";
+    }
+
+    public void triggerManualDownload(String url, String mime) {
+        if (wiring != null) {
+            wiring.triggerManualDownload(url, mime);
+        }
+    }
+
+    public boolean isDesktopHostEnabled(String host) {
+        return NavigationHelper.isDesktopHostEnabled(this, host);
+    }
+
+    public ExecutorService getBackgroundExecutor() {
+        return backgroundExecutor;
+    }
+
+    public void setAddressBarText(String url) {
+        if (wiring != null) {
+            wiring.getToolbarController().setAddress(url);
+        }
+    }
+
+    public void executeSafely(Runnable task) {
+        if (backgroundExecutor != null
+                && !backgroundExecutor.isShutdown()
+                && !backgroundExecutor.isTerminated()) {
+            try {
+                backgroundExecutor.execute(task);
+            } catch (java.util.concurrent.RejectedExecutionException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // ========================================================================
+    // Fullscreen video support (called by SpoonWebChromeClient)
+    // ========================================================================
+
+    public void setToolbarVisible(boolean visible) {
+        if (wiring == null) return;
+        View bar = wiring.getToolbarController().getRootView();
+        if (bar != null) {
+            bar.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    public void setBrowserVisible(boolean visible) {
+        if (browserWrapper != null) {
+            browserWrapper.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    public void attachFullscreenView(View view) {
+        if (view == null || root == null) return;
+        if (view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        root.addView(view, params);
+    }
+
+    public void detachFullscreenView(View view) {
+        if (view == null || root == null) return;
+        root.removeView(view);
+    }
+
+    // ========================================================================
+    // Vault / screen shield
+    // ========================================================================
+
+    public boolean isVaultActive() {
+        WebView wv = getCurrentWebView();
+        return wv != null && VaultUrls.isVaultUrl(wv.getUrl());
+    }
+
+    public void updateScreenShield() {
+        if (isVaultActive()) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
+    }
+}
