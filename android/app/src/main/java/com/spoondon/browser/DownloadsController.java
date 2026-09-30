@@ -26,6 +26,7 @@ import androidx.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Owns every DownloadManager interaction.
@@ -562,4 +563,9 @@ public class DownloadsController {
             if (bytes < 1024) return bytes + " B";
             if (bytes < 1024L * 1024) return (bytes / 1024) + " KB";
             if (bytes < 1024L * 1024 * 1024) return (bytes / (1024 * 1024)) + " MB";
-            return (bytes / (1024L * 1024 * 1024
+            if (bytes < 1024L * 1024 * 1024 * 1024)
+                return String.format(Locale.US, "%.1f GB", bytes / (double) (1024L * 1024 * 1024));
+            return String.format(Locale.US, "%.1f TB", bytes / (double) (1024L * 1024 * 1024 * 1024));
+        }
+    }
+}
