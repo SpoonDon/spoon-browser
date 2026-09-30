@@ -42,9 +42,6 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // Asset loader first — vault.html (and any future bundled asset)
-            // is served from the synthetic HTTPS origin, never from the
-            // network. AdBlock must not see or block these requests.
             WebResourceResponse assetResponse = assetLoader.shouldInterceptRequest(request.getUrl());
             if (assetResponse != null) {
                 return assetResponse;
@@ -150,14 +147,26 @@ public class SpoonWebViewClient extends WebViewClient {
             return true;
         }
 
-        // Cleartext policy — see CleartextPolicy.java.
+        // Cleartext policy — three tiers:
+        //   1. Compiled or user whitelist → load as-is.
+        //   2. Approved this session     → load as-is.
+        //   3. Otherwise                 → interstitial.
         if (url.startsWith("http://")) {
             String rawHost = extractHostFromHttpUrl(url);
+
             if (CleartextPolicy.isCleartextAllowed(view.getContext(), rawHost)) {
                 return false;
             }
-            String secureUrl = url.replace("http://", "https://");
-            view.loadUrl(secureUrl);
+            if (CleartextInterstitial.isApprovedForSession(rawHost)) {
+                return false;
+            }
+
+            view.loadDataWithBaseURL(
+                    "about:blank",
+                    CleartextInterstitial.buildHtml(url),
+                    "text/html",
+                    "UTF-8",
+                    null);
             return true;
         }
 
@@ -272,10 +281,6 @@ public class SpoonWebViewClient extends WebViewClient {
                     (url == null || url.isEmpty() || url.equals("about:blank")) ? "" : url);
         }
 
-        // UA + viewport decisions now live entirely in NavigationHelper.
-        // Previously this block duplicated the logic inline, which diverged
-        // from NavigationHelper.applyDesktopUa (notably: the helper set
-        // useWideViewPort(true) even on mobile). Fixed in backlog item #2.
         if (url != null && !url.isEmpty() && !url.equals("about:blank")) {
             String host = Uri.parse(url).getHost();
             if (host != null) {
@@ -291,13 +296,17 @@ public class SpoonWebViewClient extends WebViewClient {
         super.doUpdateVisitedHistory(view, url, isReload);
         injectBlobHook(view);
 
+        // Skip interstitial base URLs — the interstitial loads with
+        // about:blank as its base, and we do not want that in history.
+        if (url == null || url.isEmpty() || url.equals("about:blank")) return;
+
         if (VaultUrls.isVaultUrl(url)) return;
 
         if (activity.getCurrentTabState() != null && activity.getCurrentTabState().isIncognito()) {
             return;
         }
 
-        if (url != null && !isReload && !url.contains("cdn-cgi/challenge")) {
+        if (!isReload && !url.contains("cdn-cgi/challenge")) {
             long currentTime = System.currentTimeMillis();
             Uri currentUri = Uri.parse(url);
             Uri lastUri = Uri.parse(lastRecordedHistoryUrl);
@@ -392,6 +401,7 @@ public class SpoonWebViewClient extends WebViewClient {
             CookieManager.getInstance().flush();
         }
 
+        if (url == null || url.isEmpty() || url.equals("about:blank")) return;
         if (VaultUrls.isVaultUrl(url)) return;
 
         String cosmeticCss = AdBlockEngine.getCosmeticCss(url);

@@ -5,6 +5,9 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.LruCache;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -31,17 +34,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * AdBlock matching engine.
  *
- * Security batch C (2026-09-30): added support for:
- *   - @@ exception rules
- *   - $domain= allow/deny source constraints
- *   - Resource-type options ($script, $image, $stylesheet, ...)
- *   - Party constraints ($third-party, $~third-party)
+ * Security batch C (2026-09-30): network filter exceptions, $domain=,
+ * resource types, party constraints.
  *
- * Cosmetic slice (2026-09-30): added support for #@# exceptions. A
- * cosmetic hide rule (##) can now be negated for a specific host with
- * #@#. When building the CSS for a page, hide selectors are collected
- * from the host and its parent, then any matching #@# selectors from
- * either level are subtracted.
+ * Backlog item #4 (2026-09-30): cosmetic rules rewritten to a three-tier
+ * model that supports "~" negation on both ## (hide) and #@# (exception)
+ * rules. Rules are stored as CosmeticRule objects with allow/deny host
+ * sets instead of the old two-map host → [selectors] scheme. Cache version
+ * bumped to 3; older caches are treated as a miss.
  */
 public class AdBlockEngine {
 
@@ -63,18 +63,23 @@ public class AdBlockEngine {
     private static final int PARTY_FIRST = 2;
 
     // ------------------------------------------------------------------------
-    // State
+    // Network-rule state
     // ------------------------------------------------------------------------
     private static volatile HashSet<String> blockedDomains = new HashSet<>();
     private static volatile HashMap<String, ArrayList<String>> scopedPathRules = new HashMap<>();
     private static volatile HashMap<String, List<Rule>> blockRules = new HashMap<>();
     private static volatile HashMap<String, List<Rule>> exceptionRules = new HashMap<>();
 
+    // ------------------------------------------------------------------------
+    // Cosmetic-rule state (backlog #4)
+    // ------------------------------------------------------------------------
+    /** Rules with no allow-list — apply to every host (subject to deny). */
+    private static volatile List<CosmeticRule> cosmeticGlobal = new ArrayList<>();
+    /** Rules with an allow-list — indexed by each host in the allow set. */
+    private static volatile Map<String, List<CosmeticRule>> cosmeticByHost = new HashMap<>();
+
     private static volatile HashSet<String> whitelistedDomains = new HashSet<>();
     private static volatile boolean isEngineEnabled = true;
-
-    private static volatile HashMap<String, ArrayList<String>> cosmeticRules = new HashMap<>();
-    private static volatile HashMap<String, ArrayList<String>> cosmeticExceptions = new HashMap<>();
 
     private static final AtomicBoolean isUpdating = new AtomicBoolean(false);
     private static final String PREFS_NAME = "SpoonAdBlockPrefs";
@@ -82,7 +87,7 @@ public class AdBlockEngine {
     private static final String KEY_WHITELIST = "adblock_whitelist";
     private static final String KEY_REFRESH_TIME = "filter_refresh_time";
 
-    private static final int CACHE_VERSION = 2;
+    private static final int CACHE_VERSION = 3;
 
     private static final int DECISION_CACHE_MAX = 2000;
     private static final long DECISION_CACHE_TTL_MS = 10 * 60 * 1000L;
@@ -265,7 +270,7 @@ public class AdBlockEngine {
     }
 
     // ========================================================================
-    // Decision
+    // Network decision
     // ========================================================================
 
     public static boolean shouldBlock(String url) {
@@ -331,11 +336,12 @@ public class AdBlockEngine {
     }
 
     // ========================================================================
-    // Cosmetic rules
+    // Cosmetic decision (backlog #4)
     // ========================================================================
 
     public static String getCosmeticCss(String url) {
         if (!isEngineEnabled || url == null) return "";
+
         try {
             Uri uri = Uri.parse(url);
             String host = uri.getHost();
@@ -343,37 +349,106 @@ public class AdBlockEngine {
             host = host.toLowerCase(Locale.ROOT);
             String parent = parentOf(host);
 
-            // Collect #@# exceptions at both levels so we can subtract them.
-            Set<String> excluded = new HashSet<>();
-            if (cosmeticExceptions.containsKey(host)) {
-                excluded.addAll(cosmeticExceptions.get(host));
-            }
-            if (parent != null && cosmeticExceptions.containsKey(parent)) {
-                excluded.addAll(cosmeticExceptions.get(parent));
-            }
+            Set<String> hidden = new HashSet<>();
+            Set<String> excepted = new HashSet<>();
 
-            ArrayList<String> selectors = new ArrayList<>();
-            if (cosmeticRules.containsKey(host)) {
-                for (String s : cosmeticRules.get(host)) {
-                    if (!excluded.contains(s)) selectors.add(s);
-                }
-            }
-            if (parent != null && cosmeticRules.containsKey(parent)) {
-                for (String s : cosmeticRules.get(parent)) {
-                    if (!excluded.contains(s)) selectors.add(s);
+            // Global rules (no allow-list) — apply everywhere, subject to deny.
+            List<CosmeticRule> globals = cosmeticGlobal;
+            if (globals != null) {
+                for (int i = 0; i < globals.size(); i++) {
+                    CosmeticRule r = globals.get(i);
+                    if (r.matches(host, parent)) {
+                        if (r.exception) excepted.add(r.selector);
+                        else hidden.add(r.selector);
+                    }
                 }
             }
 
-            if (selectors.isEmpty()) return "";
-            return android.text.TextUtils.join(", ", selectors)
+            // Host-scoped rules — check both this host and its parent bucket.
+            Map<String, List<CosmeticRule>> index = cosmeticByHost;
+            if (index != null && !index.isEmpty()) {
+                collectHostRules(index.get(host), host, parent, hidden, excepted);
+                if (parent != null) {
+                    collectHostRules(index.get(parent), host, parent, hidden, excepted);
+                }
+            }
+
+            hidden.removeAll(excepted);
+            if (hidden.isEmpty()) return "";
+
+            return android.text.TextUtils.join(", ", hidden)
                     + " { display: none !important; }";
         } catch (Exception e) {
             return "";
         }
     }
 
+    private static void collectHostRules(@Nullable List<CosmeticRule> rules,
+                                         String host,
+                                         @Nullable String parent,
+                                         Set<String> hidden,
+                                         Set<String> excepted) {
+        if (rules == null) return;
+        for (int i = 0; i < rules.size(); i++) {
+            CosmeticRule r = rules.get(i);
+            if (r.matches(host, parent)) {
+                if (r.exception) excepted.add(r.selector);
+                else hidden.add(r.selector);
+            }
+        }
+    }
+
+    /**
+     * A single cosmetic rule. Both the "hide" (##) and "exception" (#@#)
+     * forms share this structure.
+     *
+     * allow: host set the rule applies to. Empty means "every host".
+     * deny:  host set the rule is suppressed on, evaluated after allow.
+     */
+    public static final class CosmeticRule {
+        final Set<String> allow;   // nullable; empty means global
+        final Set<String> deny;    // nullable
+        final String selector;
+        final boolean exception;   // true = #@#
+
+        CosmeticRule(Set<String> allow, Set<String> deny,
+                     String selector, boolean exception) {
+            this.allow = allow;
+            this.deny = deny;
+            this.selector = selector;
+            this.exception = exception;
+        }
+
+        boolean matches(String host, @Nullable String parent) {
+            if (deny != null) {
+                for (String d : deny) {
+                    if (hostMatches(host, d) || (parent != null && hostMatches(parent, d))) {
+                        return false;
+                    }
+                }
+            }
+            if (allow != null && !allow.isEmpty()) {
+                boolean ok = false;
+                for (String a : allow) {
+                    if (hostMatches(host, a) || (parent != null && hostMatches(parent, a))) {
+                        ok = true;
+                        break;
+                    }
+                }
+                if (!ok) return false;
+            }
+            return true;
+        }
+
+        private static boolean hostMatches(String host, String pattern) {
+            if (host == null || pattern == null) return false;
+            if (host.equals(pattern)) return true;
+            return host.endsWith("." + pattern);
+        }
+    }
+
     // ========================================================================
-    // Rule matching internals
+    // Network matching internals
     // ========================================================================
 
     private static boolean matchesInRules(Map<String, List<Rule>> index,
@@ -451,13 +526,12 @@ public class AdBlockEngine {
         final HashMap<String, ArrayList<String>> paths = new HashMap<>();
         final HashMap<String, List<Rule>> blockRules = new HashMap<>();
         final HashMap<String, List<Rule>> exceptionRules = new HashMap<>();
-        final HashMap<String, ArrayList<String>> cosmetic = new HashMap<>();
-        final HashMap<String, ArrayList<String>> cosmeticExceptions = new HashMap<>();
+        final List<CosmeticRule> cosmeticRules = new ArrayList<>();
 
         boolean hasAnything() {
             return !domains.isEmpty() || !paths.isEmpty()
                     || !blockRules.isEmpty() || !exceptionRules.isEmpty()
-                    || !cosmetic.isEmpty() || !cosmeticExceptions.isEmpty();
+                    || !cosmeticRules.isEmpty();
         }
     }
 
@@ -466,8 +540,22 @@ public class AdBlockEngine {
         scopedPathRules = b.paths;
         blockRules = b.blockRules;
         exceptionRules = b.exceptionRules;
-        cosmeticRules = b.cosmetic;
-        cosmeticExceptions = b.cosmeticExceptions;
+
+        // Re-bucket cosmetic rules into global + host-indexed views.
+        List<CosmeticRule> globals = new ArrayList<>();
+        Map<String, List<CosmeticRule>> byHost = new HashMap<>();
+        for (CosmeticRule r : b.cosmeticRules) {
+            if (r.allow == null || r.allow.isEmpty()) {
+                globals.add(r);
+            } else {
+                for (String h : r.allow) {
+                    byHost.computeIfAbsent(h, k -> new ArrayList<>()).add(r);
+                }
+            }
+        }
+        cosmeticGlobal = globals;
+        cosmeticByHost = byHost;
+
         decisionCache.evictAll();
     }
 
@@ -485,30 +573,27 @@ public class AdBlockEngine {
         if (line.startsWith("!") || line.startsWith("[")) return;
 
         // --- Cosmetic rules ------------------------------------------------
-        // Handles ## (hide) and #@# (exception). Order matters: check #@#
-        // first because it is longer and more specific.
+        // #@# (exception) is checked first because it is longer and more
+        // specific; #@# contains ##, so ordering matters.
         int exIdx = line.indexOf("#@#");
         int hideIdx = line.indexOf("##");
 
         if (exIdx != -1 && (hideIdx == -1 || exIdx < hideIdx)) {
-            parseCosmetic(line, exIdx, 3, b.cosmeticExceptions);
+            parseCosmetic(line, exIdx, 3, true, b);
             return;
         }
         if (hideIdx != -1) {
-            // Reject the "@@||...#@#" case where the hide marker appears
-            // before the exception marker — it is not a valid cosmetic rule.
-            parseCosmetic(line, hideIdx, 2, b.cosmetic);
+            parseCosmetic(line, hideIdx, 2, false, b);
             return;
         }
 
-        // --- Exception prefix ----------------------------------------------
+        // --- Network rule --------------------------------------------------
         boolean exception = false;
         if (line.startsWith("@@")) {
             exception = true;
             line = line.substring(2).trim();
         }
 
-        // --- Split pattern from options ------------------------------------
         String pattern = line;
         String options = null;
         int dollar = line.lastIndexOf('$');
@@ -540,7 +625,6 @@ public class AdBlockEngine {
             pathPattern = pathPattern.replace("*", "");
         }
 
-        // --- Parse options --------------------------------------------------
         int resourceTypesMask = 0;
         Set<String> domainAllow = null;
         Set<String> domainDeny = null;
@@ -609,24 +693,57 @@ public class AdBlockEngine {
     }
 
     /**
-     * Shared parser for ## and #@# rules. Splits {@code domainPart##selector}
-     * or {@code domainPart#@#selector}, then stores the selector under each
-     * listed domain (skipping "~" negations, which are not supported in the
-     * hide path).
+     * Parses a cosmetic rule (## or #@#).
+     *
+     * Grammar (uBlock-compatible):
+     *   [domain[,domain]...]  ## selector
+     *   [domain[,domain]...]  #@# selector
+     *
+     * Each domain entry is either a plain host (allow) or a host prefixed
+     * with "~" (deny). Mixing is allowed:
+     *   example.com,~sub.example.com##.ad
+     *
+     * If allow is empty after parsing, the rule is global (subject to deny).
+     * If allow is non-empty, the rule only applies where at least one allow
+     * entry matches and no deny entry matches.
      */
     private static void parseCosmetic(String line, int markerIdx, int markerLen,
-                                      HashMap<String, ArrayList<String>> target) {
+                                      boolean exception, Builder b) {
         String domainPart = line.substring(0, markerIdx).trim();
         String selector = line.substring(markerIdx + markerLen).trim();
 
-        if (domainPart.isEmpty() || selector.isEmpty()) return;
-        if (domainPart.contains("*")) return;
+        if (selector.isEmpty()) return;
 
-        for (String d : domainPart.split(",")) {
-            d = d.trim().toLowerCase(Locale.ROOT);
-            if (d.isEmpty() || d.startsWith("~")) continue;
-            target.computeIfAbsent(d, k -> new ArrayList<>()).add(selector);
+        Set<String> allow = new HashSet<>();
+        Set<String> deny = new HashSet<>();
+
+        if (!domainPart.isEmpty()) {
+            for (String d : domainPart.split(",")) {
+                d = d.trim().toLowerCase(Locale.ROOT);
+                if (d.isEmpty()) continue;
+                if (d.contains("*")) continue;
+                if (d.startsWith("~")) {
+                    String plain = d.substring(1).trim();
+                    if (!plain.isEmpty()) deny.add(plain);
+                } else {
+                    allow.add(d);
+                }
+            }
         }
+
+        if (allow.isEmpty() && deny.isEmpty()) {
+            // Global hide rule with no domain qualifiers — keep it but only
+            // if it is a hide rule. A bare #@# with no domain qualifier is
+            // a no-op (there is nothing to except); we still store it so
+            // that the semantics are consistent, but it will never match
+            // anything unique.
+        }
+
+        b.cosmeticRules.add(new CosmeticRule(
+                allow.isEmpty() ? null : allow,
+                deny.isEmpty() ? null : deny,
+                selector,
+                exception));
     }
 
     private static int resourceTypeFromName(String name) {
@@ -651,7 +768,7 @@ public class AdBlockEngine {
     }
 
     // ========================================================================
-    // Rule
+    // Network rule
     // ========================================================================
 
     public static final class Rule {
@@ -676,9 +793,7 @@ public class AdBlockEngine {
 
         boolean matches(String path, int resourceType, String sourceHost, boolean thirdParty) {
             if (!pathPattern.isEmpty() && !path.contains(pathPattern)) return false;
-
             if (resourceTypesMask != 0 && (resourceTypesMask & resourceType) == 0) return false;
-
             if (partyFlag == PARTY_THIRD && !thirdParty) return false;
             if (partyFlag == PARTY_FIRST && thirdParty) return false;
 
@@ -696,7 +811,6 @@ public class AdBlockEngine {
                 }
                 if (!ok) return false;
             }
-
             return true;
         }
 
@@ -722,7 +836,7 @@ public class AdBlockEngine {
     }
 
     // ========================================================================
-    // Persistence (JSON, version 2)
+    // Persistence (JSON, version 3)
     // ========================================================================
 
     private static void saveEngineToCache(Context context) {
@@ -738,8 +852,7 @@ public class AdBlockEngine {
             root.put("paths", stringListMapToJson(scopedPathRules));
             root.put("blockRules", rulesToJson(blockRules));
             root.put("exceptionRules", rulesToJson(exceptionRules));
-            root.put("cosmetic", stringListMapToJson(cosmeticRules));
-            root.put("cosmeticExceptions", stringListMapToJson(cosmeticExceptions));
+            root.put("cosmetic", cosmeticRulesToJson());
 
             try (FileOutputStream fos = new FileOutputStream(cacheFile)) {
                 fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
@@ -774,22 +887,84 @@ public class AdBlockEngine {
             scopedPathRules = jsonToStringListMap(root.optJSONObject("paths"));
             blockRules = jsonToRules(root.optJSONObject("blockRules"), false);
             exceptionRules = jsonToRules(root.optJSONObject("exceptionRules"), true);
-            cosmeticRules = jsonToStringListMap(root.optJSONObject("cosmetic"));
 
-            // Cosmetic exceptions were added after the initial v2 format.
-            // Old caches simply lack the key — default to empty.
-            JSONObject cexObj = root.optJSONObject("cosmeticExceptions");
-            if (cexObj != null) {
-                cosmeticExceptions = jsonToStringListMap(cexObj);
-            } else {
-                cosmeticExceptions = new HashMap<>();
+            List<CosmeticRule> cosmetics = jsonToCosmeticRules(root.optJSONArray("cosmetic"));
+            List<CosmeticRule> globals = new ArrayList<>();
+            Map<String, List<CosmeticRule>> byHost = new HashMap<>();
+            for (CosmeticRule r : cosmetics) {
+                if (r.allow == null || r.allow.isEmpty()) {
+                    globals.add(r);
+                } else {
+                    for (String h : r.allow) {
+                        byHost.computeIfAbsent(h, k -> new ArrayList<>()).add(r);
+                    }
+                }
             }
+            cosmeticGlobal = globals;
+            cosmeticByHost = byHost;
 
             decisionCache.evictAll();
             return true;
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static JSONArray cosmeticRulesToJson() throws Exception {
+        JSONArray arr = new JSONArray();
+        // Serialize from the union of global + host-indexed rules. Since a
+        // rule with allow={a,b} appears in two buckets, we dedupe by object
+        // identity using a Set.
+        Set<CosmeticRule> seen = new HashSet<>();
+        for (CosmeticRule r : cosmeticGlobal) seen.add(r);
+        for (List<CosmeticRule> bucket : cosmeticByHost.values()) seen.addAll(bucket);
+
+        for (CosmeticRule r : seen) {
+            JSONObject rj = new JSONObject();
+            if (r.allow != null && !r.allow.isEmpty()) {
+                JSONArray a = new JSONArray();
+                for (String s : r.allow) a.put(s);
+                rj.put("a", a);
+            }
+            if (r.deny != null && !r.deny.isEmpty()) {
+                JSONArray d = new JSONArray();
+                for (String s : r.deny) d.put(s);
+                rj.put("d", d);
+            }
+            rj.put("s", r.selector);
+            rj.put("e", r.exception);
+            arr.put(rj);
+        }
+        return arr;
+    }
+
+    private static List<CosmeticRule> jsonToCosmeticRules(JSONArray arr) throws Exception {
+        List<CosmeticRule> out = new ArrayList<>();
+        if (arr == null) return out;
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject rj = arr.getJSONObject(i);
+
+            Set<String> allow = null;
+            JSONArray aArr = rj.optJSONArray("a");
+            if (aArr != null && aArr.length() > 0) {
+                allow = new HashSet<>();
+                for (int j = 0; j < aArr.length(); j++) allow.add(aArr.getString(j));
+            }
+
+            Set<String> deny = null;
+            JSONArray dArr = rj.optJSONArray("d");
+            if (dArr != null && dArr.length() > 0) {
+                deny = new HashSet<>();
+                for (int j = 0; j < dArr.length(); j++) deny.add(dArr.getString(j));
+            }
+
+            String selector = rj.optString("s", "");
+            boolean exception = rj.optBoolean("e", false);
+            if (selector.isEmpty()) continue;
+
+            out.add(new CosmeticRule(allow, deny, selector, exception));
+        }
+        return out;
     }
 
     private static JSONObject stringListMapToJson(Map<String, ArrayList<String>> map) throws Exception {

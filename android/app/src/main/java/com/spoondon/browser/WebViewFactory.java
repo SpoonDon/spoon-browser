@@ -21,19 +21,8 @@ import java.util.Set;
 /**
  * Builds and configures WebViews.
  *
- * Owns:
- *   - WebSettings configuration (mobile-vs-desktop, mixed content, dark mode)
- *   - SpoonWebViewClient + SpoonWebChromeClient installation
- *   - WebViewAssetLoader for the vault page
- *   - JavaScript bridge injection (BlobDownloader, PasswordAutosaveBridge)
- *   - Download listener wiring
- *   - The vault WebMessageListener (origin-scoped to VaultUrls.ORIGIN)
- *   - Long-press image handling
- *
- * Security batch B (2026-09-30): vault.html is now served via
- * WebViewAssetLoader over the synthetic HTTPS origin VaultUrls.ORIGIN.
- * The WebMessageListener origin whitelist changed from "*" to that exact
- * origin — the in-handler URL check remains as a defence-in-depth measure.
+ * Backlog item #3 (2026-09-30): registers CleartextBridge so the cleartext
+ * interstitial page can call back into the app.
  */
 public class WebViewFactory {
 
@@ -126,6 +115,7 @@ public class WebViewFactory {
 
         webView.addJavascriptInterface(new BlobDownloader(activity), "AndroidDownloader");
         webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
+        webView.addJavascriptInterface(new CleartextBridge(webView), "SpoonCleartext");
 
         downloadHandler.attach(webView);
 
@@ -230,14 +220,6 @@ public class WebViewFactory {
     // Vault WebMessageListener
     // ------------------------------------------------------------------------
 
-    /**
-     * Registers {@code spoonVaultMessage} scoped to {@link VaultUrls#ORIGIN}.
-     *
-     * The origin whitelist is now a single exact origin (the synthetic
-     * HTTPS origin served by WebViewAssetLoader). The in-handler URL check
-     * remains as defence-in-depth — if the loader is ever misconfigured,
-     * the second layer still rejects the message.
-     */
     private void installVaultMessageListener(@NonNull WebView webView) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return;
 
@@ -276,12 +258,6 @@ public class WebViewFactory {
     // JS bridge
     // ------------------------------------------------------------------------
 
-    /**
-     * Only exposes {@code saveCredentials}. {@code getUsername} /
-     * {@code getPassword} were removed in the security pass —
-     * addJavascriptInterface is NOT origin-scoped, so any page in any
-     * WebView could otherwise read stored credentials for any host.
-     */
     private class PasswordAutosaveBridge {
         @android.webkit.JavascriptInterface
         public void saveCredentials(String host, String username, String password) {
