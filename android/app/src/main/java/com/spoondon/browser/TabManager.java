@@ -32,6 +32,15 @@ import java.util.function.Consumer;
  *
  * Extracted from MainActivity (god-object split, slice 1).
  *
+ * 2026-09-30 - Session restore added:
+ *   - snapshotForPersistence() returns a List<PersistedTab> for SessionManager
+ *     to write on onPause.
+ *   - restoreTabs(List<PersistedTab>, int) re-creates the tab list on cold
+ *     start and loads each URL. This is the ONLY way tab state is persisted
+ *     across process death - we deliberately never touch
+ *     WebView.saveState()/restoreState(), which is process-scoped and causes
+ *     cold-start crashes.
+ *
  * Threading: all public methods must be called on the main thread.
  */
 public class TabManager {
@@ -192,7 +201,7 @@ public class TabManager {
             wvToDestroy.destroy();
         }
 
-        // Properly destroy TabState — recycles the thumbnail bitmap.
+        // Properly destroy TabState - recycles the thumbnail bitmap.
         // Previously leaked because this was never called.
         tabToRemove.destroy();
 
@@ -211,6 +220,98 @@ public class TabManager {
 
         switchToTab(currentPosition);
         callbacks.onTabCountChanged(tabs.size());
+    }
+
+
+    // ------------------------------------------------------------------------
+    // Session restore
+    // ------------------------------------------------------------------------
+
+    /**
+     * Re-create tabs from a persisted list, loading each URL. Called from
+     * MainActivity.onCreate when savedInstanceState is null and the
+     * SessionManager returns a non-empty list.
+     *
+     * Each restored tab is created via createNewTab(), so it inherits the
+     * standard WebView settings, JS bridges, and download handler. We then
+     * apply the desktop-UA preference BEFORE loadUrl so the first request
+     * goes out with the correct User-Agent. After that, normal page
+     * lifecycle takes over (SpoonWebViewClient.onPageStarted re-applies
+     * the UA idempotently).
+     *
+     * Failure modes deliberately not handled here:
+     *   - Bad URL -> WebView's own network error page. No crash.
+     *   - Corrupt list -> SessionManager.loadPersistedTabs() already
+     *     wiped it and returned an empty list, so this method is only
+     *     called with valid entries.
+     *   - Renderer death during load -> handleDeadRenderProcess fires
+     *     and drops the tab. Restore is idempotent, so a subsequent
+     *     cold start just re-attempts.
+     */
+    public void restoreTabs(@NonNull List<PersistedTab> restored, int activeIndex) {
+        if (restored == null || restored.isEmpty()) {
+            createNewTab();
+            return;
+        }
+
+        // Defensive cap. SessionManager enforces MAX_TABS on write and
+        // read, but a manual prefs edit could produce a longer list.
+        int count = Math.min(restored.size(), 20);
+
+        for (int i = 0; i < count; i++) {
+            PersistedTab p = restored.get(i);
+            if (p == null || p.url == null || p.url.isEmpty()) continue;
+
+            createNewTab();
+            WebView wv = getCurrentWebView();
+            if (wv == null) continue;
+
+            // Apply desktop UA before loadUrl so the initial request
+            // carries the correct User-Agent.
+            try {
+                String host = android.net.Uri.parse(p.url).getHost();
+                if (host != null) {
+                    boolean desktop = NavigationHelper.isDesktopHostEnabled(activity, host);
+                    NavigationHelper.applyDesktopUa(wv, desktop, activity);
+                }
+            } catch (Exception ignored) {}
+
+            wv.loadUrl(p.url);
+        }
+
+        if (activeIndex >= 0 && activeIndex < tabs.size()) {
+            switchToTab(activeIndex);
+        } else if (!tabs.isEmpty()) {
+            switchToTab(tabs.size() - 1);
+        }
+    }
+
+    /**
+     * Snapshot the current tab list for SessionManager to write to disk.
+     * Filters out incognito tabs, blank pages, and the vault URL.
+     *
+     * Called on the main thread from SessionManager.persistTabs() during
+     * Activity.onPause. Never blocks - reads only cached WebView fields.
+     */
+    @NonNull
+    public List<PersistedTab> snapshotForPersistence() {
+        List<PersistedTab> out = new ArrayList<>();
+        for (TabState tab : tabs) {
+            if (tab == null || tab.isIncognito()) continue;
+            WebView wv = tab.getWebView();
+            if (wv == null) continue;
+
+            String url = wv.getUrl();
+            if (url == null || url.isEmpty()) continue;
+            if (url.equals("about:blank")) continue;
+            if (VaultUrls.isVaultUrl(url)) continue;
+
+            String title = wv.getTitle();
+            out.add(new PersistedTab(url, title != null ? title : ""));
+
+            if (out.size() >= 20) break;
+        }
+        return out;
     }
 
     /** Called by SpoonWebViewClient when the renderer dies. */
@@ -419,7 +520,7 @@ public class TabManager {
     }
 
     // ------------------------------------------------------------------------
-    // Persistence helpers
+    // Legacy persistence helper (kept for backward compat - no callers)
     // ------------------------------------------------------------------------
     public List<String> getNonIncognitoUrls() {
         List<String> urls = new ArrayList<>();
