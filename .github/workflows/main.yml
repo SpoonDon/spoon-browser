@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Cancel prior debug runs on the same PR. Each PR has its own group
+# because github.ref is refs/pull/<N>/merge — so multiple PRs still
+# build in parallel, but a new commit on one PR cancels that PR's
+# previous run.
 concurrency:
   group: debug-${{ github.ref }}
   cancel-in-progress: true
@@ -32,12 +36,33 @@ jobs:
 
       - name: Build Debug APK
         run: |
+          set -euo pipefail
           cd android
           ./gradlew assembleDebug --stacktrace
 
+      # Rename with PR number and short SHA so multiple builds are
+      # distinguishable in the artifacts list.
+      - name: Prepare APK
+        run: |
+          set -euo pipefail
+          PR="${{ github.event.pull_request.number }}"
+          if [ -z "$PR" ]; then PR="manual"; fi
+          SUFFIX="pr${PR}-${GITHUB_SHA::7}"
+
+          mkdir -p out
+          for apk in android/app/build/outputs/apk/debug/*.apk; do
+            base=$(basename "$apk" .apk)
+            cp "$apk" "out/SpoonBrowser-${base}-${SUFFIX}.apk"
+          done
+          ls -la out/
+
+      # Note: this download is a .zip — GitHub always zips artifacts.
+      # For a raw .apk link, tag a commit (v*) and use the Release asset
+      # produced by android-build.yml instead.
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: spoon-browser-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: out/*.apk
+          if-no-files-found: error
           retention-days: 7

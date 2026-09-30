@@ -6,13 +6,22 @@ on:
     tags: [ 'v*' ]
   workflow_dispatch:
 
+# Cancel prior runs on the same ref. Tag builds and branch builds are
+# different refs, so a v1.0.0 tag push will not cancel a running main build
+# (and vice versa) — which is correct: you want the release to complete
+# even if someone pushes to main at the same moment.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # Needed by softprops/action-gh-release to create/update the release
+    # and upload assets.
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -54,6 +63,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           SIGNING_STORE_FILE: "../release.keystore"
         run: |
+          set -euo pipefail
           cd android
           ./gradlew clean assembleRelease --stacktrace
 
@@ -61,9 +71,45 @@ jobs:
         if: always()
         run: rm -f android/release.keystore
 
-      - name: Upload Release APK
+      # Rename the APK so tag builds and main builds are distinguishable
+      # when downloaded together, and so the release asset name is
+      # human-friendly.
+      - name: Prepare APK
+        id: prep
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            SUFFIX="${GITHUB_REF#refs/tags/}"
+          else
+            SUFFIX="${GITHUB_SHA::7}"
+          fi
+
+          mkdir -p out
+          for apk in android/app/build/outputs/apk/release/*.apk; do
+            base=$(basename "$apk" .apk)
+            cp "$apk" "out/SpoonBrowser-${base}-${SUFFIX}.apk"
+          done
+          ls -la out/
+
+      # Artifact download is ALWAYS a zip — GitHub wraps every artifact
+      # at the platform level. Use the Release asset below for a raw .apk.
+      - name: Upload Release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoon-browser-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          path: out/*.apk
+          if-no-files-found: error
           retention-days: 30
+
+      # On tag pushes, attach the APK(s) directly to a GitHub Release.
+      # Release asset downloads serve the raw .apk file — no zip wrapper.
+      # Link format:
+      #   https://github.com/<owner>/<repo>/releases/download/<tag>/<apk>
+      - name: Attach APKs to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.apk
+          generate_release_notes: true
+          draft: false
+          prerelease: false
