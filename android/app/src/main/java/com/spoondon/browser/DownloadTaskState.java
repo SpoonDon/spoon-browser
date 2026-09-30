@@ -4,16 +4,15 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Plain serializable snapshot of a DownloadTask. This is what gets written
- * to downloads.json; DownloadTask itself holds the transient runtime state
- * (OkHttp client, threads, cancel flags).
+ * Serializable snapshot of a DownloadTask. Written to downloads.json by
+ * DownloadStore. The runtime task (OkHttp client, threads, cancel flags)
+ * lives in DownloadTask, not here.
  */
 public final class DownloadTaskState {
 
@@ -24,15 +23,15 @@ public final class DownloadTaskState {
     public String userAgent;
     public String referer;
     public String cookies;
-    public int state;             // DownloadTask.State.ordinal()
-    public long bytesTotal;       // -1 if unknown
+    public int state;             // DownloadTask.State ordinal
+    public long bytesTotal;       // -1 if unknown (chunked transfer)
     public long bytesDownloaded;
     public String errorMessage;
     public long createdAt;
     public long completedAt;
     public final List<Chunk> chunks = new ArrayList<>();
 
-    /** One contiguous byte range. {@code end} is inclusive, or -1 if unknown. */
+    /** One contiguous byte range. end is inclusive, or -1 if unknown. */
     public static final class Chunk {
         public long start;
         public long end;
@@ -68,7 +67,7 @@ public final class DownloadTaskState {
                 arr.put(co);
             }
             o.put("chunks", arr);
-        } catch (JSONException ignored) {
+        } catch (Exception ignored) {
         }
         return o;
     }
@@ -88,4 +87,25 @@ public final class DownloadTaskState {
             s.bytesTotal = o.optLong("bytesTotal", -1);
             s.bytesDownloaded = o.optLong("bytesDownloaded");
             s.errorMessage = o.optString("errorMessage");
-            s.createdAt = o.optLong
+            s.createdAt = o.optLong("createdAt");
+            s.completedAt = o.optLong("completedAt");
+
+            JSONArray arr = o.optJSONArray("chunks");
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject co = arr.optJSONObject(i);
+                    if (co == null) continue;
+                    Chunk c = new Chunk();
+                    c.start = co.optLong("start");
+                    c.end = co.optLong("end");
+                    c.downloaded = co.optLong("downloaded");
+                    c.done = co.optBoolean("done");
+                    s.chunks.add(c);
+                }
+            }
+            return s;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+}
