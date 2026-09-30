@@ -1,5 +1,7 @@
 package com.spoondon.browser;
 
+import android.content.Context;
+
 import androidx.annotation.Nullable;
 
 import java.util.Arrays;
@@ -11,14 +13,19 @@ import java.util.Set;
 /**
  * Single source of truth for "may this host use http:// ?".
  *
- * The Android platform enforces the policy via
- * res/xml/network_security_config.xml — that file is what actually blocks
- * cleartext at the network layer. This class lets app code reason about
- * the same list without duplicating hostname strings inline.
+ * Security batch A (2026-09-30): introduced.
+ * Batch D (2026-09-30): extended with a runtime user whitelist.
  *
- * KEEP IN SYNC WITH res/xml/network_security_config.xml.
+ * Enforcement model changed in batch D. Previously, network_security_config
+ * carried the whitelist and the platform enforced it. Now the NSC base-config
+ * is permissive (cleartextTrafficPermitted="true"), and ALL enforcement lives
+ * here + in SpoonWebViewClient.handleUrlLoading. This tradeoff is deliberate:
+ * a browser must be able to reach arbitrary http:// hosts, and NSC is
+ * compile-time only.
  *
- * Extracted in security batch A (2026-09-30).
+ * A host is allowed cleartext if EITHER:
+ *   1. It appears in the compiled list below, OR
+ *   2. It appears in CleartextPreferences' user list.
  */
 public final class CleartextPolicy {
 
@@ -27,8 +34,7 @@ public final class CleartextPolicy {
     }
 
     /**
-     * Exact hostnames — matched as-is (case-insensitive). Used for IP
-     * literals and named hosts where suffix matching would be wrong.
+     * Compiled-in hosts. Exact match, case-insensitive.
      */
     private static final Set<String> EXACT_HOSTS = new HashSet<>(Arrays.asList(
             "localhost",
@@ -44,8 +50,7 @@ public final class CleartextPolicy {
     ));
 
     /**
-     * Suffix hosts — matched as the exact string OR any subdomain
-     * ({@code ".suffix"}). Used for brand aliases and mDNS.
+     * Compiled-in suffixes. Matched as the exact string OR any subdomain.
      */
     private static final List<String> SUFFIX_HOSTS = Arrays.asList(
             "tplinkwifi.net",
@@ -60,10 +65,25 @@ public final class CleartextPolicy {
     );
 
     /**
-     * @return true if {@code host} is permitted to load over http://.
-     *         Null, empty, and whitespace hosts return false.
+     * @return true if {@code host} is permitted to load over http://,
+     *         consulting both the compiled list and the user list.
+     *         Null ctx or host returns false.
      */
-    public static boolean isCleartextAllowed(@Nullable String host) {
+    public static boolean isCleartextAllowed(@Nullable Context ctx, @Nullable String host) {
+        if (host == null) return false;
+        String lower = host.trim().toLowerCase(Locale.ROOT);
+        if (lower.isEmpty()) return false;
+
+        if (isCompiledAllow(lower)) return true;
+        if (ctx == null) return false;
+        return CleartextPreferences.isUserAllowed(ctx, lower);
+    }
+
+    /**
+     * Compiled-list check only. Used to distinguish "always safe" hosts from
+     * user-added ones when rendering UI.
+     */
+    public static boolean isCompiledAllow(@Nullable String host) {
         if (host == null) return false;
         String lower = host.trim().toLowerCase(Locale.ROOT);
         if (lower.isEmpty()) return false;

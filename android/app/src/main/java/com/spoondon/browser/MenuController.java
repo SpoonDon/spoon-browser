@@ -1,9 +1,9 @@
 package com.spoondon.browser;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -14,8 +14,10 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -25,15 +27,18 @@ import androidx.annotation.Nullable;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Locale;
+import java.util.Set;
+
 /**
  * Owns the main popup menu, the "About" bottom sheet, the search-engine
- * picker, and the "Find in Page" overlay.
+ * picker, the "Find in Page" overlay, and the "Trusted cleartext hosts"
+ * manager.
  *
- * Extracted from MainActivity (god-object split, slice 4).
- *
- * MenuController is agnostic about *how* the requested actions are performed.
- * Every menu item routes through {@link Callbacks}, which MainActivity wires
- * to TabManager / AdBlockController / HistoryController / VaultController.
+ * Batch D (2026-09-30): new "Trusted cleartext hosts" menu entry with an
+ * add/remove dialog backed by CleartextPreferences.
  */
 public class MenuController {
 
@@ -60,10 +65,8 @@ public class MenuController {
         void toggleDesktopMode();
         boolean isDesktopEnabledForCurrentSite();
 
-        /** Open the HTML vault page in a new tab. */
         void showVault();
 
-        /** Legacy native dialog listing host+user pairs. */
         void showSavedPasswords();
         void importPasswords();
         void exportPasswords();
@@ -100,25 +103,25 @@ public class MenuController {
                 android.R.style.Widget_Material_Light_PopupMenu);
         PopupMenu popup = new PopupMenu(wrapper, anchor, Gravity.END);
 
-        popup.getMenu().add("New Tab");
-        popup.getMenu().add("New Incognito Tab");
-        popup.getMenu().add("Reload");
-        popup.getMenu().add("Downloads");
-        popup.getMenu().add("Find in Page");
-        popup.getMenu().add("Bookmarks");
-        popup.getMenu().add("Add Bookmark");
-        popup.getMenu().add("History");
-        popup.getMenu().add("Clear History");
-        popup.getMenu().add("Clear Cache");
-        popup.getMenu().add("Filter Lists");
-        popup.getMenu().add("Disable Filterlists");  // label updated below
-        popup.getMenu().add("Desktop Site [OFF]");   // label updated below
-        popup.getMenu().add("Passwords");
-        popup.getMenu().add("🔑 Vault (Copy)");
-        popup.getMenu().add("Search Engine");
-        popup.getMenu().add("About");
-        popup.getMenu().add("Startup Animation");
-        popup.getMenu().add("Exit");
+        popup.getMenu().add("New Tab");                       // 0
+        popup.getMenu().add("New Incognito Tab");             // 1
+        popup.getMenu().add("Reload");                        // 2
+        popup.getMenu().add("Downloads");                     // 3
+        popup.getMenu().add("Find in Page");                  // 4
+        popup.getMenu().add("Bookmarks");                     // 5
+        popup.getMenu().add("Add Bookmark");                  // 6
+        popup.getMenu().add("History");                       // 7
+        popup.getMenu().add("Clear History");                 // 8
+        popup.getMenu().add("Clear Cache");                   // 9
+        popup.getMenu().add("Filter Lists");                  // 10
+        popup.getMenu().add("Desktop Site [OFF]");            // 11
+        popup.getMenu().add("Trusted cleartext hosts");       // 12
+        popup.getMenu().add("Passwords");                     // 13
+        popup.getMenu().add("🔑 Vault (Copy)");                // 14
+        popup.getMenu().add("Search Engine");                 // 15
+        popup.getMenu().add("About");                         // 16
+        popup.getMenu().add("Startup Animation");             // 17
+        popup.getMenu().add("Exit");                          // 18
 
         boolean filterEnabled = AdBlockEngine.checkIsEngineEnabled(activity);
         popup.getMenu().getItem(10)
@@ -131,27 +134,28 @@ public class MenuController {
         popup.setOnMenuItemClickListener(item -> {
             String title = item.getTitle().toString();
             switch (title) {
-                case "New Tab":                 callbacks.newTab(false); return true;
-                case "New Incognito Tab":       callbacks.newTab(true);  return true;
-                case "Reload":                  callbacks.reload(); return true;
-                case "Downloads":               callbacks.openDownloads(); return true;
-                case "Find in Page":            callbacks.findInPage(); return true;
-                case "Bookmarks":               callbacks.showBookmarks(); return true;
-                case "Add Bookmark":            callbacks.addBookmark(); return true;
-                case "History":                 callbacks.showHistory(); return true;
-                case "Clear History":           callbacks.clearHistory(); return true;
-                case "Clear Cache":             callbacks.clearCache(); return true;
-                case "Filter Lists":            callbacks.showFilterLists(); return true;
+                case "New Tab":                   callbacks.newTab(false); return true;
+                case "New Incognito Tab":         callbacks.newTab(true);  return true;
+                case "Reload":                    callbacks.reload(); return true;
+                case "Downloads":                 callbacks.openDownloads(); return true;
+                case "Find in Page":              callbacks.findInPage(); return true;
+                case "Bookmarks":                 callbacks.showBookmarks(); return true;
+                case "Add Bookmark":              callbacks.addBookmark(); return true;
+                case "History":                   callbacks.showHistory(); return true;
+                case "Clear History":             callbacks.clearHistory(); return true;
+                case "Clear Cache":               callbacks.clearCache(); return true;
+                case "Filter Lists":              callbacks.showFilterLists(); return true;
                 case "Disable Filterlists":
-                case "Enable Filterlists":      callbacks.toggleFilterEngine(); return true;
+                case "Enable Filterlists":        callbacks.toggleFilterEngine(); return true;
                 case "Desktop Site [OFF]":
-                case "Desktop Site [ON]":       callbacks.toggleDesktopMode(); return true;
-                case "Passwords":               showPasswordsSubmenu(); return true;
-                case "🔑 Vault (Copy)":         callbacks.showVaultForCurrentSite(); return true;
-                case "Search Engine":           showSearchEngineDialog(); return true;
-                case "About":                   showAbout(); return true;
-                case "Startup Animation":       callbacks.toggleStartupAnimation(); return true;
-                case "Exit":                    callbacks.exit(); return true;
+                case "Desktop Site [ON]":         callbacks.toggleDesktopMode(); return true;
+                case "Trusted cleartext hosts":   showCleartextHostsDialog(); return true;
+                case "Passwords":                 showPasswordsSubmenu(); return true;
+                case "🔑 Vault (Copy)":           callbacks.showVaultForCurrentSite(); return true;
+                case "Search Engine":             showSearchEngineDialog(); return true;
+                case "About":                     showAbout(); return true;
+                case "Startup Animation":         callbacks.toggleStartupAnimation(); return true;
+                case "Exit":                      callbacks.exit(); return true;
             }
             return false;
         });
@@ -166,7 +170,7 @@ public class MenuController {
                 "Import from CSV",
                 "Export to CSV"
         };
-        new android.app.AlertDialog.Builder(activity)
+        new AlertDialog.Builder(activity)
                 .setTitle("Password Management")
                 .setItems(options, (dialog, which) -> {
                     if (which == 0)      callbacks.showVault();
@@ -174,6 +178,92 @@ public class MenuController {
                     else if (which == 2) callbacks.importPasswords();
                     else if (which == 3) callbacks.exportPasswords();
                 })
+                .show();
+    }
+
+    // ------------------------------------------------------------------------
+    // Trusted cleartext hosts (batch D)
+    // ------------------------------------------------------------------------
+    private void showCleartextHostsDialog() {
+        Set<String> hosts = CleartextPreferences.getUserHosts(activity);
+        ArrayList<String> list = new ArrayList<>(hosts);
+        Collections.sort(list);
+
+        if (list.isEmpty()) {
+            new AlertDialog.Builder(activity)
+                    .setTitle("Trusted cleartext hosts")
+                    .setMessage("No user-added hosts yet.\n\n"
+                            + "Hosts added here are permitted to load over http:// "
+                            + "instead of being auto-upgraded to https://.\n\n"
+                            + "The compiled default list (router brands, gateway IPs, "
+                            + "localhost, emulator host, mDNS) is always trusted.")
+                    .setPositiveButton("Add", (d, w) -> showAddCleartextHostDialog())
+                    .setNegativeButton("Close", null)
+                    .show();
+            return;
+        }
+
+        ListView listView = new ListView(activity);
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                activity, android.R.layout.simple_list_item_1, list);
+        listView.setAdapter(adapter);
+
+        listView.setOnItemLongClickListener((parent, view, pos, id) -> {
+            String host = list.get(pos);
+            new AlertDialog.Builder(activity)
+                    .setTitle("Remove trusted host?")
+                    .setMessage(host)
+                    .setPositiveButton("Remove", (d, w) -> {
+                        CleartextPreferences.removeUserHost(activity, host);
+                        Toast.makeText(activity, "Removed " + host,
+                                Toast.LENGTH_SHORT).show();
+                        showCleartextHostsDialog();   // refresh
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+            return true;
+        });
+
+        new AlertDialog.Builder(activity)
+                .setTitle("Trusted cleartext hosts")
+                .setView(listView)
+                .setPositiveButton("Add", (d, w) -> showAddCleartextHostDialog())
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    private void showAddCleartextHostDialog() {
+        EditText input = new EditText(activity);
+        input.setHint("192.168.1.100  or  router.example.com");
+
+        new AlertDialog.Builder(activity)
+                .setTitle("Add trusted host")
+                .setMessage("HTTP loads for this host will not be upgraded to HTTPS.")
+                .setView(input)
+                .setPositiveButton("Add", (d, w) -> {
+                    String raw = input.getText().toString().trim();
+                    if (raw.isEmpty()) return;
+
+                    // Normalize before storing so the list stays canonical.
+                    String normalized = raw.toLowerCase(Locale.ROOT);
+                    if (normalized.contains("://")) {
+                        normalized = normalized.substring(normalized.indexOf("://") + 3);
+                    }
+                    if (normalized.contains("/")) {
+                        normalized = normalized.substring(0, normalized.indexOf('/'));
+                    }
+                    if (normalized.contains(":")) {
+                        normalized = normalized.split(":")[0];
+                    }
+                    normalized = normalized.trim();
+                    if (normalized.isEmpty()) return;
+
+                    CleartextPreferences.addUserHost(activity, normalized);
+                    Toast.makeText(activity, "Added " + normalized,
+                            Toast.LENGTH_SHORT).show();
+                    showCleartextHostsDialog();   // refresh
+                })
+                .setNegativeButton("Cancel", null)
                 .show();
     }
 
@@ -190,7 +280,7 @@ public class MenuController {
             if (values[i].equals(current)) { checked = i; break; }
         }
 
-        new android.app.AlertDialog.Builder(activity)
+        new AlertDialog.Builder(activity)
                 .setTitle("Search Engine")
                 .setSingleChoiceItems(engines, checked, (dialog, which) -> {
                     prefs.edit().putString(KEY_SEARCH_ENGINE, values[which]).apply();
@@ -238,7 +328,7 @@ public class MenuController {
         shape.setStroke(2, Color.parseColor("#333333"));
         barLayout.setBackground(shape);
 
-        android.widget.EditText input = new android.widget.EditText(activity);
+        EditText input = new EditText(activity);
         input.setHint("Find...");
         input.setSingleLine(true);
         input.setTextColor(Color.WHITE);

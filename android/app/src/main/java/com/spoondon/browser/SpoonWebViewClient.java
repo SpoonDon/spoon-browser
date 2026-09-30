@@ -42,9 +42,9 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // 1. Asset loader first — vault.html (and any future bundled asset)
-            //    is served from the synthetic HTTPS origin, never from the
-            //    network. AdBlock must not see or block these requests.
+            // Asset loader first — vault.html (and any future bundled asset)
+            // is served from the synthetic HTTPS origin, never from the
+            // network. AdBlock must not see or block these requests.
             WebResourceResponse assetResponse = assetLoader.shouldInterceptRequest(request.getUrl());
             if (assetResponse != null) {
                 return assetResponse;
@@ -66,8 +66,6 @@ public class SpoonWebViewClient extends WebViewClient {
                 }
             }
 
-            // Compute resource type + source host so $script, $domain=,
-            // and $third-party rules can match. See AdBlockEngine batch C.
             int resourceType = classifyResource(request);
             String sourceHost = extractSourceHost(view);
 
@@ -94,11 +92,6 @@ public class SpoonWebViewClient extends WebViewClient {
         }
     }
 
-    /**
-     * Best-effort resource type from the request headers. WebResourceRequest
-     * does not expose a resource type directly — we infer from Accept: and
-     * from whether this is a subframe.
-     */
     private static int classifyResource(WebResourceRequest request) {
         if (request.isForMainFrame()) return AdBlockEngine.TYPE_DOCUMENT;
 
@@ -107,10 +100,10 @@ public class SpoonWebViewClient extends WebViewClient {
         if (accept == null) return AdBlockEngine.TYPE_OTHER;
 
         String a = accept.toLowerCase(Locale.ROOT);
-        if (a.startsWith("text/css") || a.contains("text/css")) return AdBlockEngine.TYPE_STYLESHEET;
+        if (a.contains("text/css")) return AdBlockEngine.TYPE_STYLESHEET;
         if (a.startsWith("image/")) return AdBlockEngine.TYPE_IMAGE;
         if (a.contains("javascript")) return AdBlockEngine.TYPE_SCRIPT;
-        if (a.startsWith("font/") || a.contains("font/")) return AdBlockEngine.TYPE_FONT;
+        if (a.startsWith("font/")) return AdBlockEngine.TYPE_FONT;
         if (a.startsWith("video/") || a.startsWith("audio/")) return AdBlockEngine.TYPE_MEDIA;
         if (a.contains("json") || a.contains("xml")) return AdBlockEngine.TYPE_XHR;
         if (a.startsWith("text/html")) return AdBlockEngine.TYPE_SUBDOCUMENT;
@@ -158,9 +151,11 @@ public class SpoonWebViewClient extends WebViewClient {
         }
 
         // Cleartext policy — see CleartextPolicy.java.
+        // Non-whitelisted http:// requests are silently upgraded to https://.
+        // Whitelisted hosts (compiled or user-added) load as-is.
         if (url.startsWith("http://")) {
             String rawHost = extractHostFromHttpUrl(url);
-            if (CleartextPolicy.isCleartextAllowed(rawHost)) {
+            if (CleartextPolicy.isCleartextAllowed(view.getContext(), rawHost)) {
                 return false;
             }
             String secureUrl = url.replace("http://", "https://");
@@ -547,7 +542,7 @@ public class SpoonWebViewClient extends WebViewClient {
             try {
                 Uri uri = Uri.parse(url);
                 String host = uri.getHost();
-                if (CleartextPolicy.isCleartextAllowed(host)) {
+                if (CleartextPolicy.isCleartextAllowed(view.getContext(), host)) {
                     handler.proceed();
                     return;
                 }

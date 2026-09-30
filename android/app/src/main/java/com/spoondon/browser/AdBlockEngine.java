@@ -37,19 +37,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *   - Resource-type options ($script, $image, $stylesheet, ...)
  *   - Party constraints ($third-party, $~third-party)
  *
- * Storage model:
- *   - blockedDomains / scopedPathRules: legacy fast path. Plain
- *     {@code ||domain^} and {@code ||domain/path} rules, O(1) lookup.
- *   - blockRules / exceptionRules: rules that carry ANY option or that
- *     are exceptions. Linear scan within a host bucket, but small.
- *
- * Matching order for a request:
- *   1. User whitelist (from prefs)              -> never block
- *   2. Exception rules (host then parent)       -> never block
- *   3. Block rules (host then parent)           -> block
- *
- * Cache format version bumped to 2. Version 1 (or missing) is treated as
- * a miss — forces a reparse from local filter files.
+ * Cosmetic slice (2026-09-30): added support for #@# exceptions. A
+ * cosmetic hide rule (##) can now be negated for a specific host with
+ * #@#. When building the CSS for a page, hide selectors are collected
+ * from the host and its parent, then any matching #@# selectors from
+ * either level are subtracted.
  */
 public class AdBlockEngine {
 
@@ -66,9 +58,6 @@ public class AdBlockEngine {
     public static final int TYPE_XHR         = 1 << 7;
     public static final int TYPE_OTHER       = 1 << 8;
 
-    // ------------------------------------------------------------------------
-    // Party constraint codes
-    // ------------------------------------------------------------------------
     private static final int PARTY_ANY   = 0;
     private static final int PARTY_THIRD = 1;
     private static final int PARTY_FIRST = 2;
@@ -78,14 +67,14 @@ public class AdBlockEngine {
     // ------------------------------------------------------------------------
     private static volatile HashSet<String> blockedDomains = new HashSet<>();
     private static volatile HashMap<String, ArrayList<String>> scopedPathRules = new HashMap<>();
-
-    /** Rules that carry options. Keyed by host (no parent index — callers walk up). */
     private static volatile HashMap<String, List<Rule>> blockRules = new HashMap<>();
     private static volatile HashMap<String, List<Rule>> exceptionRules = new HashMap<>();
 
     private static volatile HashSet<String> whitelistedDomains = new HashSet<>();
     private static volatile boolean isEngineEnabled = true;
+
     private static volatile HashMap<String, ArrayList<String>> cosmeticRules = new HashMap<>();
+    private static volatile HashMap<String, ArrayList<String>> cosmeticExceptions = new HashMap<>();
 
     private static final AtomicBoolean isUpdating = new AtomicBoolean(false);
     private static final String PREFS_NAME = "SpoonAdBlockPrefs";
@@ -188,7 +177,6 @@ public class AdBlockEngine {
             Builder b = new Builder();
 
             for (String filterUrl : filterLists) {
-                // HTTPS only — filter lists are a network injection vector.
                 if (!filterUrl.toLowerCase(Locale.ROOT).startsWith("https://")) {
                     allOk = false;
                     continue;
@@ -280,21 +268,10 @@ public class AdBlockEngine {
     // Decision
     // ========================================================================
 
-    /**
-     * Backward-compatible overload. Callers that know the resource type and
-     * the top-level page host should use the 3-arg version so that
-     * {@code $script}, {@code $domain=}, and {@code $third-party} rules can
-     * actually match.
-     */
     public static boolean shouldBlock(String url) {
         return shouldBlock(url, TYPE_OTHER, null);
     }
 
-    /**
-     * @param resourceType one of the TYPE_* constants
-     * @param sourceHost   hostname of the page making the request, or null
-     *                     if unknown (top-level navigations)
-     */
     public static boolean shouldBlock(String url, int resourceType, String sourceHost) {
         if (!isEngineEnabled || url == null) return false;
 
@@ -328,23 +305,16 @@ public class AdBlockEngine {
                     boolean thirdParty = sourceHost != null
                             && !sameSite(host, sourceHost.toLowerCase(Locale.ROOT));
 
-                    // 1. Exceptions win.
                     if (matchesInRules(exceptionRules, host, parentDomain, pathAndQuery,
                             resourceType, sourceHost, thirdParty)) {
                         blocked = false;
-                    }
-                    // 2. Legacy fast path for plain domain blocks.
-                    else if (blockedDomains.contains(host)
+                    } else if (blockedDomains.contains(host)
                             || (parentDomain != null && blockedDomains.contains(parentDomain))) {
                         blocked = true;
-                    }
-                    // 3. Legacy path rules.
-                    else if (checkPathMatch(host, pathAndQuery)
+                    } else if (checkPathMatch(host, pathAndQuery)
                             || (parentDomain != null && checkPathMatch(parentDomain, pathAndQuery))) {
                         blocked = true;
-                    }
-                    // 4. Option-carrying block rules.
-                    else if (matchesInRules(blockRules, host, parentDomain, pathAndQuery,
+                    } else if (matchesInRules(blockRules, host, parentDomain, pathAndQuery,
                             resourceType, sourceHost, thirdParty)) {
                         blocked = true;
                     }
@@ -371,18 +341,32 @@ public class AdBlockEngine {
             String host = uri.getHost();
             if (host == null) return "";
             host = host.toLowerCase(Locale.ROOT);
+            String parent = parentOf(host);
+
+            // Collect #@# exceptions at both levels so we can subtract them.
+            Set<String> excluded = new HashSet<>();
+            if (cosmeticExceptions.containsKey(host)) {
+                excluded.addAll(cosmeticExceptions.get(host));
+            }
+            if (parent != null && cosmeticExceptions.containsKey(parent)) {
+                excluded.addAll(cosmeticExceptions.get(parent));
+            }
 
             ArrayList<String> selectors = new ArrayList<>();
             if (cosmeticRules.containsKey(host)) {
-                selectors.addAll(cosmeticRules.get(host));
+                for (String s : cosmeticRules.get(host)) {
+                    if (!excluded.contains(s)) selectors.add(s);
+                }
             }
-            String parent = parentOf(host);
             if (parent != null && cosmeticRules.containsKey(parent)) {
-                selectors.addAll(cosmeticRules.get(parent));
+                for (String s : cosmeticRules.get(parent)) {
+                    if (!excluded.contains(s)) selectors.add(s);
+                }
             }
 
             if (selectors.isEmpty()) return "";
-            return android.text.TextUtils.join(", ", selectors) + " { display: none !important; }";
+            return android.text.TextUtils.join(", ", selectors)
+                    + " { display: none !important; }";
         } catch (Exception e) {
             return "";
         }
@@ -468,11 +452,12 @@ public class AdBlockEngine {
         final HashMap<String, List<Rule>> blockRules = new HashMap<>();
         final HashMap<String, List<Rule>> exceptionRules = new HashMap<>();
         final HashMap<String, ArrayList<String>> cosmetic = new HashMap<>();
+        final HashMap<String, ArrayList<String>> cosmeticExceptions = new HashMap<>();
 
         boolean hasAnything() {
             return !domains.isEmpty() || !paths.isEmpty()
                     || !blockRules.isEmpty() || !exceptionRules.isEmpty()
-                    || !cosmetic.isEmpty();
+                    || !cosmetic.isEmpty() || !cosmeticExceptions.isEmpty();
         }
     }
 
@@ -482,6 +467,7 @@ public class AdBlockEngine {
         blockRules = b.blockRules;
         exceptionRules = b.exceptionRules;
         cosmeticRules = b.cosmetic;
+        cosmeticExceptions = b.cosmeticExceptions;
         decisionCache.evictAll();
     }
 
@@ -499,19 +485,19 @@ public class AdBlockEngine {
         if (line.startsWith("!") || line.startsWith("[")) return;
 
         // --- Cosmetic rules ------------------------------------------------
-        // ## (element hide) — keep current behavior. #@# (exception) still
-        // ignored for now; separate slice.
-        if (!line.startsWith("@@") && line.contains("##") && !line.contains("#@#")) {
-            int splitIdx = line.indexOf("##");
-            String domainPart = line.substring(0, splitIdx).trim();
-            String selector = line.substring(splitIdx + 2).trim();
-            if (!domainPart.isEmpty() && !selector.isEmpty() && !domainPart.contains("*")) {
-                for (String d : domainPart.split(",")) {
-                    d = d.trim().toLowerCase(Locale.ROOT);
-                    if (d.isEmpty() || d.startsWith("~")) continue;
-                    b.cosmetic.computeIfAbsent(d, k -> new ArrayList<>()).add(selector);
-                }
-            }
+        // Handles ## (hide) and #@# (exception). Order matters: check #@#
+        // first because it is longer and more specific.
+        int exIdx = line.indexOf("#@#");
+        int hideIdx = line.indexOf("##");
+
+        if (exIdx != -1 && (hideIdx == -1 || exIdx < hideIdx)) {
+            parseCosmetic(line, exIdx, 3, b.cosmeticExceptions);
+            return;
+        }
+        if (hideIdx != -1) {
+            // Reject the "@@||...#@#" case where the hide marker appears
+            // before the exception marker — it is not a valid cosmetic rule.
+            parseCosmetic(line, hideIdx, 2, b.cosmetic);
             return;
         }
 
@@ -531,7 +517,6 @@ public class AdBlockEngine {
             options = line.substring(dollar + 1);
         }
 
-        // --- Only handle domain-anchored rules for now ---------------------
         if (!pattern.startsWith("||")) return;
 
         String domainAndPath = pattern.substring(2);
@@ -551,7 +536,6 @@ public class AdBlockEngine {
         host = host.trim().toLowerCase(Locale.ROOT);
         if (host.isEmpty() || host.contains("*") || !host.contains(".")) return;
 
-        // Strip wildcards from the path — substring match still works.
         if (!pathPattern.isEmpty()) {
             pathPattern = pathPattern.replace("*", "");
         }
@@ -608,7 +592,6 @@ public class AdBlockEngine {
             }
         }
 
-        // --- Fast path: no options, not an exception -----------------------
         if (!hasOptions && !exception) {
             if (pathPattern.isEmpty()) {
                 b.domains.add(host);
@@ -618,12 +601,32 @@ public class AdBlockEngine {
             return;
         }
 
-        // --- Rich rule -----------------------------------------------------
         Rule rule = new Rule(host, pathPattern, exception, resourceTypesMask,
                 domainAllow, domainDeny, partyFlag);
 
         HashMap<String, List<Rule>> target = exception ? b.exceptionRules : b.blockRules;
         target.computeIfAbsent(host, k -> new ArrayList<>()).add(rule);
+    }
+
+    /**
+     * Shared parser for ## and #@# rules. Splits {@code domainPart##selector}
+     * or {@code domainPart#@#selector}, then stores the selector under each
+     * listed domain (skipping "~" negations, which are not supported in the
+     * hide path).
+     */
+    private static void parseCosmetic(String line, int markerIdx, int markerLen,
+                                      HashMap<String, ArrayList<String>> target) {
+        String domainPart = line.substring(0, markerIdx).trim();
+        String selector = line.substring(markerIdx + markerLen).trim();
+
+        if (domainPart.isEmpty() || selector.isEmpty()) return;
+        if (domainPart.contains("*")) return;
+
+        for (String d : domainPart.split(",")) {
+            d = d.trim().toLowerCase(Locale.ROOT);
+            if (d.isEmpty() || d.startsWith("~")) continue;
+            target.computeIfAbsent(d, k -> new ArrayList<>()).add(selector);
+        }
     }
 
     private static int resourceTypeFromName(String name) {
@@ -656,8 +659,8 @@ public class AdBlockEngine {
         final String pathPattern;
         final boolean exception;
         final int resourceTypesMask;
-        final Set<String> domainAllow;   // nullable; empty means "any source"
-        final Set<String> domainDeny;    // nullable
+        final Set<String> domainAllow;
+        final Set<String> domainDeny;
         final int partyFlag;
 
         Rule(String host, String pathPattern, boolean exception, int resourceTypesMask,
@@ -736,6 +739,7 @@ public class AdBlockEngine {
             root.put("blockRules", rulesToJson(blockRules));
             root.put("exceptionRules", rulesToJson(exceptionRules));
             root.put("cosmetic", stringListMapToJson(cosmeticRules));
+            root.put("cosmeticExceptions", stringListMapToJson(cosmeticExceptions));
 
             try (FileOutputStream fos = new FileOutputStream(cacheFile)) {
                 fos.write(root.toString().getBytes(StandardCharsets.UTF_8));
@@ -756,20 +760,30 @@ public class AdBlockEngine {
             }
             JSONObject root = new JSONObject(sb.toString());
 
-            // Version gate — v1 caches are treated as a miss.
             if (root.optInt("version", 0) < CACHE_VERSION) return false;
 
             HashSet<String> newDomains = new HashSet<>();
             JSONArray domainsArr = root.optJSONArray("domains");
             if (domainsArr != null) {
-                for (int i = 0; i < domainsArr.length(); i++) newDomains.add(domainsArr.getString(i));
+                for (int i = 0; i < domainsArr.length(); i++) {
+                    newDomains.add(domainsArr.getString(i));
+                }
             }
             blockedDomains = newDomains;
 
             scopedPathRules = jsonToStringListMap(root.optJSONObject("paths"));
-            blockRules = jsonToRules(root.optJSONObject("blockRules"));
-            exceptionRules = jsonToRules(root.optJSONObject("exceptionRules"));
+            blockRules = jsonToRules(root.optJSONObject("blockRules"), false);
+            exceptionRules = jsonToRules(root.optJSONObject("exceptionRules"), true);
             cosmeticRules = jsonToStringListMap(root.optJSONObject("cosmetic"));
+
+            // Cosmetic exceptions were added after the initial v2 format.
+            // Old caches simply lack the key — default to empty.
+            JSONObject cexObj = root.optJSONObject("cosmeticExceptions");
+            if (cexObj != null) {
+                cosmeticExceptions = jsonToStringListMap(cexObj);
+            } else {
+                cosmeticExceptions = new HashMap<>();
+            }
 
             decisionCache.evictAll();
             return true;
@@ -830,7 +844,8 @@ public class AdBlockEngine {
         return obj;
     }
 
-    private static HashMap<String, List<Rule>> jsonToRules(JSONObject obj) throws Exception {
+    private static HashMap<String, List<Rule>> jsonToRules(JSONObject obj, boolean isException)
+            throws Exception {
         HashMap<String, List<Rule>> out = new HashMap<>();
         if (obj == null) return out;
         Iterator<String> keys = obj.keys();
@@ -857,9 +872,7 @@ public class AdBlockEngine {
                     for (int j = 0; j < ddArr.length(); j++) dd.add(ddArr.getString(j));
                 }
 
-                // exception flag is implied by which map the rule lives in
-                boolean isException = (obj == null) ? false : false;
-                rules.add(new Rule(host, path, false, types, da, dd, party));
+                rules.add(new Rule(host, path, isException, types, da, dd, party));
             }
             out.put(host, rules);
         }
