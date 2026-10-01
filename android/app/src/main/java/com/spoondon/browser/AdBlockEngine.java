@@ -845,7 +845,7 @@ public class AdBlockEngine {
 
         // 3. Everything else becomes a path-only rule. This is the v4 fix:
         //    the old engine returned here and lost the rule entirely.
-        b.pathOnlyRules.add(new PathRule(pattern, exception, resourceTypesMask,
+        b.pathRules.add(new PathRule(pattern, exception, resourceTypesMask,
                 domainAllow, domainDeny, partyFlag));
         b.parsed++;
     }
