@@ -182,5 +182,247 @@ public final class ItemManagerDialog {
         }
     }
 
-    // === PART 2 CONTINUES HERE ===
+        // ------------------------------------------------------------------
+    // List interaction
+    // ------------------------------------------------------------------
+
+    @NonNull
+    private AbsListView.MultiChoiceModeListener buildCab() {
+        return new AbsListView.MultiChoiceModeListener() {
+            @Override
+            public void onItemCheckedStateChanged(ActionMode mode, int position,
+                                                  long id, boolean checked) {
+                mode.setTitle(listView.getCheckedItemCount() + " selected");
+            }
+
+            @Override
+            public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+                menu.add(Menu.NONE, MENU_DELETE, 0, "Delete")
+                        .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+                menu.add(Menu.NONE, MENU_SELECT_ALL, 1, "Select all")
+                        .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+                mode.setTitle("0 selected");
+                return true;
+            }
+
+            @Override
+            public boolean onPrepareActionMode(ActionMode mode, Menu menu) { return false; }
+
+            @Override
+            public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
+                int id = item.getItemId();
+                if (id == MENU_DELETE) {
+                    confirmDeleteSelected(mode);
+                    return true;
+                }
+                if (id == MENU_SELECT_ALL) {
+                    for (int i = 0; i < adapter.getCount(); i++) listView.setItemChecked(i, true);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public void onDestroyActionMode(ActionMode mode) { /* no-op */ }
+        };
+    }
+
+    private void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        ManagedItem item = adapter.getItem(position);
+        if (item == null) return;
+        callbacks.onNavigate(item.getUrl());
+        dialog.dismiss();
+    }
+
+    // ------------------------------------------------------------------
+    // Menus
+    // ------------------------------------------------------------------
+
+    private void showSortMenu(View anchor) {
+        PopupMenu pm = new PopupMenu(activity, anchor);
+        pm.getMenu().add(0, ItemManagerAdapter.SORT_DATE_DESC, 0, "Newest first");
+        pm.getMenu().add(0, ItemManagerAdapter.SORT_DATE_ASC,  1, "Oldest first");
+        pm.getMenu().add(0, ItemManagerAdapter.SORT_TITLE_ASC, 2, "Title A-Z");
+        pm.getMenu().add(0, ItemManagerAdapter.SORT_HOST_ASC,  3, "Host A-Z");
+        pm.setOnMenuItemClickListener(mi -> {
+            adapter.setSortMode(mi.getItemId());
+            return true;
+        });
+        pm.show();
+    }
+
+    private void showItemMenu(View anchor, int position) {
+        ManagedItem item = adapter.getItem(position);
+        if (item == null) return;
+
+        PopupMenu pm = new PopupMenu(activity, anchor);
+        pm.getMenu().add(0, MENU_OPEN,       0, "Open");
+        pm.getMenu().add(0, MENU_OPEN_NEW,   1, "Open in new tab");
+        pm.getMenu().add(0, MENU_EDIT,       2, "Edit");
+        pm.getMenu().add(0, MENU_COPY,       3, "Copy URL");
+        pm.getMenu().add(0, MENU_SHARE,      4, "Share");
+        pm.getMenu().add(0, MENU_ONE_DELETE, 5, "Delete");
+
+        pm.setOnMenuItemClickListener(mi -> {
+            switch (mi.getItemId()) {
+                case MENU_OPEN:
+                    callbacks.onNavigate(item.getUrl());
+                    dialog.dismiss();
+                    return true;
+                case MENU_OPEN_NEW:
+                    callbacks.openInNewTab(item.getUrl());
+                    return true;
+                case MENU_EDIT:
+                    editItem(item);
+                    return true;
+                case MENU_COPY:
+                    copyUrl(item);
+                    return true;
+                case MENU_SHARE:
+                    shareUrl(item);
+                    return true;
+                case MENU_ONE_DELETE:
+                    confirmDeleteOne(item);
+                    return true;
+            }
+            return false;
+        });
+        pm.show();
+    }
+
+    // ------------------------------------------------------------------
+    // Actions
+    // ------------------------------------------------------------------
+
+    private void editItem(@NonNull ManagedItem item) {
+        int pad = dp(16);
+        LinearLayout box = new LinearLayout(activity);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(pad, pad, pad, pad);
+
+        EditText titleIn = new EditText(activity);
+        titleIn.setHint("Title");
+        titleIn.setSingleLine(true);
+        titleIn.setText(item.getTitle() == null ? "" : item.getTitle());
+
+        EditText urlIn = new EditText(activity);
+        urlIn.setHint("URL");
+        urlIn.setSingleLine(true);
+        urlIn.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+        urlIn.setText(item.getUrl());
+
+        box.addView(titleIn);
+        box.addView(urlIn);
+
+        new AlertDialog.Builder(activity)
+                .setTitle("Edit")
+                .setView(box)
+                .setPositiveButton("Save", (d, w) -> {
+                    String newTitle = titleIn.getText().toString().trim();
+                    String newUrl = urlIn.getText().toString().trim();
+                    if (newUrl.isEmpty()) {
+                        Toast.makeText(activity, "URL cannot be empty",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    source.update(item,
+                            newTitle.isEmpty() ? null : newTitle,
+                            newUrl);
+                    item.setTitle(newTitle.isEmpty() ? null : newTitle);
+                    item.setUrl(newUrl);
+                    adapter.refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void copyUrl(@NonNull ManagedItem item) {
+        ClipboardManager cm = (ClipboardManager)
+                activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm != null) {
+            cm.setPrimaryClip(ClipData.newPlainText("url", item.getUrl()));
+            Toast.makeText(activity, "URL copied", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void shareUrl(@NonNull ManagedItem item) {
+        Intent i = new Intent(Intent.ACTION_SEND);
+        i.setType("text/plain");
+        i.putExtra(Intent.EXTRA_TEXT, item.getUrl());
+        activity.startActivity(Intent.createChooser(i, "Share via"));
+    }
+
+    // ------------------------------------------------------------------
+    // Delete flows
+    // ------------------------------------------------------------------
+
+    private void confirmDeleteOne(@NonNull ManagedItem item) {
+        new AlertDialog.Builder(activity)
+                .setTitle("Delete")
+                .setMessage("Delete \"" + item.displayTitle() + "\"?")
+                .setPositiveButton("Delete", (d, w) -> {
+                    List<Long> ids = new ArrayList<>(1);
+                    ids.add(item.id);
+                    source.delete(ids);
+                    adapter.removeIds(ids);
+                    updateEmpty();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmDeleteSelected(@NonNull ActionMode mode) {
+        final List<Long> ids = new ArrayList<>();
+        android.util.SparseBooleanArray checked = listView.getCheckedItemPositions();
+        if (checked != null) {
+            for (int i = 0; i < checked.size(); i++) {
+                if (checked.valueAt(i)) {
+                    ManagedItem it = adapter.getItem(checked.keyAt(i));
+                    if (it != null) ids.add(it.id);
+                }
+            }
+        }
+        if (ids.isEmpty()) {
+            mode.finish();
+            return;
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("Delete " + ids.size() + " item(s)?")
+                .setPositiveButton("Delete", (d, w) -> {
+                    source.delete(ids);
+                    adapter.removeIds(ids);
+                    mode.finish();
+                    updateEmpty();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmClearAll() {
+        new AlertDialog.Builder(activity)
+                .setTitle("Clear all?")
+                .setMessage("This removes every entry. Cannot be undone.")
+                .setPositiveButton("Clear", (d, w) -> {
+                    source.clearAll();
+                    adapter.setItems(new ArrayList<>());
+                    updateEmpty();
+                    dialog.dismiss();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+
+    private void updateEmpty() {
+        boolean empty = adapter.getCount() == 0;
+        listView.setVisibility(empty ? View.GONE : View.VISIBLE);
+        emptyView.setVisibility(empty ? View.VISIBLE : View.GONE);
+    }
+
+    private int dp(int v) {
+        return (int) (v * activity.getResources().getDisplayMetrics().density);
+    }
 }
