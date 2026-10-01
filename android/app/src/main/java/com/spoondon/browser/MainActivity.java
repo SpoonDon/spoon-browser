@@ -401,12 +401,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
         
-    private void warmUpBackgroundWork() {
-        backgroundExecutor.execute(() -> {
-            AdBlockEngine.init(MainActivity.this, filterLists);
-            AdBlockEngine.checkAndRefreshFilters(
-                    MainActivity.this, backgroundExecutor, filterLists, false);
-        });
+    private void warmUpBackgroundWork() {        
         backgroundExecutor.execute(() -> {
             try {
                 if (dbHelper != null) {
