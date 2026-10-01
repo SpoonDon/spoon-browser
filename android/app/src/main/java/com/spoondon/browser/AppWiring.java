@@ -1,7 +1,6 @@
 package com.spoondon.browser;
 
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.view.View;
 import android.webkit.WebView;
@@ -19,12 +18,16 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
+ * 2026-10-01 (history + bookmark managers): adds BookmarkManager alongside
+ * HistoryController. Both share the manager dialog infrastructure
+ * ({@link ItemManagerDialog}) but own separate persistence concerns.
+ * The MenuController "Bookmarks" / "Add Bookmark" callbacks now route to
+ * BookmarkManager instead of HistoryController.
+ *
  * 2026-09-30 (downloads redirect fix): triggerManualDownload no longer
  * calls DownloadHandler.triggerExternalDownload directly. It now routes
  * through DownloadHandler.onDownloadStart so the user sees the standard
- * download dialog and the in-app OkHttp engine is used. Previously every
- * extension-matched URL was fired as ACTION_VIEW at the OS, which opened
- * whichever browser is the system default and downloaded there.
+ * download dialog and the in-app OkHttp engine is used.
  */
 public class AppWiring {
 
@@ -50,6 +53,7 @@ public class AppWiring {
     private SuggestionProvider suggestionProvider;
     private TabManager tabManager;
     private HistoryController historyController;
+    private BookmarkManager bookmarkManager;
     private VaultController vaultController;
     private AdBlockController adBlockController;
     private ToolbarController toolbarController;
@@ -119,9 +123,27 @@ public class AppWiring {
         });
 
         // ---- HistoryController -------------------------------------------
+        // Both managers share the same navigation callbacks shape. History
+        // uses its own sub-interface so any existing code that implemented
+        // HistoryController.Callbacks still compiles unchanged.
         historyController = new HistoryController(
                 activity, dbHelper, backgroundExecutor,
                 new HistoryController.Callbacks() {
+                    @Override public void onNavigate(@NonNull String url) {
+                        activity.openUrl(url);
+                    }
+
+                    @Override public void openInNewTab(@NonNull String url) {
+                        tabManager.openUrlInNewTab(url);
+                    }
+                });
+
+        // ---- BookmarkManager ---------------------------------------------
+        // Same shared UX (ItemManagerDialog), independent persistence path.
+        // "Add Bookmark" and "Bookmarks" menu entries route here now.
+        bookmarkManager = new BookmarkManager(
+                activity, dbHelper,
+                new ItemManagerDialog.Callbacks() {
                     @Override public void onNavigate(@NonNull String url) {
                         activity.openUrl(url);
                     }
@@ -217,11 +239,15 @@ public class AppWiring {
                 menuController.showFindInPageDialog(tabManager.getCurrentWebView());
             }
 
-            @Override public void showBookmarks() { historyController.showBookmarks(); }
+            // 2026-10-01: Bookmarks menu item now routes to BookmarkManager
+            // (was HistoryController.showBookmarks()).
+            @Override public void showBookmarks() { bookmarkManager.showBookmarks(); }
 
+            // 2026-10-01: Add Bookmark now routes to BookmarkManager
+            // (was HistoryController.addBookmark, the legacy passthrough).
             @Override public void addBookmark() {
                 WebView wv = tabManager.getCurrentWebView();
-                if (wv != null) historyController.addBookmark(wv.getUrl(), wv.getTitle());
+                if (wv != null) bookmarkManager.addBookmark(wv.getUrl(), wv.getTitle());
             }
 
             @Override public void showHistory() { historyController.showHistoryDialog(); }
@@ -364,6 +390,7 @@ public class AppWiring {
     @NonNull public ToolbarController getToolbarController() { return toolbarController; }
     @NonNull public TabManager getTabManager() { return tabManager; }
     @NonNull public HistoryController getHistoryController() { return historyController; }
+    @NonNull public BookmarkManager getBookmarkManager() { return bookmarkManager; }
     @NonNull public AdBlockController getAdBlockController() { return adBlockController; }
     @NonNull public MenuController getMenuController() { return menuController; }
     @NonNull public VaultController getVaultController() { return vaultController; }
