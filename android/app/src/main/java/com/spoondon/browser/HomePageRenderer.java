@@ -204,4 +204,6 @@ public class HomePageRenderer {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
-                .replace
+                .replace("'", "&#39;");
+    }
+}
