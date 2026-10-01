@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.view.View;
 import android.webkit.WebView;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
@@ -18,21 +19,21 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
- * 2026-10-01 (live-refresh on bookmark change): BookmarkManager now emits
- * a change signal after every mutation, and AppWiring subscribes. If the
- * current tab is showing the home page (URL is null/empty/about:blank —
- * which is how loadDataWithBaseURL reports), the grid is re-rendered so
- * adding or removing a bookmark updates the visible tiles immediately.
+ * 2026-10-01 (vault pill): adds VaultPillController. The pill's host
+ * FrameLayout is browserWrapper — set from MainActivity once the view
+ * tree exists. WebViewFactory registers the SpoonVault bridge that
+ * drives the pill; VaultPillController is handed to it during
+ * initialization.
  *
- * 2026-10-01 (home bookmarks grid): adds FaviconStore + rewires
- * HomePageRenderer to take the BookmarkManager and FaviconStore.
+ * 2026-10-01 (live-refresh on bookmark change): BookmarkManager emits a
+ * change signal after every mutation; AppWiring subscribes and re-renders
+ * home if the current tab is showing it.
  *
- * 2026-10-01 (history + bookmark managers): adds BookmarkManager alongside
- * HistoryController. MenuController "Bookmarks" / "Add Bookmark" route to
+ * 2026-10-01 (home bookmarks grid): FaviconStore + HomePageRenderer take
  * BookmarkManager.
  *
- * 2026-09-30 (downloads redirect fix): triggerManualDownload routes through
- * DownloadHandler.onDownloadStart.
+ * 2026-09-30 (downloads redirect fix): triggerManualDownload routes
+ * through DownloadHandler.onDownloadStart.
  */
 public class AppWiring {
 
@@ -41,6 +42,7 @@ public class AppWiring {
     // ------------------------------------------------------------------------
     private final MainActivity activity;
     private final LinearLayout browserContainer;
+    private final FrameLayout browserWrapper;
     private final SecureCredentialManager credentials;
     private final BrowserDatabaseHelper dbHelper;
     private final PermissionController permissionController;
@@ -60,6 +62,7 @@ public class AppWiring {
     private TabManager tabManager;
     private HistoryController historyController;
     private BookmarkManager bookmarkManager;
+    private VaultPillController vaultPillController;
     private VaultController vaultController;
     private AdBlockController adBlockController;
     private ToolbarController toolbarController;
@@ -67,6 +70,7 @@ public class AppWiring {
 
     public AppWiring(@NonNull MainActivity activity,
                      @NonNull LinearLayout browserContainer,
+                     @NonNull FrameLayout browserWrapper,
                      @NonNull SecureCredentialManager credentials,
                      @NonNull BrowserDatabaseHelper dbHelper,
                      @NonNull PermissionController permissionController,
@@ -75,6 +79,7 @@ public class AppWiring {
                      @NonNull CopyOnWriteArrayList<String> filterLists) {
         this.activity = activity;
         this.browserContainer = browserContainer;
+        this.browserWrapper = browserWrapper;
         this.credentials = credentials;
         this.dbHelper = dbHelper;
         this.permissionController = permissionController;
@@ -95,8 +100,17 @@ public class AppWiring {
         downloadHandler = new DownloadHandler(
                 activity, activity::getCurrentWebView, downloadsController);
 
+        // ---- VaultPillController -----------------------------------------
+        // Built before WebViewFactory so its bridge can be handed the
+        // controller during WebView creation.
+        vaultPillController = new VaultPillController(
+                activity, credentials, activity::getCurrentWebView);
+        vaultPillController.setHost(browserWrapper);
+
+        // ---- WebViewFactory ----------------------------------------------
         webViewFactory = new WebViewFactory(
-                activity, credentials, permissionController, downloadHandler);
+                activity, credentials, permissionController, downloadHandler,
+                vaultPillController);
 
         suggestionProvider = new SuggestionProvider(dbHelper);
 
@@ -110,6 +124,8 @@ public class AppWiring {
                                                       @Nullable TabState state) {
                 applyTabToToolbar(webView, state);
                 activity.updateScreenShield();
+                // Hide the pill on tab change — the new tab's JS will re-arm it.
+                if (vaultPillController != null) vaultPillController.onPageNavigated();
             }
 
             @Override public void onTabCountChanged(int count) {
@@ -152,11 +168,6 @@ public class AppWiring {
                         tabManager.openUrlInNewTab(url);
                     }
                 });
-
-        // 2026-10-01: subscribe to bookmark mutations so the home grid
-        // refreshes live when it's the current content. loadDataWithBaseURL
-        // reports the base URL via getUrl(), which is "about:blank" for
-        // the home page — that's our heuristic for "home is showing".
         bookmarkManager.setOnChangedListener(this::refreshHomeIfVisible);
 
         // ---- FaviconStore + HomePageRenderer ------------------------------
@@ -346,19 +357,6 @@ public class AppWiring {
         homePageRenderer.render(wv, activity.getResources().getConfiguration().screenWidthDp);
     }
 
-    /**
-     * Called from BookmarkManager after every mutation. If the current tab
-     * is showing the home page, re-render it so the grid reflects the
-     * change immediately.
-     *
-     * The home page is loaded via {@code loadDataWithBaseURL("about:blank", ...)},
-     * which makes {@code webView.getUrl()} return {@code "about:blank"}.
-     * The cleartext interstitial uses the same base URL, so this heuristic
-     * can technically also fire there — that's an acceptable edge case
-     * because (a) the user has no path to add bookmarks from inside an
-     * interstitial, and (b) the interstitial is a single-shot handoff that
-     * the user is either dismissing or proceeding from within a second.
-     */
     private void refreshHomeIfVisible() {
         if (tabManager == null) return;
         WebView wv = tabManager.getCurrentWebView();
@@ -373,10 +371,6 @@ public class AppWiring {
         return menuController != null ? menuController.getSearchUrlFor(query) : "";
     }
 
-    /**
-     * Called from SpoonWebViewClient when a navigation URL ends in a
-     * known download extension, and from MainActivity.triggerManualDownload.
-     */
     public void triggerManualDownload(String url, String mime) {
         if (downloadHandler == null || url == null) return;
 
@@ -413,6 +407,7 @@ public class AppWiring {
     @NonNull public TabManager getTabManager() { return tabManager; }
     @NonNull public HistoryController getHistoryController() { return historyController; }
     @NonNull public BookmarkManager getBookmarkManager() { return bookmarkManager; }
+    @NonNull public VaultPillController getVaultPillController() { return vaultPillController; }
     @NonNull public AdBlockController getAdBlockController() { return adBlockController; }
     @NonNull public MenuController getMenuController() { return menuController; }
     @NonNull public VaultController getVaultController() { return vaultController; }
