@@ -19,18 +19,19 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
- * 2026-10-01 (vault pill): adds VaultPillController. The pill's host
- * FrameLayout is browserWrapper — set from MainActivity once the view
- * tree exists. WebViewFactory registers the SpoonVault bridge that
- * drives the pill; VaultPillController is handed to it during
- * initialization.
+ * 2026-10-01 (save-history-as-bookmark):
+ *   - Both ItemManagerDialog.Callbacks implementations now implement
+ *     onSaveAsBookmark(ManagedItem). The history dialog routes the item
+ *     to BookmarkManager.addBookmark(); the bookmark dialog's override
+ *     is a no-op because the option is only shown when
+ *     item.type == TYPE_HISTORY.
  *
- * 2026-10-01 (live-refresh on bookmark change): BookmarkManager emits a
- * change signal after every mutation; AppWiring subscribes and re-renders
- * home if the current tab is showing it.
+ * 2026-10-01 (vault pill): adds VaultPillController. browserWrapper is a
+ * constructor param so the pill can attach before initialize() builds
+ * the WebViewFactory that pushes the SpoonVault bridge to each WebView.
  *
- * 2026-10-01 (home bookmarks grid): FaviconStore + HomePageRenderer take
- * BookmarkManager.
+ * 2026-10-01 (home bookmarks grid): adds FaviconStore; HomePageRenderer
+ * takes BookmarkManager + FaviconStore.
  *
  * 2026-09-30 (downloads redirect fix): triggerManualDownload routes
  * through DownloadHandler.onDownloadStart.
@@ -101,8 +102,6 @@ public class AppWiring {
                 activity, activity::getCurrentWebView, downloadsController);
 
         // ---- VaultPillController -----------------------------------------
-        // Built before WebViewFactory so its bridge can be handed the
-        // controller during WebView creation.
         vaultPillController = new VaultPillController(
                 activity, credentials, activity::getCurrentWebView);
         vaultPillController.setHost(browserWrapper);
@@ -124,7 +123,6 @@ public class AppWiring {
                                                       @Nullable TabState state) {
                 applyTabToToolbar(webView, state);
                 activity.updateScreenShield();
-                // Hide the pill on tab change — the new tab's JS will re-arm it.
                 if (vaultPillController != null) vaultPillController.onPageNavigated();
             }
 
@@ -144,6 +142,12 @@ public class AppWiring {
         });
 
         // ---- HistoryController -------------------------------------------
+        // The "Save as Bookmark" callback is what makes a long-press on a
+        // history row able to promote the entry into the bookmark store.
+        // BookmarkManager is assigned later in this method, but the
+        // anonymous class accesses the field (not a captured value), so
+        // by the time the user actually triggers this callback the field
+        // is non-null.
         historyController = new HistoryController(
                 activity, dbHelper, backgroundExecutor,
                 new HistoryController.Callbacks() {
@@ -153,6 +157,12 @@ public class AppWiring {
 
                     @Override public void openInNewTab(@NonNull String url) {
                         tabManager.openUrlInNewTab(url);
+                    }
+
+                    @Override public void onSaveAsBookmark(@NonNull ManagedItem item) {
+                        if (bookmarkManager != null) {
+                            bookmarkManager.addBookmark(item.getUrl(), item.getTitle());
+                        }
                     }
                 });
 
@@ -166,6 +176,12 @@ public class AppWiring {
 
                     @Override public void openInNewTab(@NonNull String url) {
                         tabManager.openUrlInNewTab(url);
+                    }
+
+                    @Override public void onSaveAsBookmark(@NonNull ManagedItem item) {
+                        // Not reachable: the option only appears for
+                        // TYPE_HISTORY rows. Kept as a no-op so the
+                        // interface contract is satisfied.
                     }
                 });
         bookmarkManager.setOnChangedListener(this::refreshHomeIfVisible);
