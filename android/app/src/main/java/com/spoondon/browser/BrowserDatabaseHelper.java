@@ -150,9 +150,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error getting all history", e);
         } finally {
-            if (cursor != null && !cursor.isClosed()) {
-                cursor.close();
-            }
+            if (cursor != null && !cursor.isClosed()) cursor.close();
         }
         return historyList;
     }
@@ -174,9 +172,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error getting matching history", e);
         } finally {
-            if (cursor != null && !cursor.isClosed()) {
-                cursor.close();
-            }
+            if (cursor != null && !cursor.isClosed()) cursor.close();
         }
         return historyList;
     }
@@ -196,9 +192,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error getting all bookmarks", e);
         } finally {
-            if (cursor != null && !cursor.isClosed()) {
-                cursor.close();
-            }
+            if (cursor != null && !cursor.isClosed()) cursor.close();
         }
         return bookmarkUrls;
     }
@@ -214,9 +208,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error getting history count", e);
         } finally {
-            if (cursor != null && !cursor.isClosed()) {
-                cursor.close();
-            }
+            if (cursor != null && !cursor.isClosed()) cursor.close();
         }
         return count;
     }
@@ -232,9 +224,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error getting bookmark count", e);
         } finally {
-            if (cursor != null && !cursor.isClosed()) {
-                cursor.close();
-            }
+            if (cursor != null && !cursor.isClosed()) cursor.close();
         }
         return count;
     }
@@ -257,9 +247,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error saving tabs", e);
         } finally {
-            if (db.isOpen() && db.inTransaction()) {
-                db.endTransaction();
-            }
+            if (db.isOpen() && db.inTransaction()) db.endTransaction();
         }
     }
 
@@ -278,9 +266,7 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
         } catch (Exception e) {
             Log.e(TAG, "Error getting all tabs", e);
         } finally {
-            if (cursor != null && !cursor.isClosed()) {
-                cursor.close();
-            }
+            if (cursor != null && !cursor.isClosed()) cursor.close();
         }
         return tabsList;
     }
@@ -293,6 +279,102 @@ public class BrowserDatabaseHelper extends SQLiteOpenHelper {
                     " WHERE " + COLUMN_TIMESTAMP + " <= datetime('now', '-" + daysToKeep + " days')");
         } catch (Exception e) {
             Log.e(TAG, "Error cleaning up old history", e);
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // Manager-oriented API (id-aware rows for ItemManagerDialog)
+    //
+    // Row format for the query helpers: { id, url, title, timestampMillis }
+    // All four fields are String for uniform handling by the caller.
+    // ----------------------------------------------------------------------
+
+    /** Rows with ids for the History manager. Newest first, capped at 500. */
+    public List<String[]> getAllHistoryWithIds() {
+        return queryWithIds(TABLE_HISTORY, COLUMN_ID + " DESC", 500);
+    }
+
+    /** Rows with ids for the Bookmarks manager. Newest first, no cap. */
+    public List<String[]> getAllBookmarksWithIds() {
+        return queryWithIds(TABLE_BOOKMARKS, COLUMN_TIMESTAMP + " DESC", 0);
+    }
+
+    public void updateHistoryEntry(long id, String title, String url) {
+        updateRow(TABLE_HISTORY, id, title, url);
+    }
+
+    public void updateBookmarkEntry(long id, String title, String url) {
+        updateRow(TABLE_BOOKMARKS, id, title, url);
+    }
+
+    public void deleteHistoryByIds(List<Long> ids) {
+        deleteByIds(TABLE_HISTORY, ids);
+    }
+
+    public void deleteBookmarksByIds(List<Long> ids) {
+        deleteByIds(TABLE_BOOKMARKS, ids);
+    }
+
+    // --- generic helpers ---
+
+    private List<String[]> queryWithIds(String table, String orderBy, int limit) {
+        List<String[]> rows = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        if (db == null || !db.isOpen()) return rows;
+        Cursor cursor = null;
+        try {
+            String sql = "SELECT " + COLUMN_ID + ", " + COLUMN_URL + ", " + COLUMN_TITLE +
+                    ", COALESCE(CAST(strftime('%s', " + COLUMN_TIMESTAMP + ") AS INTEGER) * 1000, 0)" +
+                    " FROM " + table + " ORDER BY " + orderBy +
+                    (limit > 0 ? " LIMIT " + limit : "");
+            cursor = db.rawQuery(sql, null);
+            if (cursor.moveToFirst()) {
+                do {
+                    rows.add(new String[]{
+                            cursor.getString(0),
+                            cursor.getString(1),
+                            cursor.getString(2),
+                            cursor.getString(3)
+                    });
+                } while (cursor.moveToNext());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error querying " + table, e);
+        } finally {
+            if (cursor != null && !cursor.isClosed()) cursor.close();
+        }
+        return rows;
+    }
+
+    private void updateRow(String table, long id, String title, String url) {
+        if (url == null || url.isEmpty()) return;
+        SQLiteDatabase db = this.getWritableDatabase();
+        if (db == null || !db.isOpen()) return;
+        try {
+            ContentValues values = new ContentValues();
+            values.put(COLUMN_URL, url);
+            values.put(COLUMN_TITLE, title != null ? title : url);
+            db.update(table, values, COLUMN_ID + " = ?", new String[]{String.valueOf(id)});
+        } catch (Exception e) {
+            Log.e(TAG, "Error updating row in " + table, e);
+        }
+    }
+
+    private void deleteByIds(String table, List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return;
+        SQLiteDatabase db = this.getWritableDatabase();
+        if (db == null || !db.isOpen()) return;
+        try {
+            StringBuilder placeholders = new StringBuilder();
+            String[] args = new String[ids.size()];
+            for (int i = 0; i < ids.size(); i++) {
+                if (i > 0) placeholders.append(',');
+                placeholders.append('?');
+                args[i] = String.valueOf(ids.get(i));
+            }
+            db.delete(table, COLUMN_ID + " IN (" + placeholders + ")", args);
+        } catch (Exception e) {
+            Log.e(TAG, "Error deleting rows from " + table, e);
         }
     }
 }

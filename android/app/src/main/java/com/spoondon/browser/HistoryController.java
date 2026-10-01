@@ -1,7 +1,5 @@
 package com.spoondon.browser;
 
-import android.app.AlertDialog;
-import android.widget.ListView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -12,19 +10,23 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 /**
- * All history and bookmark UI: the global history dialog, the bookmarks list,
- * and the one-shot legacy bookmark migration.
+ * History UI + persistence bridge for the unified History manager.
  *
- * Extracted from MainActivity (god-object split, slice 3).
+ * The list/edit/search/sort/delete-all UI lives in {@link ItemManagerDialog};
+ * this class supplies the data by implementing {@link ItemManagerDialog.DataSource}
+ * and routes persistence through {@link BrowserDatabaseHelper}.
+ *
+ * Also owns the one-shot legacy SharedPreferences bookmark migration that
+ * runs at cold start (kept here since it predates BookmarkManager).
  */
-public class HistoryController {
+public class HistoryController implements ItemManagerDialog.DataSource {
 
-    public interface Callbacks {
-        /** Load a URL in the currently active tab. */
-        void onNavigate(@NonNull String url);
-
-        /** Open a URL in a new tab. */
-        void openInNewTab(@NonNull String url);
+    /**
+     * Extends the manager dialog's callbacks so callers can keep their
+     * existing {@code HistoryController.Callbacks} implementation.
+     */
+    public interface Callbacks extends ItemManagerDialog.Callbacks {
+        // Inherits onNavigate(String) and openInNewTab(String)
     }
 
     private static final String LEGACY_BOOKMARKS_PREFS = "spoon_bookmarks";
@@ -46,49 +48,16 @@ public class HistoryController {
     }
 
     // ------------------------------------------------------------------------
-    // History
+    // Entry point
     // ------------------------------------------------------------------------
+
     public void showHistoryDialog() {
         if (dbHelper == null) return;
-
-        List<String[]> historyData = dbHelper.getAllHistory();
-        if (historyData.isEmpty()) {
+        if (dbHelper.getHistoryCount() == 0) {
             Toast.makeText(activity, "History is empty", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        for (String[] entry : historyData) {
-            String url = entry[0];
-            String title = entry[1];
-            items.add(new BrowserItem(
-                    title != null && !title.isEmpty() ? title : url, url));
-        }
-
-        BrowserItemAdapter adapter = new BrowserItemAdapter(activity, items);
-        ListView listView = new ListView(activity);
-        listView.setAdapter(adapter);
-
-        listView.setOnItemClickListener((parent, view, which, id) ->
-                callbacks.onNavigate(items.get(which).url));
-
-        listView.setOnItemLongClickListener((parent, view, which, id) -> {
-            String[] options = {"Open in New Tab", "Add Bookmark"};
-            new AlertDialog.Builder(activity).setItems(options, (dialog, item) -> {
-                if (item == 0) {
-                    callbacks.openInNewTab(items.get(which).url);
-                } else if (item == 1) {
-                    dbHelper.addBookmark(items.get(which).url, items.get(which).title);
-                    Toast.makeText(activity, "Bookmark added", Toast.LENGTH_SHORT).show();
-                }
-            }).show();
-            return true;
-        });
-
-        new AlertDialog.Builder(activity)
-                .setTitle("Global History")
-                .setView(listView)
-                .show();
+        ItemManagerDialog.show(activity, "History", this, callbacks);
     }
 
     public void clearHistory() {
@@ -97,55 +66,54 @@ public class HistoryController {
     }
 
     // ------------------------------------------------------------------------
-    // Bookmarks
+    // Legacy bookmark add — kept here because MenuController still routes
+    // "Add Bookmark" through HistoryController. BookmarkManager owns the
+    // bookmark UI. Slated for cleanup when MenuController is patched.
     // ------------------------------------------------------------------------
-    public void showBookmarks() {
-        if (dbHelper == null) return;
-
-        List<String> bookmarkUrls = dbHelper.getAllBookmarksUrls();
-        if (bookmarkUrls.isEmpty()) {
-            Toast.makeText(activity, "No bookmarks saved", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        ArrayList<BrowserItem> items = new ArrayList<>();
-        for (String url : bookmarkUrls) {
-            items.add(new BrowserItem(url, url));
-        }
-
-        BrowserItemAdapter adapter = new BrowserItemAdapter(activity, items);
-        ListView listView = new ListView(activity);
-        listView.setAdapter(adapter);
-
-        listView.setOnItemClickListener((parent, view, which, id) ->
-                callbacks.onNavigate(items.get(which).url));
-
-        listView.setOnItemLongClickListener((parent, view, which, id) -> {
-            String[] options = {"Open", "Open in New Tab", "Remove Bookmark"};
-            new AlertDialog.Builder(activity).setItems(options, (dialog, item) -> {
-                if (item == 0) {
-                    callbacks.onNavigate(items.get(which).url);
-                } else if (item == 1) {
-                    callbacks.openInNewTab(items.get(which).url);
-                } else if (item == 2) {
-                    dbHelper.removeBookmark(items.get(which).url);
-                    Toast.makeText(activity, "Bookmark removed",
-                            Toast.LENGTH_SHORT).show();
-                }
-            }).show();
-            return true;
-        });
-
-        new AlertDialog.Builder(activity)
-                .setTitle("Bookmarks")
-                .setView(listView)
-                .show();
-    }
 
     public void addBookmark(@Nullable String url, @Nullable String title) {
         if (url == null || url.isEmpty() || url.equals("about:blank") || dbHelper == null) return;
         dbHelper.addBookmark(url, title);
         Toast.makeText(activity, "Bookmark saved", Toast.LENGTH_SHORT).show();
+    }
+
+    // ------------------------------------------------------------------------
+    // ItemManagerDialog.DataSource
+    // ------------------------------------------------------------------------
+
+    @NonNull
+    @Override
+    public List<ManagedItem> load() {
+        List<ManagedItem> items = new ArrayList<>();
+        if (dbHelper == null) return items;
+        for (String[] row : dbHelper.getAllHistoryWithIds()) {
+            try {
+                long id = Long.parseLong(row[0]);
+                String url = row[1];
+                String title = row[2];
+                long ts = Long.parseLong(row[3]);
+                items.add(new ManagedItem(id, ManagedItem.TYPE_HISTORY, title, url, ts));
+            } catch (Exception ignored) { /* skip malformed row */ }
+        }
+        return items;
+    }
+
+    @Override
+    public void update(@NonNull ManagedItem item, @Nullable String newTitle, @NonNull String newUrl) {
+        if (dbHelper == null) return;
+        dbHelper.updateHistoryEntry(item.id, newTitle, newUrl);
+    }
+
+    @Override
+    public void delete(@NonNull List<Long> ids) {
+        if (dbHelper == null || ids.isEmpty()) return;
+        dbHelper.deleteHistoryByIds(ids);
+    }
+
+    @Override
+    public void clearAll() {
+        if (dbHelper == null) return;
+        dbHelper.clearHistory();
     }
 
     // ------------------------------------------------------------------------
