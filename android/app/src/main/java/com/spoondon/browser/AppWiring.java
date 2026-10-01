@@ -18,16 +18,18 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
- * 2026-10-01 (history + bookmark managers): adds BookmarkManager alongside
- * HistoryController. Both share the manager dialog infrastructure
- * ({@link ItemManagerDialog}) but own separate persistence concerns.
- * The MenuController "Bookmarks" / "Add Bookmark" callbacks now route to
- * BookmarkManager instead of HistoryController.
+ * 2026-10-01 (home bookmarks grid): adds FaviconStore + rewires
+ * HomePageRenderer to take the BookmarkManager and FaviconStore.
+ * Initialization order changed: HomePageRenderer is now built after
+ * BookmarkManager because it needs to read the bookmark list.
  *
- * 2026-09-30 (downloads redirect fix): triggerManualDownload no longer
- * calls DownloadHandler.triggerExternalDownload directly. It now routes
- * through DownloadHandler.onDownloadStart so the user sees the standard
- * download dialog and the in-app OkHttp engine is used.
+ * 2026-10-01 (history + bookmark managers): adds BookmarkManager alongside
+ * HistoryController. Both share the manager dialog infrastructure but own
+ * separate persistence concerns. MenuController "Bookmarks" / "Add Bookmark"
+ * route to BookmarkManager.
+ *
+ * 2026-09-30 (downloads redirect fix): triggerManualDownload routes through
+ * DownloadHandler.onDownloadStart so the user sees the standard dialog.
  */
 public class AppWiring {
 
@@ -49,6 +51,7 @@ public class AppWiring {
     private DownloadsController downloadsController;
     private DownloadHandler downloadHandler;
     private WebViewFactory webViewFactory;
+    private FaviconStore faviconStore;
     private HomePageRenderer homePageRenderer;
     private SuggestionProvider suggestionProvider;
     private TabManager tabManager;
@@ -92,7 +95,6 @@ public class AppWiring {
         webViewFactory = new WebViewFactory(
                 activity, credentials, permissionController, downloadHandler);
 
-        homePageRenderer = new HomePageRenderer();
         suggestionProvider = new SuggestionProvider(dbHelper);
 
         // ---- TabManager ---------------------------------------------------
@@ -123,9 +125,6 @@ public class AppWiring {
         });
 
         // ---- HistoryController -------------------------------------------
-        // Both managers share the same navigation callbacks shape. History
-        // uses its own sub-interface so any existing code that implemented
-        // HistoryController.Callbacks still compiles unchanged.
         historyController = new HistoryController(
                 activity, dbHelper, backgroundExecutor,
                 new HistoryController.Callbacks() {
@@ -139,8 +138,6 @@ public class AppWiring {
                 });
 
         // ---- BookmarkManager ---------------------------------------------
-        // Same shared UX (ItemManagerDialog), independent persistence path.
-        // "Add Bookmark" and "Bookmarks" menu entries route here now.
         bookmarkManager = new BookmarkManager(
                 activity, dbHelper,
                 new ItemManagerDialog.Callbacks() {
@@ -152,6 +149,12 @@ public class AppWiring {
                         tabManager.openUrlInNewTab(url);
                     }
                 });
+
+        // ---- FaviconStore + HomePageRenderer ------------------------------
+        // HomePageRenderer needs BookmarkManager (reads the list) and
+        // FaviconStore (reads cached icons). Built after both are ready.
+        faviconStore = new FaviconStore(activity);
+        homePageRenderer = new HomePageRenderer(activity, bookmarkManager, faviconStore);
 
         // ---- VaultController ---------------------------------------------
         vaultController = new VaultController(
@@ -239,12 +242,8 @@ public class AppWiring {
                 menuController.showFindInPageDialog(tabManager.getCurrentWebView());
             }
 
-            // 2026-10-01: Bookmarks menu item now routes to BookmarkManager
-            // (was HistoryController.showBookmarks()).
             @Override public void showBookmarks() { bookmarkManager.showBookmarks(); }
 
-            // 2026-10-01: Add Bookmark now routes to BookmarkManager
-            // (was HistoryController.addBookmark, the legacy passthrough).
             @Override public void addBookmark() {
                 WebView wv = tabManager.getCurrentWebView();
                 if (wv != null) bookmarkManager.addBookmark(wv.getUrl(), wv.getTitle());
@@ -347,13 +346,6 @@ public class AppWiring {
     /**
      * Called from SpoonWebViewClient when a navigation URL ends in a
      * known download extension, and from MainActivity.triggerManualDownload.
-     *
-     * 2026-09-30 fix: previously this called DownloadHandler.triggerExternalDownload
-     * directly, which fired ACTION_VIEW and handed the URL to the OS default
-     * browser (the "downloads open in another browser" bug). Now it routes
-     * through DownloadHandler.onDownloadStart so the user sees the standard
-     * Save / External / Cancel dialog, and the default Save path uses the
-     * in-app OkHttp DownloadEngine.
      */
     public void triggerManualDownload(String url, String mime) {
         if (downloadHandler == null || url == null) return;
