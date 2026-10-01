@@ -1,7 +1,6 @@
 package com.spoondon.browser;
 
 import android.content.Context;
-import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.view.View;
@@ -10,6 +9,7 @@ import android.webkit.WebView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.view.ViewCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
@@ -20,6 +20,15 @@ import java.util.Set;
 
 /**
  * Builds and configures WebViews.
+ *
+ * 2026-10-01 (vault pill):
+ *   - Constructor now takes a {@link VaultPillController}. The SpoonVault
+ *     bridge is extended with showPill() / hidePill() so the injected
+ *     autosave script can signal password-field presence to native.
+ *     The bridge captures its owning WebView at construction so the pill
+ *     can validate caller-vs-current-tab before showing.
+ *   - No new addJavascriptInterface registration — the existing SpoonVault
+ *     name is reused, keeping the bridge surface to four.
  *
  * 2026-09-30 (image long-press fix):
  *   - createImageLongClickListener no longer fires ACTION_VIEW. That was
@@ -34,9 +43,9 @@ import java.util.Set;
  *
  * JS bridges registered here:
  *   - AndroidDownloader  : BlobDownloader.saveBase64ToFile
- *   - SpoonVault         : PasswordAutosaveBridge.saveCredentials
- *   - SpoonCleartext     : CleartextBridge.proceed/upgrade/cancel
- *   - SpoonScroll        : ScrollBridge.setAtTop (pull-to-refresh state)
+ *   - SpoonVault         : saveCredentials / showPill / hidePill
+ *   - SpoonCleartext     : proceed / upgrade / cancel
+ *   - SpoonScroll        : setAtTop (pull-to-refresh state)
  *
  * The Vault WebMessageListener (spoonVaultMessage) is origin-scoped to
  * VaultUrls.ORIGIN and handles FETCH_ALL_VAULT_DATA / SAVE_LOGIN /
@@ -48,17 +57,20 @@ public class WebViewFactory {
     private final SecureCredentialManager credentials;
     private final PermissionController permissionController;
     private final DownloadHandler downloadHandler;
+    private final VaultPillController vaultPillController;
 
     private final WebViewAssetLoader assetLoader;
 
     public WebViewFactory(@NonNull MainActivity activity,
                           @NonNull SecureCredentialManager credentials,
                           @NonNull PermissionController permissionController,
-                          @NonNull DownloadHandler downloadHandler) {
+                          @NonNull DownloadHandler downloadHandler,
+                          @NonNull VaultPillController vaultPillController) {
         this.activity = activity;
         this.credentials = credentials;
         this.permissionController = permissionController;
         this.downloadHandler = downloadHandler;
+        this.vaultPillController = vaultPillController;
 
         this.assetLoader = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/",
@@ -134,7 +146,7 @@ public class WebViewFactory {
         webView.setWebChromeClient(new SpoonWebChromeClient(activity, permissionController));
 
         webView.addJavascriptInterface(new BlobDownloader(activity), "AndroidDownloader");
-        webView.addJavascriptInterface(new PasswordAutosaveBridge(), "SpoonVault");
+        webView.addJavascriptInterface(new PasswordAutosaveBridge(webView), "SpoonVault");
         webView.addJavascriptInterface(new CleartextBridge(webView), "SpoonCleartext");
         webView.addJavascriptInterface(new ScrollBridge(), "SpoonScroll");
 
@@ -294,11 +306,42 @@ public class WebViewFactory {
     // JS bridges
     // ------------------------------------------------------------------------
 
+    /**
+     * Page-facing vault bridge. saveCredentials is unchanged; showPill and
+     * hidePill are new, called by the injected autosave script when it
+     * detects (or loses) an input[type=password] in the DOM.
+     *
+     * The bridge captures its owning WebView so VaultPillController can
+     * reject the call if the caller is not the current tab. addJavascriptInterface
+     * is not origin-scoped, so any page can invoke these methods — the
+     * caller check plus the credentials-exist check inside the controller
+     * are the actual gates.
+     */
     private class PasswordAutosaveBridge {
+        private final WebView caller;
+
+        PasswordAutosaveBridge(@NonNull WebView caller) {
+            this.caller = caller;
+        }
+
         @android.webkit.JavascriptInterface
         public void saveCredentials(String host, String username, String password) {
             if (credentials != null) {
                 credentials.saveCredentials(host, username, password);
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public void showPill() {
+            if (vaultPillController != null) {
+                vaultPillController.onPasswordFieldDetected(caller);
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        public void hidePill() {
+            if (vaultPillController != null) {
+                vaultPillController.onPasswordFieldGone();
             }
         }
     }
