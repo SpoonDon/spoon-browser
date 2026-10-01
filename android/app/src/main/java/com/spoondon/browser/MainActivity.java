@@ -45,12 +45,13 @@ import java.util.concurrent.Executors;
  * clipboard watcher, and the small public API surface that
  * SpoonWebViewClient, SpoonWebChromeClient, and AppWiring call into.
  *
- * 2026-09-30 - Session restore wired:
- *   - onCreate calls sessionManager.setTabSource(...) immediately after
- *     wiring.initialize() so onPause can persist tabs.
- *   - onCreate reads persisted tabs via sessionManager.loadPersistedTabs()
- *     and either rehydrates them (restoreTabs) or starts fresh with the
- *     home page. Only runs on savedInstanceState == null.
+ * 2026-10-01 (vault pill):
+ *   - browserWrapper is now created in setupRootLayout() so it exists
+ *     before AppWiring is instantiated. AppWiring attaches the pill to
+ *     it during initialize().
+ *   - AppWiring constructor gained a FrameLayout browserWrapper param.
+ *   - Added getVaultPillController() so SpoonWebViewClient can clear
+ *     stale pill state on navigation.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -125,6 +126,7 @@ public class MainActivity extends AppCompatActivity {
         wiring = new AppWiring(
                 this,
                 browserContainer,
+                browserWrapper,
                 secureCredentialManager,
                 dbHelper,
                 permissionController,
@@ -309,6 +311,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Builds root + browserContainer + swipeRefresh + browserWrapper.
+     * browserWrapper is created here (not in assembleLayout) because
+     * AppWiring needs it during initialize() to attach the vault pill.
+     */
     private void setupRootLayout() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -345,16 +352,22 @@ public class MainActivity extends AppCompatActivity {
             }
             return true;
         });
-    }
 
-    private void assembleLayout() {
-        root.addView(wiring.getToolbarController().getRootView());
-
+        // browserWrapper hosts the WebView tree AND the vault pill.
+        // Owned by this Activity, referenced by AppWiring + VaultPillController.
         browserWrapper = new FrameLayout(this);
         LinearLayout.LayoutParams wrapperParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         browserWrapper.setLayoutParams(wrapperParams);
         browserWrapper.addView(swipeRefresh);
+    }
+
+    private void assembleLayout() {
+        root.addView(wiring.getToolbarController().getRootView());
+
+        // browserWrapper was created in setupRootLayout and already contains
+        // swipeRefresh. Just attach it to root.
+        root.addView(browserWrapper);
 
         progressBar = new ProgressBar(this, null,
                 android.R.attr.progressBarStyleHorizontal);
@@ -374,7 +387,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         browserWrapper.addView(progressBar);
-        root.addView(browserWrapper);
 
         getWindow().setFlags(
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -388,7 +400,7 @@ public class MainActivity extends AppCompatActivity {
                     View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
         }
     }
-
+        
     private void warmUpBackgroundWork() {
         backgroundExecutor.execute(() -> {
             AdBlockEngine.init(MainActivity.this, filterLists);
@@ -517,11 +529,6 @@ public class MainActivity extends AppCompatActivity {
         return wiring != null ? wiring.getTabManager().getCurrentTabState() : null;
     }
 
-    @Nullable
-    public BookmarkManager getBookmarkManager() {
-        return wiring != null ? wiring.getBookmarkManager() : null;
-    }
-
     public void openUrlInNewTab(String url) {
         if (wiring != null) {
             wiring.getTabManager().openUrlInNewTab(url);
@@ -633,6 +640,30 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
         }
+    }
+
+    // ========================================================================
+    // Feature-specific accessors for collaborators
+    // ========================================================================
+
+    /**
+     * Exposes the bookmark manager so SpoonWebViewClient can route the
+     * home grid's "See all" tile (spoonhome://manager) to the manager UI.
+     */
+    @Nullable
+    public BookmarkManager getBookmarkManager() {
+        return wiring != null ? wiring.getBookmarkManager() : null;
+    }
+
+    /**
+     * Exposes the vault pill controller so SpoonWebViewClient can clear
+     * stale pill state at the top of every navigation and so the
+     * PasswordAutosaveBridge (registered in WebViewFactory) can signal
+     * password-field presence back to the pill.
+     */
+    @Nullable
+    public VaultPillController getVaultPillController() {
+        return wiring != null ? wiring.getVaultPillController() : null;
     }
 
     // ========================================================================
