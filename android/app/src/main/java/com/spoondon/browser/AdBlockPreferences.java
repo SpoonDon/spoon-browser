@@ -53,7 +53,7 @@ public final class AdBlockPreferences {
 
     // Legacy location — the old AdBlockController saved newline-separated
     // URLs here. We only read it once for migration, then never touch it.
-    private static final String LEGACY_PREFS_FILE   = "browser_prefs";
+    private static final String LEGACY_PREFS_FILE   = "spoon_browser";
     private static final String LEGACY_KEY_LISTS    = "filter_lists";
 
     public static final int UPDATE_OFF   = 0;
