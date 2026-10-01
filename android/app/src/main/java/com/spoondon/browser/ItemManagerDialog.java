@@ -40,18 +40,31 @@ import java.util.List;
  * and host. Sort menu offers newest / oldest / title A-Z / host A-Z.
  * Long-press enters ListView's built-in multi-select CAB (Delete / Select
  * all). The per-row overflow exposes single-item actions (Open, Open in
- * new tab, Edit, Copy URL, Share, Delete). "Clear all" is on the dialog's
- * neutral button with a confirmation.
+ * new tab, Edit, Copy URL, Share, Delete, plus Save as Bookmark for
+ * history rows). "Clear all" is on the dialog's neutral button with a
+ * confirmation.
  *
  * The dialog never touches SQLite directly — it calls back into a
  * {@link DataSource} so HistoryController and BookmarkManager each supply
  * their own persistence.
+ *
+ * 2026-10-01 (save-history-as-bookmark): Callbacks gained
+ * {@link Callbacks#onSaveAsBookmark(ManagedItem)}. The per-row overflow
+ * only shows "Save as Bookmark" when {@code item.type == TYPE_HISTORY};
+ * the bookmark dialog's rows never expose the option.
  */
 public final class ItemManagerDialog {
 
     public interface Callbacks {
         void onNavigate(@NonNull String url);
         void openInNewTab(@NonNull String url);
+
+        /**
+         * Called when the user picks "Save as Bookmark" from the
+         * per-row overflow of a history item. Only shown for items whose
+         * type is {@link ManagedItem#TYPE_HISTORY}.
+         */
+        void onSaveAsBookmark(@NonNull ManagedItem item);
     }
 
     public interface DataSource {
@@ -61,14 +74,15 @@ public final class ItemManagerDialog {
         void clearAll();
     }
 
-    private static final int MENU_DELETE     = 1;
-    private static final int MENU_SELECT_ALL = 2;
-    private static final int MENU_OPEN       = 10;
-    private static final int MENU_OPEN_NEW   = 11;
-    private static final int MENU_EDIT       = 12;
-    private static final int MENU_COPY       = 13;
-    private static final int MENU_SHARE      = 14;
-    private static final int MENU_ONE_DELETE = 15;
+    private static final int MENU_DELETE       = 1;
+    private static final int MENU_SELECT_ALL   = 2;
+    private static final int MENU_OPEN         = 10;
+    private static final int MENU_OPEN_NEW     = 11;
+    private static final int MENU_EDIT         = 12;
+    private static final int MENU_COPY         = 13;
+    private static final int MENU_SHARE        = 14;
+    private static final int MENU_ONE_DELETE   = 15;
+    private static final int MENU_SAVE_BOOKMARK = 16;
 
     private final Activity activity;
     private final DataSource source;
@@ -182,7 +196,7 @@ public final class ItemManagerDialog {
         }
     }
 
-    // ------------------------------------------------------------------
+        // ------------------------------------------------------------------
     // List interaction
     // ------------------------------------------------------------------
 
@@ -261,7 +275,15 @@ public final class ItemManagerDialog {
         pm.getMenu().add(0, MENU_EDIT,       2, "Edit");
         pm.getMenu().add(0, MENU_COPY,       3, "Copy URL");
         pm.getMenu().add(0, MENU_SHARE,      4, "Share");
-        pm.getMenu().add(0, MENU_ONE_DELETE, 5, "Delete");
+
+        // History-only: promote the row into the bookmark store. Bookmark
+        // rows never expose this entry — they'd have nothing to do.
+        if (item.type == ManagedItem.TYPE_HISTORY) {
+            pm.getMenu().add(0, MENU_SAVE_BOOKMARK, 5, "Save as Bookmark");
+            pm.getMenu().add(0, MENU_ONE_DELETE,    6, "Delete");
+        } else {
+            pm.getMenu().add(0, MENU_ONE_DELETE,    5, "Delete");
+        }
 
         pm.setOnMenuItemClickListener(mi -> {
             switch (mi.getItemId()) {
@@ -280,6 +302,9 @@ public final class ItemManagerDialog {
                     return true;
                 case MENU_SHARE:
                     shareUrl(item);
+                    return true;
+                case MENU_SAVE_BOOKMARK:
+                    callbacks.onSaveAsBookmark(item);
                     return true;
                 case MENU_ONE_DELETE:
                     confirmDeleteOne(item);
