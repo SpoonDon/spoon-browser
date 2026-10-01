@@ -18,18 +18,21 @@ import java.util.concurrent.ExecutorService;
 /**
  * Constructs and wires every Spoon Browser collaborator.
  *
+ * 2026-10-01 (live-refresh on bookmark change): BookmarkManager now emits
+ * a change signal after every mutation, and AppWiring subscribes. If the
+ * current tab is showing the home page (URL is null/empty/about:blank —
+ * which is how loadDataWithBaseURL reports), the grid is re-rendered so
+ * adding or removing a bookmark updates the visible tiles immediately.
+ *
  * 2026-10-01 (home bookmarks grid): adds FaviconStore + rewires
  * HomePageRenderer to take the BookmarkManager and FaviconStore.
- * Initialization order changed: HomePageRenderer is now built after
- * BookmarkManager because it needs to read the bookmark list.
  *
  * 2026-10-01 (history + bookmark managers): adds BookmarkManager alongside
- * HistoryController. Both share the manager dialog infrastructure but own
- * separate persistence concerns. MenuController "Bookmarks" / "Add Bookmark"
- * route to BookmarkManager.
+ * HistoryController. MenuController "Bookmarks" / "Add Bookmark" route to
+ * BookmarkManager.
  *
  * 2026-09-30 (downloads redirect fix): triggerManualDownload routes through
- * DownloadHandler.onDownloadStart so the user sees the standard dialog.
+ * DownloadHandler.onDownloadStart.
  */
 public class AppWiring {
 
@@ -150,9 +153,13 @@ public class AppWiring {
                     }
                 });
 
+        // 2026-10-01: subscribe to bookmark mutations so the home grid
+        // refreshes live when it's the current content. loadDataWithBaseURL
+        // reports the base URL via getUrl(), which is "about:blank" for
+        // the home page — that's our heuristic for "home is showing".
+        bookmarkManager.setOnChangedListener(this::refreshHomeIfVisible);
+
         // ---- FaviconStore + HomePageRenderer ------------------------------
-        // HomePageRenderer needs BookmarkManager (reads the list) and
-        // FaviconStore (reads cached icons). Built after both are ready.
         faviconStore = new FaviconStore(activity);
         homePageRenderer = new HomePageRenderer(activity, bookmarkManager, faviconStore);
 
@@ -337,6 +344,29 @@ public class AppWiring {
         WebView wv = tabManager.getCurrentWebView();
         if (wv == null) return;
         homePageRenderer.render(wv, activity.getResources().getConfiguration().screenWidthDp);
+    }
+
+    /**
+     * Called from BookmarkManager after every mutation. If the current tab
+     * is showing the home page, re-render it so the grid reflects the
+     * change immediately.
+     *
+     * The home page is loaded via {@code loadDataWithBaseURL("about:blank", ...)},
+     * which makes {@code webView.getUrl()} return {@code "about:blank"}.
+     * The cleartext interstitial uses the same base URL, so this heuristic
+     * can technically also fire there — that's an acceptable edge case
+     * because (a) the user has no path to add bookmarks from inside an
+     * interstitial, and (b) the interstitial is a single-shot handoff that
+     * the user is either dismissing or proceeding from within a second.
+     */
+    private void refreshHomeIfVisible() {
+        if (tabManager == null) return;
+        WebView wv = tabManager.getCurrentWebView();
+        if (wv == null) return;
+        String url = wv.getUrl();
+        if (url == null || url.isEmpty() || "about:blank".equals(url)) {
+            showHome();
+        }
     }
 
     public String getSearchUrlFor(String query) {

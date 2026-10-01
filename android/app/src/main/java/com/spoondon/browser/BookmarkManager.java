@@ -15,6 +15,10 @@ import java.util.List;
  *
  * All list/edit/search/sort/delete UI is delegated to {@link ItemManagerDialog}.
  * This class only knows how to load rows, persist edits, and delete.
+ *
+ * 2026-10-01 (live-refresh): added {@link #setOnChangedListener(Runnable)}.
+ * AppWiring subscribes and re-renders the home page when the current tab
+ * is showing it, so bookmark mutations show up immediately.
  */
 public class BookmarkManager implements ItemManagerDialog.DataSource {
 
@@ -22,12 +26,29 @@ public class BookmarkManager implements ItemManagerDialog.DataSource {
     private final BrowserDatabaseHelper dbHelper;
     private final ItemManagerDialog.Callbacks callbacks;
 
+    @Nullable private Runnable onChangedListener;
+
     public BookmarkManager(@NonNull MainActivity activity,
                            @NonNull BrowserDatabaseHelper dbHelper,
                            @NonNull ItemManagerDialog.Callbacks callbacks) {
         this.activity = activity;
         this.dbHelper = dbHelper;
         this.callbacks = callbacks;
+    }
+
+    /**
+     * Fired after every successful mutation (add, delete, clear, update).
+     * AppWiring uses this to re-render the home page if it's currently
+     * visible. Runs on the caller's thread — the listener is responsible
+     * for hopping to UI if needed.
+     */
+    public void setOnChangedListener(@Nullable Runnable listener) {
+        this.onChangedListener = listener;
+    }
+
+    private void fireChanged() {
+        Runnable r = onChangedListener;
+        if (r != null) r.run();
     }
 
     // ------------------------------------------------------------------------
@@ -47,11 +68,13 @@ public class BookmarkManager implements ItemManagerDialog.DataSource {
         if (url == null || url.isEmpty() || url.equals("about:blank") || dbHelper == null) return;
         dbHelper.addBookmark(url, title);
         Toast.makeText(activity, "Bookmark saved", Toast.LENGTH_SHORT).show();
+        fireChanged();
     }
 
     public void removeBookmark(@Nullable String url) {
         if (url == null || url.isEmpty() || dbHelper == null) return;
         dbHelper.removeBookmark(url);
+        fireChanged();
     }
 
     // ------------------------------------------------------------------------
@@ -78,24 +101,20 @@ public class BookmarkManager implements ItemManagerDialog.DataSource {
     @Override
     public void update(@NonNull ManagedItem item, @Nullable String newTitle, @NonNull String newUrl) {
         if (dbHelper == null) return;
-        // Bookmarks are keyed by URL UNIQUE at the schema level. Renaming the
-        // URL is a valid edit — update in place. A conflict with another row
-        // is not possible here because the manager dialog edits one row at a
-        // time and the user must type a distinct URL to trigger it.
         dbHelper.updateBookmarkEntry(item.id, newTitle, newUrl);
+        fireChanged();
     }
 
     @Override
     public void delete(@NonNull List<Long> ids) {
         if (dbHelper == null || ids.isEmpty()) return;
         dbHelper.deleteBookmarksByIds(ids);
+        fireChanged();
     }
 
     @Override
     public void clearAll() {
         if (dbHelper == null) return;
-        // No dedicated "clear bookmarks" method exists yet; the id-based
-        // delete covers it in one statement.
         List<String[]> rows = dbHelper.getAllBookmarksWithIds();
         List<Long> ids = new ArrayList<>(rows.size());
         for (String[] row : rows) {
@@ -103,5 +122,6 @@ public class BookmarkManager implements ItemManagerDialog.DataSource {
             catch (Exception ignored) {}
         }
         dbHelper.deleteBookmarksByIds(ids);
+        fireChanged();
     }
 }
