@@ -10,10 +10,33 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 
 public class SecureCredentialManager {
+
+    /**
+     * Immutable row for callers that want to read credentials without a
+     * JSON round-trip. Used by {@link VaultPillController} on the fast path.
+     */
+    public static final class Credential {
+        public final String host;
+        public final String username;
+        public final String password;
+        Credential(String host, String username, String password) {
+            this.host = host;
+            this.username = username;
+            this.password = password;
+        }
+    }
+
     private SharedPreferences encryptedPrefs;
     private boolean isReady = false;
     private final Context context;
@@ -60,7 +83,7 @@ public class SecureCredentialManager {
                         byte[] decoded = Base64.decode(parts[1], Base64.DEFAULT);
                         String decryptedVal = new String(cipher.doFinal(decoded), StandardCharsets.UTF_8);
                         editor.putString(key, decryptedVal);
-                        
+
                         if (key.endsWith("_user")) {
                             String host = key.substring(0, key.lastIndexOf("_" + decryptedVal + "_user"));
                             editor.putString(host + "_primary_user", decryptedVal);
@@ -96,6 +119,64 @@ public class SecureCredentialManager {
         if (username.isEmpty()) return "";
         return encryptedPrefs.getString(host + "_" + username + "_pass", "");
     }
+
+    // ------------------------------------------------------------------
+    // Fuzzy lookup for the pill / quick-copy path.
+    //
+    // Walks the hostname up its label chain: mail.google.com -> google.com.
+    // Stops before the TLD so we never match bare "com" or "co.uk".
+    // A same-host credential beats a parent-host credential only by
+    // ordering — both are returned so the sheet can show them all.
+    // ------------------------------------------------------------------
+
+    @androidx.annotation.NonNull
+    public synchronized List<Credential> getCredentialsForHost(@androidx.annotation.Nullable String host) {
+        if (!isReady || host == null || host.isEmpty()) return Collections.emptyList();
+
+        List<Credential> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        String h = host.toLowerCase(Locale.ROOT);
+
+        // Strip port if present (hostname from getHost() already has none,
+        // but a defensive strip covers callers that pass raw authorities).
+        int colon = h.indexOf(':');
+        if (colon >= 0) h = h.substring(0, colon);
+
+        while (!h.isEmpty()) {
+            scanHost(h, out, seen);
+            int dot = h.indexOf('.');
+            if (dot < 0) break;
+            String next = h.substring(dot + 1);
+            // Stop before single-label TLD ("com", "io", "uk").
+            if (!next.contains(".")) break;
+            h = next;
+        }
+        return out;
+    }
+
+    private void scanHost(String host, List<Credential> out, Set<String> seen) {
+        Map<String, ?> all = encryptedPrefs.getAll();
+        String prefix = host + "_";
+        for (String key : all.keySet()) {
+            if (!key.startsWith(prefix)) continue;
+            if (!key.endsWith("_user")) continue;
+            if (key.endsWith("_primary_user")) continue;
+            Object raw = all.get(key);
+            if (!(raw instanceof String)) continue;
+            String username = (String) raw;
+            if (username.isEmpty()) continue;
+
+            String sig = host + "|" + username;
+            if (!seen.add(sig)) continue;
+
+            String pass = encryptedPrefs.getString(host + "_" + username + "_pass", "");
+            out.add(new Credential(host, username, pass));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Legacy JSON APIs — still used by the vault page and VaultController.
+    // ------------------------------------------------------------------
 
     public synchronized String getAllAccountsForHost(String host) {
         if (!isReady || host == null || host.isEmpty()) return "[]";
@@ -160,10 +241,10 @@ public class SecureCredentialManager {
                     if (key.endsWith(suffix) && key.length() > suffix.length()) {
                         String host = key.substring(0, key.length() - suffix.length());
                         String password = encryptedPrefs.getString(host + "_" + username + "_pass", "");
-                        
-                        csv.append(String.format("\"%s\",\"%s\",\"%s\"\n", 
-                            host.replace("\"", "\"\""), 
-                            username.replace("\"", "\"\""), 
+
+                        csv.append(String.format("\"%s\",\"%s\",\"%s\"\n",
+                            host.replace("\"", "\"\""),
+                            username.replace("\"", "\"\""),
                             password.replace("\"", "\"\"")));
                     }
                 }
@@ -179,15 +260,15 @@ public class SecureCredentialManager {
 
     public synchronized void deleteCredentials(String host, String username) {
         if (!isReady || host == null || username == null) return;
-        
+
         SharedPreferences.Editor editor = encryptedPrefs.edit();
         editor.remove(host + "_" + username + "_pass");
         editor.remove(host + "_" + username + "_user");
-        
+
         if (username.equals(encryptedPrefs.getString(host + "_primary_user", ""))) {
             editor.remove(host + "_primary_user");
         }
-        editor.commit(); 
+        editor.commit();
     }
 
     public synchronized void clearCredentials(String host) {
@@ -226,20 +307,20 @@ public class SecureCredentialManager {
 
             android.content.SharedPreferences.Editor editor = encryptedPrefs.edit();
             String line;
-            
+
             String csvRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)";
 
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) continue;
 
                 String[] columns = line.split(csvRegex, -1);
-                
+
                 try {
                     if (columns.length > Math.max(urlIndex, Math.max(usernameIndex, passwordIndex))) {
-                        
+
                         String host = columns[urlIndex].replaceAll("^\"|\"$", "").trim();
                         String username = columns[usernameIndex].replaceAll("^\"|\"$", "").trim();
-                        
+
                         String password = columns[passwordIndex].replaceAll("^\"|\"$", "").replace("\"\"", "\"");
 
                         if (!host.isEmpty() && !username.isEmpty()) {
