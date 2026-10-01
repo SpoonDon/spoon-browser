@@ -187,9 +187,9 @@ public class MainActivity extends AppCompatActivity {
     public void onResume() {
         super.onResume();
         handleIncomingIntent(getIntent());
-        setIntent(new Intent());
+        setIntent(new Intent());                
         if (wiring != null) {
-            wiring.getTabManager().resumeActiveTab();
+            wiring.maybeRunAutoUpdate();
         }
     }
 
