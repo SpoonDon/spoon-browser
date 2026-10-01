@@ -17,7 +17,11 @@ import java.util.concurrent.Executor;
  * and routes persistence through {@link BrowserDatabaseHelper}.
  *
  * Also owns the one-shot legacy SharedPreferences bookmark migration that
- * runs at cold start (kept here since it predates BookmarkManager).
+ * runs at cold start.
+ *
+ * 2026-10-01 cleanup: the legacy {@code addBookmark(String, String)} passthrough
+ * was removed. Bookmark write paths now live exclusively in
+ * {@link BookmarkManager}; AppWiring routes the menu action there.
  */
 public class HistoryController implements ItemManagerDialog.DataSource {
 
@@ -63,18 +67,6 @@ public class HistoryController implements ItemManagerDialog.DataSource {
     public void clearHistory() {
         if (dbHelper != null) dbHelper.clearHistory();
         Toast.makeText(activity, "History cleared", Toast.LENGTH_SHORT).show();
-    }
-
-    // ------------------------------------------------------------------------
-    // Legacy bookmark add — kept here because MenuController still routes
-    // "Add Bookmark" through HistoryController. BookmarkManager owns the
-    // bookmark UI. Slated for cleanup when MenuController is patched.
-    // ------------------------------------------------------------------------
-
-    public void addBookmark(@Nullable String url, @Nullable String title) {
-        if (url == null || url.isEmpty() || url.equals("about:blank") || dbHelper == null) return;
-        dbHelper.addBookmark(url, title);
-        Toast.makeText(activity, "Bookmark saved", Toast.LENGTH_SHORT).show();
     }
 
     // ------------------------------------------------------------------------
