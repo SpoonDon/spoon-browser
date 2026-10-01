@@ -349,6 +349,20 @@ public class AppWiring {
 
             @NonNull @Override public SharedPreferences getPreferences() { return prefs; }
         });
+
+        // Phase 2.5: pull subscription state from AdBlockPreferences and
+        // hand it to the engine. Also runs one-time migration from the
+        // legacy spoon_browser.filter_lists key on first launch.        
+        adBlockController.syncEngineWithPrefs();
+    }
+        
+    public void maybeRunAutoUpdate() {
+        AdBlockPreferences prefs = AdBlockPreferences.get(activity);
+        if (!prefs.isAutoUpdateDue()) return;
+        if (prefs.enabledListUrls().isEmpty()) return;
+
+        adBlockController.refreshAll();
+        adBlockController.cacheEngineStats();
     }
 
     // ========================================================================
