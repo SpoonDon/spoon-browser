@@ -153,7 +153,7 @@ public class TabManager {
         callbacks.onTabCountChanged(tabs.size());
     }
 
-    public void switchToTab(int index) {
+    public void switchToTab(int index) {        
         if (index < 0 || index >= tabs.size()) return;
         currentPosition = index;
 
@@ -164,15 +164,43 @@ public class TabManager {
                 wv.setVisibility(View.VISIBLE);
                 wv.onResume();
                 wv.resumeTimers();
+                applyRendererPriority(wv, true);
             } else {
                 wv.setVisibility(View.GONE);
                 wv.onPause();
+                applyRendererPriority(wv, false);
             }
         }
 
         WebView active = tabs.get(index).getWebView();
         callbacks.onCurrentTabChanged(active, tabs.get(index));
         callbacks.onTabCountChanged(tabs.size());
+    }
+
+    /**
+     * Tells Chromium's renderer process to lower its own scheduling priority
+     * when the tab is not visible. Without this, background tabs continue to
+     * run JS timers, CSS animations, and media at full priority - a major
+     * source of sustained thermal load on multi-tab sessions.
+     *
+     * API 26+. The waivedWhenNotVisible flag is Chromium's own hint that the
+     * renderer may be killed outright under memory pressure; we set it true
+     * for hidden tabs because our TabManager already handles renderer death
+     * via handleDeadRenderProcess().
+     */
+    private void applyRendererPriority(@NonNull WebView webView, boolean foreground) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        try {
+            if (foreground) {
+                webView.setRendererPriorityPolicy(
+                        WebView.RENDERER_PRIORITY_IMPORTANT, false);
+            } else {
+                webView.setRendererPriorityPolicy(
+                        WebView.RENDERER_PRIORITY_WAIVED, true);
+            }
+        } catch (Exception ignored) {
+            // Some OEM WebView builds throw on this; not worth crashing over.
+        }
     }
 
     public void closeTab(int index) {
