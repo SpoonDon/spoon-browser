@@ -517,6 +517,11 @@ public class MainActivity extends AppCompatActivity {
         return wiring != null ? wiring.getTabManager().getCurrentTabState() : null;
     }
 
+    @Nullable
+    public BookmarkManager getBookmarkManager() {
+        return wiring != null ? wiring.getBookmarkManager() : null;
+    }
+
     public void openUrlInNewTab(String url) {
         if (wiring != null) {
             wiring.getTabManager().openUrlInNewTab(url);
