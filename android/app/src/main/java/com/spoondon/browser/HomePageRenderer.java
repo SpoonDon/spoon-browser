@@ -13,9 +13,9 @@ import java.util.List;
  * Renders the Spoon Browser new-tab / home page.
  *
  * Layout (top to bottom):
- *   [ Spoon ]                     title
+ *   [ Spoon Browser ]             title
  *   [ search field ]              only when widthDp >= 600
- *   [ bookmark grid ]             up to MAX_TILES tiles, or empty-state hint
+ *   [ bookmark grid ]             up to MAX_TILES tiles; nothing rendered when empty
  *
  * Bookmark tiles are plain {@code <a href>} anchors — tapping one lets
  * WebView handle navigation through the normal URL pipeline. There is no
@@ -31,6 +31,10 @@ import java.util.List;
  * FaviconStore's disk cache. Cache misses fall back to a letter tile and
  * schedule a background fetch — the favicon appears on the next render.
  * Nothing about a bookmark leaves the device to render this page.
+ *
+ * 2026-10-01 (home tweaks): title reverted to "Spoon Browser"; the
+ * persistent "Bookmarks will appear here" hint was removed — the grid
+ * simply renders nothing when there are no bookmarks.
  */
 public class HomePageRenderer {
 
@@ -112,12 +116,10 @@ public class HomePageRenderer {
           .append("white-space:nowrap;overflow:hidden;text-overflow:ellipsis;")
           .append("max-width:100%;color:#b0b0b0;}")
           .append(".see-all .icon{background:#1a2547;color:#8fb0ff;font-size:22px;}")
-          .append(".empty{padding:48px 32px;text-align:center;color:#666;")
-          .append("font-size:14px;line-height:1.7;max-width:400px;margin:0 auto;}")
           .append("</style></head><body>");
 
         // Header: title + optional search
-        sb.append("<div class='header'><h1>Spoon</h1>");
+        sb.append("<div class='header'><h1>Spoon Browser</h1>");
         if (showSearch) {
             sb.append("<input id='q' class='search' type='text' ")
               .append("placeholder='Search privately...' autocomplete='off' ")
@@ -125,11 +127,9 @@ public class HomePageRenderer {
         }
         sb.append("</div>");
 
-        // Grid or empty state
-        if (bookmarks.isEmpty()) {
-            sb.append("<div class='empty'>Bookmarks will appear here.<br>")
-              .append("Open a page and tap <b>Menu &rarr; Add Bookmark</b>.</div>");
-        } else {
+        // Grid — only rendered when there are bookmarks to show. No empty
+        // hint; a blank home page is cleaner than a permanent placeholder.
+        if (!bookmarks.isEmpty()) {
             sb.append("<div class='grid'>");
             int total = bookmarks.size();
             if (total <= MAX_TILES) {
@@ -204,6 +204,4 @@ public class HomePageRenderer {
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
-                .replace("'", "&#39;");
-    }
-}
+                .replace
