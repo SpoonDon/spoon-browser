@@ -588,13 +588,21 @@ public class SpoonWebViewClient extends WebViewClient {
                 "}, true);" +
                 "window.addEventListener('pagehide', trySave);" +
                 "window.addEventListener('beforeunload', trySave);" +
-                "if (window.__spoonAutosaveSweep) clearInterval(window.__spoonAutosaveSweep);" +
-                "window.__spoonAutosaveSweep = setInterval(function() {" +
-                "  try {" +
-                "    var pb = readPassBox();" +
-                "    if (pb && pb.value && !pb.matches(':focus')) trySave();" +
-                "  } catch(e) {}" +
-                "}, 2000);" +
+                // Only run the periodic sweep when a password field exists in
+                // the current DOM. Pages without a login form (the ~90% majority)
+                // never wake the CPU on a timer - this is the primary thermal
+                // fix. Login pages that hide the form via CSS still match the
+                // selector, and SPAs that inject the form later are still
+                // covered by the submit/click/keydown listeners above.
+                "if (document.querySelector('input[type=password]')) {" +
+                "  if (window.__spoonAutosaveSweep) clearInterval(window.__spoonAutosaveSweep);" +
+                "  window.__spoonAutosaveSweep = setInterval(function() {" +
+                "    try {" +
+                "      var pb = readPassBox();" +
+                "      if (pb && pb.value && !pb.matches(':focus')) trySave();" +
+                "    } catch(e) {}" +
+                "  }, 2000);" +
+                "}" +
                 "})();";
     }
 
