@@ -156,23 +156,41 @@ public class AdBlockController {
      *
      * Summary-first dialog: shows active count, engine state, and everything
      * the user can do. No deep navigation forced on them.
-     */
+     */        
     public void showFilterListsDialog() {
-        final CharSequence[] items = new CharSequence[] {
-                "Preset catalog",
-                "Manage subscriptions",
-                "Add custom URL",
-                "Import from clipboard",
-                "Update all subscriptions",
-                "Auto-update interval",
-                "Clear all lists"
+        final List<Row> rows = new ArrayList<>();
+
+        // Summary header rows — non-clickable.
+        for (String line : buildSummaryText().split("\n")) {
+            if (!line.isEmpty()) rows.add(Row.header(line));
+        }
+        rows.add(Row.spacer());
+
+        // Action rows.
+        rows.add(Row.action("Preset catalog", 0));
+        rows.add(Row.action("Manage subscriptions", 1));
+        rows.add(Row.action("Add custom URL", 2));
+        rows.add(Row.action("Import from clipboard", 3));
+        rows.add(Row.action("Update all subscriptions", 4));
+        rows.add(Row.action("Auto-update interval", 5));
+        rows.add(Row.action("Clear all lists", 6));
+
+        final CharSequence[] labels = new CharSequence[rows.size()];
+        for (int i = 0; i < rows.size(); i++) labels[i] = rows.get(i).label;
+
+        ArrayAdapter<CharSequence> adapter = new ArrayAdapter<CharSequence>(
+                activity, android.R.layout.simple_list_item_1, labels) {
+            @Override public boolean areAllItemsEnabled() { return false; }
+            @Override public boolean isEnabled(int position) {
+                return rows.get(position).actionId >= 0;
+            }
         };
 
         new AlertDialog.Builder(activity)
                 .setTitle("Filter Lists")
-                .setMessage(buildSummaryText())
-                .setItems(items, (dialog, which) -> {
-                    switch (which) {
+                .setAdapter(adapter, (dialog, which) -> {
+                    Row r = rows.get(which);
+                    switch (r.actionId) {
                         case 0: showPresetCatalog(); break;
                         case 1: showManageSubscriptions(); break;
                         case 2: showAddCustomListDialog(); break;
@@ -184,6 +202,19 @@ public class AdBlockController {
                 })
                 .setNegativeButton("Close", null)
                 .show();
+    }
+
+    /** Row in the main dialog list — header rows are non-clickable. */
+    private static final class Row {
+        final CharSequence label;
+        final int actionId;   // -1 = header/spacer
+        Row(CharSequence label, int actionId) {
+            this.label = label;
+            this.actionId = actionId;
+        }
+        static Row header(CharSequence s) { return new Row(s, -1); }
+        static Row spacer()               { return new Row(" ", -1); }
+        static Row action(CharSequence s, int id) { return new Row(s, id); }
     }
 
     /**
