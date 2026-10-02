@@ -13,11 +13,9 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -26,21 +24,17 @@ import androidx.annotation.Nullable;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Locale;
-import java.util.Set;
-
 /**
- * Owns the main menu (routed through {@link MainMenuDialog}), the Settings
- * submenu, the Ad Blocking dialog, the "About" bottom sheet, the search
- * engine picker, the "Find in Page" overlay, and the "Allow HTTP sites"
- * (cleartext hosts) manager.
+ * Owns the main menu, Settings submenu, Ad Blocking dialog, "About" bottom
+ * sheet, search engine picker, "Find in Page" overlay, and "Allow HTTP sites"
+ * manager.
  *
- * 2026-10-02: The main menu is no longer a PopupMenu. It's a custom
- * AlertDialog+LinearLayout grouped into sections, built by
- * {@link MainMenuDialog}. The {@link Callbacks} interface is unchanged —
- * only the surface presentation moved.
+ * 2026-10-03 (v6):
+ *   - Settings submenu routed through {@link SettingsDialog} with startup
+ *     animation toggle indicator.
+ *   - Search engine picker routed through {@link SearchEngineDialog}.
+ *   - Allow HTTP sites manager routed through {@link HttpSitesDialog}.
+ *   - All three share the polished menu visual language.
  */
 public class MenuController {
 
@@ -100,12 +94,6 @@ public class MenuController {
     // ------------------------------------------------------------------------
     // Main menu (routes through MainMenuDialog)
     // ------------------------------------------------------------------------
-
-    /**
-     * Shows the main menu. The {@code anchor} argument is retained for
-     * source compatibility with the old PopupMenu implementation but is
-     * no longer used — the new dialog is centered, not anchored.
-     */
     public void showMainMenu(@NonNull View anchor) {
         boolean desktopOn = callbacks.isDesktopEnabledForCurrentSite();
         boolean adBlockOn = AdBlockEngine.checkIsEngineEnabled(activity);
@@ -134,11 +122,12 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // Settings submenu (routed through SettingsDialog)
+    // Settings submenu
     // ------------------------------------------------------------------------
 
     private void showSettingsDialog() {
-        SettingsDialog.show(activity, this::handleSettingsAction);
+        boolean startupOn = isStartupAnimationOn();
+        SettingsDialog.show(activity, startupOn, this::handleSettingsAction);
     }
 
     private void handleSettingsAction(@NonNull String actionId) {
@@ -170,15 +159,16 @@ public class MenuController {
         }
     }
 
+    /** Reads the same pref MainActivity.toggleStartupAnimation() toggles. */
+    private boolean isStartupAnimationOn() {
+        SharedPreferences sp = activity.getSharedPreferences(
+                "browser_prefs", Context.MODE_PRIVATE);
+        return sp.getBoolean("show_splash_screen", true);
+    }
+
     // ------------------------------------------------------------------------
     // Ad Blocking submenu
     // ------------------------------------------------------------------------
-
-    /**
-     * Small dialog offering the enable/disable toggle plus a path into the
-     * filter-list manager. The top-level menu uses a toggle row directly,
-     * but the user can also reach the manager from here.
-     */
     private void showAdBlockingDialog() {
         boolean enabled = AdBlockEngine.checkIsEngineEnabled(activity);
         String[] options = {
@@ -197,130 +187,29 @@ public class MenuController {
                 .show();
     }
 
-    /**
-     * Placeholder for the allowlist — the real dialog lives inside
-     * {@code AdBlockController}. We just hand off to the same code path
-     * the "Manage filter lists" dialog uses.
-     */
     private void showSiteAllowlistStub() {
-        // AdBlockController already surfaces the allowlist from inside
-        // the filter-lists dialog; reuse that entry point rather than
-        // duplicating the UI here.
         callbacks.showFilterLists();
     }
 
     // ------------------------------------------------------------------------
-    // Allow HTTP sites (formerly: Trusted cleartext hosts)
+    // Allow HTTP sites (routes through HttpSitesDialog)
     // ------------------------------------------------------------------------
     private void showCleartextHostsDialog() {
-        Set<String> hosts = CleartextPreferences.getUserHosts(activity);
-        ArrayList<String> list = new ArrayList<>(hosts);
-        Collections.sort(list);
-
-        if (list.isEmpty()) {
-            new AlertDialog.Builder(activity)
-                    .setTitle("Allow HTTP sites")
-                    .setMessage("No sites added yet.\n\n"
-                            + "Sites added here are allowed to load over http:// "
-                            + "instead of being auto-upgraded to https://.\n\n"
-                            + "Use this for routers, local devices, and development "
-                            + "hosts that don't support HTTPS. The built-in list "
-                            + "(router brands, gateway IPs, localhost, emulator host, "
-                            + "mDNS) is always trusted.")
-                    .setPositiveButton("Add site", (d, w) -> showAddCleartextHostDialog())
-                    .setNegativeButton("Close", null)
-                    .show();
-            return;
-        }
-
-        ListView listView = new ListView(activity);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                activity, android.R.layout.simple_list_item_1, list);
-        listView.setAdapter(adapter);
-
-        listView.setOnItemLongClickListener((parent, view, pos, id) -> {
-            String host = list.get(pos);
-            new AlertDialog.Builder(activity)
-                    .setTitle("Remove trusted site?")
-                    .setMessage(host)
-                    .setPositiveButton("Remove", (d, w) -> {
-                        CleartextPreferences.removeUserHost(activity, host);
-                        Toast.makeText(activity, "Removed " + host,
-                                Toast.LENGTH_SHORT).show();
-                        showCleartextHostsDialog();
-                    })
-                    .setNegativeButton("Cancel", null)
-                    .show();
-            return true;
-        });
-
-        new AlertDialog.Builder(activity)
-                .setTitle("Allow HTTP sites")
-                .setMessage("Long-press a site to remove it.")
-                .setView(listView)
-                .setPositiveButton("Add site", (d, w) -> showAddCleartextHostDialog())
-                .setNegativeButton("Close", null)
-                .show();
-    }
-
-    private void showAddCleartextHostDialog() {
-        EditText input = new EditText(activity);
-        input.setHint("192.168.1.100  or  router.example.com");
-
-        new AlertDialog.Builder(activity)
-                .setTitle("Add site")
-                .setMessage("HTTP loads for this site will not be upgraded to HTTPS.")
-                .setView(input)
-                .setPositiveButton("Add", (d, w) -> {
-                    String raw = input.getText().toString().trim();
-                    if (raw.isEmpty()) return;
-
-                    String normalized = raw.toLowerCase(Locale.ROOT);
-                    if (normalized.contains("://")) {
-                        normalized = normalized.substring(normalized.indexOf("://") + 3);
-                    }
-                    if (normalized.contains("/")) {
-                        normalized = normalized.substring(0, normalized.indexOf('/'));
-                    }
-                    if (normalized.contains(":")) {
-                        normalized = normalized.split(":")[0];
-                    }
-                    normalized = normalized.trim();
-                    if (normalized.isEmpty()) return;
-
-                    CleartextPreferences.addUserHost(activity, normalized);
-                    Toast.makeText(activity, "Added " + normalized,
-                            Toast.LENGTH_SHORT).show();
-                    showCleartextHostsDialog();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        HttpSitesDialog.show(activity);
     }
 
     // ------------------------------------------------------------------------
-    // Search engine
+    // Search engine (routes through SearchEngineDialog)
     // ------------------------------------------------------------------------
     public void showSearchEngineDialog() {
-        String current = prefs != null ? prefs.getString(KEY_SEARCH_ENGINE, "brave") : "brave";
-        final String[] engines = {"Brave", "Google", "DuckDuckGo"};
-        final String[] values = {"brave", "google", "duckduckgo"};
-
-        int checked = 0;
-        for (int i = 0; i < values.length; i++) {
-            if (values[i].equals(current)) { checked = i; break; }
-        }
-
-        new AlertDialog.Builder(activity)
-                .setTitle("Search Engine")
-                .setSingleChoiceItems(engines, checked, (dialog, which) -> {
-                    prefs.edit().putString(KEY_SEARCH_ENGINE, values[which]).apply();
-                    dialog.dismiss();
-                    Toast.makeText(activity,
-                            engines[which] + " set as default",
-                            Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+        String current = prefs != null
+                ? prefs.getString(KEY_SEARCH_ENGINE, "brave")
+                : "brave";
+        SearchEngineDialog.show(activity, current, engine -> {
+            if (prefs != null) {
+                prefs.edit().putString(KEY_SEARCH_ENGINE, engine).apply();
+            }
+        });
     }
 
     public String getSearchUrlFor(@Nullable String query) {
@@ -375,12 +264,12 @@ public class MenuController {
         barLayout.addView(countText);
 
         android.widget.Button prevBtn = new android.widget.Button(activity);
-        prevBtn.setText("∧");
+        prevBtn.setText("\u2227"); // ∧
         prevBtn.setTextColor(Color.WHITE);
         prevBtn.setBackground(null);
 
         android.widget.Button nextBtn = new android.widget.Button(activity);
-        nextBtn.setText("∨");
+        nextBtn.setText("\u2228"); // ∨
         nextBtn.setTextColor(Color.WHITE);
         nextBtn.setBackground(null);
 
@@ -430,7 +319,7 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // About bottom sheet
+    // About bottom sheet (unchanged)
     // ------------------------------------------------------------------------
     public void showAbout() {
         BottomSheetDialog bottomSheet = new BottomSheetDialog(activity);

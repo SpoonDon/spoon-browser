@@ -17,34 +17,26 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 /**
- * Settings submenu dialog. Same visual language as {@link MainMenuDialog}:
- * same theme, same top-right anchor, same two-pass measure, same divider
- * treatment. Rows are icons + labels + optional trailing view.
+ * Search engine picker. Same visual language as {@link MainMenuDialog} and
+ * {@link SettingsDialog}: top-right anchor, two-pass measure, icons, check
+ * on the currently selected engine. Tap a row -> selects, dismisses, toasts.
  *
- * 2026-10-03 (v2):
- *   - Startup animation is now a proper toggle row with a checkmark when on.
- *   - buildRow gained a trailing-view slot for the checkmark.
+ * One-shot dialog: opening again re-reads the current engine from prefs.
  */
-public class SettingsDialog {
+public class SearchEngineDialog {
 
     public interface Callback {
-        void onAction(@NonNull String actionId);
+        void onEngineSelected(@NonNull String engineValue);
     }
 
-    public static final String ACTION_SEARCH_ENGINE      = "settings_search_engine";
-    public static final String ACTION_ALLOW_HTTP         = "settings_allow_http";
-    public static final String ACTION_CLEAR_CACHE        = "settings_clear_cache";
-    public static final String ACTION_CLEAR_HISTORY      = "settings_clear_history";
-    public static final String ACTION_STARTUP_ANIMATION  = "settings_startup_animation";
-    public static final String ACTION_FILTER_LISTS       = "settings_filter_lists";
-    public static final String ACTION_IMPORT_PASSWORDS   = "settings_import_passwords";
-    public static final String ACTION_EXPORT_PASSWORDS   = "settings_export_passwords";
+    // Single source of truth. Extend here to add more.
+    private static final String[] VALUES = { "brave",  "google", "duckduckgo" };
+    private static final String[] LABELS = { "Brave",  "Google", "DuckDuckGo" };
 
     private static final float MAX_WIDTH_FRACTION  = 0.72f;
     private static final float MAX_HEIGHT_FRACTION = 0.85f;
@@ -54,18 +46,15 @@ public class SettingsDialog {
     private static final int COLOR_SURFACE       = 0xFF1E1E20;
     private static final int COLOR_TEXT_PRIMARY  = 0xFFEDEDED;
     private static final int COLOR_ICON          = 0xFFB8B8B8;
-    private static final int COLOR_DIVIDER       = 0xFF2C2C2E;
     private static final int COLOR_ACCENT        = 0xFF4D6BFE;
 
-    private static final int ROW_PAD_H_DP     = 16;
-    private static final int ROW_PAD_V_DP     = 11;
-    private static final int ICON_SIZE_DP     = 20;
-    private static final int ICON_GAP_DP      = 16;
-
-    private static final String TAG_DIVIDER = "spoon_settings_divider";
+    private static final int ROW_PAD_H_DP   = 16;
+    private static final int ROW_PAD_V_DP   = 11;
+    private static final int ICON_SIZE_DP   = 20;
+    private static final int ICON_GAP_DP    = 16;
 
     public static void show(@NonNull Context ctx,
-                            boolean startupAnimationOn,
+                            @NonNull String currentEngine,
                             @NonNull Callback cb) {
 
         Context themed = new ContextThemeWrapper(ctx, R.style.SpoonMenuDialog);
@@ -75,41 +64,40 @@ public class SettingsDialog {
         root.setBackground(roundedBackground());
         root.setPadding(0, dp(themed, 6), 0, dp(themed, 6));
 
-        root.addView(row(themed, ACTION_SEARCH_ENGINE, R.drawable.ic_menu_search,
-                "Search engine", cb));
-        root.addView(row(themed, ACTION_ALLOW_HTTP, R.drawable.ic_settings_http,
-                "Allow HTTP sites", cb));
-        root.addView(divider(themed));
+        // Holder so row click handlers can dismiss this dialog.
+        final Dialog[] dialogHolder = new Dialog[1];
 
-        root.addView(row(themed, ACTION_CLEAR_CACHE, R.drawable.ic_settings_clear_cache,
-                "Clear cache", cb));
-        root.addView(row(themed, ACTION_CLEAR_HISTORY, R.drawable.ic_menu_history,
-                "Clear history", cb));
-        root.addView(divider(themed));
+        for (int i = 0; i < VALUES.length; i++) {
+            final String value = VALUES[i];
+            final String label = LABELS[i];
+            boolean selected = value.equals(currentEngine);
 
-        root.addView(toggle(themed, ACTION_STARTUP_ANIMATION, R.drawable.ic_settings_animation,
-                "Startup animation", startupAnimationOn, cb));
-        root.addView(row(themed, ACTION_FILTER_LISTS, R.drawable.ic_menu_shield,
-                "Manage filter lists", cb));
-        root.addView(divider(themed));
+            final TextView check = new TextView(themed);
+            check.setText("\u2713");
+            check.setTextSize(18);
+            check.setTextColor(COLOR_ACCENT);
+            check.setVisibility(selected ? View.VISIBLE : View.INVISIBLE);
 
-        root.addView(row(themed, ACTION_IMPORT_PASSWORDS, R.drawable.ic_settings_import,
-                "Import passwords (CSV)", cb));
-        root.addView(row(themed, ACTION_EXPORT_PASSWORDS, R.drawable.ic_settings_export,
-                "Export passwords (CSV)", cb));
+            View row = buildRow(themed, R.drawable.ic_menu_search, label, check);
+            row.setOnClickListener(v -> {
+                if (dialogHolder[0] != null) dialogHolder[0].dismiss();
+                Toast.makeText(ctx, label + " set as default",
+                        Toast.LENGTH_SHORT).show();
+                cb.onEngineSelected(value);
+            });
+            root.addView(row);
+        }
 
         DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
         int capWidthPx  = (int) (dm.widthPixels  * MAX_WIDTH_FRACTION);
         int capHeightPx = (int) (dm.heightPixels * MAX_HEIGHT_FRACTION);
 
-        // First pass: WRAP_CONTENT on rows, 0 on dividers.
         for (int i = 0; i < root.getChildCount(); i++) {
             View child = root.getChildAt(i);
             ViewGroup.LayoutParams lp = child.getLayoutParams();
             if (lp instanceof LinearLayout.LayoutParams) {
-                LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
-                if (TAG_DIVIDER.equals(child.getTag())) llp.width = 0;
-                else llp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                ((LinearLayout.LayoutParams) lp).width =
+                        ViewGroup.LayoutParams.WRAP_CONTENT;
             }
         }
         root.measure(
@@ -117,7 +105,6 @@ public class SettingsDialog {
                 View.MeasureSpec.makeMeasureSpec(0,          View.MeasureSpec.UNSPECIFIED));
         int contentWidth = Math.min(root.getMeasuredWidth(), capWidthPx);
 
-        // Second pass: pin every child to the widest natural width.
         for (int i = 0; i < root.getChildCount(); i++) {
             View child = root.getChildAt(i);
             ViewGroup.LayoutParams lp = child.getLayoutParams();
@@ -136,6 +123,7 @@ public class SettingsDialog {
         scroll.setMaxHeight(capHeightPx);
 
         Dialog dialog = new Dialog(themed);
+        dialogHolder[0] = dialog;
         dialog.setContentView(scroll);
 
         Window window = dialog.getWindow();
@@ -160,38 +148,10 @@ public class SettingsDialog {
         dialog.show();
     }
 
-    private static View row(@NonNull Context ctx, @NonNull String actionId,
-                            @DrawableRes int iconRes, @NonNull String title,
-                            @NonNull Callback cb) {
-        return buildRow(ctx, actionId, iconRes, title, cb, null);
-    }
-
-    private static View toggle(@NonNull Context ctx, @NonNull String actionId,
-                               @DrawableRes int iconRes, @NonNull String title,
-                               boolean initial, @NonNull Callback cb) {
-        final boolean[] state = { initial };
-
-        final TextView check = new TextView(ctx);
-        check.setText("\u2713"); // checkmark
-        check.setTextSize(18);
-        check.setTextColor(COLOR_ACCENT);
-        check.setVisibility(initial ? View.VISIBLE : View.INVISIBLE);
-
-        View rowView = buildRow(ctx, actionId, iconRes, title, cb, check);
-        rowView.setOnClickListener(v -> {
-            state[0] = !state[0];
-            check.setVisibility(state[0] ? View.VISIBLE : View.INVISIBLE);
-            cb.onAction(actionId);
-        });
-        return rowView;
-    }
-
     private static View buildRow(@NonNull Context ctx,
-                                 @NonNull String actionId,
-                                 @DrawableRes int iconRes,
+                                 int iconRes,
                                  @NonNull String title,
-                                 @NonNull Callback cb,
-                                 @Nullable View trailing) {
+                                 View trailing) {
         LinearLayout row = new LinearLayout(ctx);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -224,19 +184,7 @@ public class SettingsDialog {
             tLp.setMarginStart(dp(ctx, 12));
             row.addView(trailing, tLp);
         }
-
-        row.setOnClickListener(v -> cb.onAction(actionId));
         return row;
-    }
-
-    private static View divider(@NonNull Context ctx) {
-        View v = new View(ctx);
-        v.setBackgroundColor(COLOR_DIVIDER);
-        v.setTag(TAG_DIVIDER);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 1));
-        v.setLayoutParams(lp);
-        return v;
     }
 
     private static GradientDrawable roundedBackground() {
@@ -263,7 +211,6 @@ public class SettingsDialog {
         private int maxHeightPx = Integer.MAX_VALUE;
 
         MaxSizeScrollView(@NonNull Context context) { super(context); }
-
         void setMaxWidth(int px)  { this.maxWidthPx = px; requestLayout(); }
         void setMaxHeight(int px) { this.maxHeightPx = px; requestLayout(); }
 
@@ -273,7 +220,6 @@ public class SettingsDialog {
                     capSpec(widthMeasureSpec, maxWidthPx),
                     capSpec(heightMeasureSpec, maxHeightPx));
         }
-
         private static int capSpec(int spec, int cap) {
             if (MeasureSpec.getMode(spec) == MeasureSpec.UNSPECIFIED) {
                 return MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST);
