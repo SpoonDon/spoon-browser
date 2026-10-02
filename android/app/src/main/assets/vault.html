@@ -11,19 +11,33 @@
         .btn.primary { background: #007bff; color: #fff; border-color: #007bff; }
         .btn.danger { background: #dc3545; color: #fff; border-color: #dc3545; }
         .btn.success { background: #28a745; color: #fff; border-color: #28a745; }
+        .btn.tiny { padding: 6px 10px; font-size: 12px; }
         .search-bar { width: 100%; padding: 14px; background: #121212 !important; border: 1px solid #2d2d2d; border-radius: 10px; font-size: 16px; color: #fff !important; margin-bottom: 20px; outline: none; }
-        .card { background: #121212 !important; border: 1px solid #1f1f1f; padding: 16px; border-radius: 10px; margin-bottom: 14px; }
-        .host { font-weight: bold; font-size: 17px; color: #ffffff !important; margin-bottom: 4px; }
-        .user { color: #aaaaaa !important; font-size: 14px; margin-bottom: 14px; }
-        .actions { display: flex; gap: 8px; }
-        .actions .btn { flex: 1; }
         
-        /* Modal Styles */
+        .card { background: #121212 !important; border: 1px solid #1f1f1f; padding: 16px; border-radius: 10px; margin-bottom: 14px; }
+        .host { font-weight: bold; font-size: 17px; color: #ffffff !important; margin-bottom: 12px; }
+        
+        .field-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; }
+        .field-row + .field-row { border-top: 1px solid #1a1a1a; }
+        .field-label { color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .field-block { flex: 1; min-width: 0; }
+        .field-value { color: #ddd; font-size: 15px; word-break: break-all; }
+        .field-value.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 1px; }
+        .field-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        
+        .card-actions { display: flex; gap: 8px; margin-top: 14px; }
+        .card-actions .btn { flex: 1; }
+        
+        /* Modal */
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; padding: 20px; align-items: center; justify-content: center; }
         .modal-content { background: #121212; border: 1px solid #333; padding: 20px; border-radius: 12px; width: 100%; max-width: 400px; }
         .modal-content input { width: 100%; padding: 12px; margin-bottom: 12px; background: #000; border: 1px solid #333; color: #fff; border-radius: 8px; font-size: 15px; }
         .modal-actions { display: flex; gap: 10px; margin-top: 10px; }
         .modal-actions .btn { flex: 1; }
+        
+        /* Toast */
+        #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: #222; color: #fff; padding: 10px 18px; border-radius: 20px; font-size: 13px; border: 1px solid #333; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease; z-index: 2000; }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
     </style>
 </head>
 <body>
@@ -32,7 +46,7 @@
         <h2>Vault</h2>
         <button class="btn success" onclick="openModal()">+ Add</button>
     </div>
-    
+
     <input type="text" class="search-bar" id="search" placeholder="Search saved passwords..." oninput="renderCards()">
     <div id="vault-root"></div>
 
@@ -50,13 +64,14 @@
         </div>
     </div>
 
+    <div id="toast"></div>
+
     <script>
         var allData = [];
         var isEditing = false;
         var editOriginalHost = '';
         var editOriginalUser = '';
 
-        // Modern Jetpack WebMessageListener Initialization
         window.onload = function() {
             if (typeof spoonVaultMessage !== 'undefined') {
                 spoonVaultMessage.addEventListener('message', function(event) {
@@ -69,12 +84,19 @@
                         }
                     }
                 });
-                // Request data immediately on load
                 spoonVaultMessage.postMessage('FETCH_ALL_VAULT_DATA');
             } else {
                 document.getElementById('vault-root').innerHTML = '<div style="color:#666; text-align:center; margin-top:40px;">Waiting for native bridge...</div>';
             }
         };
+
+        function showToast(msg) {
+            var t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            clearTimeout(t._tid);
+            t._tid = setTimeout(function() { t.classList.remove('show'); }, 1400);
+        }
 
         function renderCards() {
             var q = document.getElementById('search').value.toLowerCase();
@@ -86,79 +108,187 @@
                 return;
             }
 
+            var rendered = 0;
             allData.forEach(function(item, idx) {
-                if(item.host.toLowerCase().indexOf(q) === -1 && item.username.toLowerCase().indexOf(q) === -1) return;
+                var host = item.host || '';
+                var user = item.username || '';
+                if (host.toLowerCase().indexOf(q) === -1 && user.toLowerCase().indexOf(q) === -1) return;
+                rendered++;
 
                 var card = document.createElement('div');
                 card.className = 'card';
 
-                // Natively secure DOM creation to prevent XSS injection
+                // Host
                 var hostDiv = document.createElement('div');
                 hostDiv.className = 'host';
-                hostDiv.textContent = item.host;
-
-                var userDiv = document.createElement('div');
-                userDiv.className = 'user';
-                userDiv.textContent = item.username;
-
-                var actionsDiv = document.createElement('div');
-                actionsDiv.className = 'actions';
-                actionsDiv.innerHTML = 
-                    '<button class="btn" onclick="copyPass(' + idx + ', this)">Copy Pass</button>' +
-                    '<button class="btn" onclick="editCard(' + idx + ')">Edit</button>' +
-                    '<button class="btn danger" onclick="deleteCard(' + idx + ')">Del</button>';
-
+                hostDiv.textContent = host;
                 card.appendChild(hostDiv);
-                card.appendChild(userDiv);
-                card.appendChild(actionsDiv);
+
+                // Username row
+                var userRow = document.createElement('div');
+                userRow.className = 'field-row';
+
+                var userBlock = document.createElement('div');
+                userBlock.className = 'field-block';
+                var userLabel = document.createElement('div');
+                userLabel.className = 'field-label';
+                userLabel.textContent = 'Username';
+                var userValue = document.createElement('div');
+                userValue.className = 'field-value';
+                userValue.textContent = user;
+                userBlock.appendChild(userLabel);
+                userBlock.appendChild(userValue);
+
+                var userActions = document.createElement('div');
+                userActions.className = 'field-actions';
+                var copyUserBtn = document.createElement('button');
+                copyUserBtn.className = 'btn tiny';
+                copyUserBtn.textContent = 'Copy';
+                copyUserBtn.onclick = (function(u, b) {
+                    return function() { copyField(u, b, 'Username copied'); };
+                })(user, copyUserBtn);
+                userActions.appendChild(copyUserBtn);
+
+                userRow.appendChild(userBlock);
+                userRow.appendChild(userActions);
+                card.appendChild(userRow);
+
+                // Password row
+                var passRow = document.createElement('div');
+                passRow.className = 'field-row';
+
+                var passBlock = document.createElement('div');
+                passBlock.className = 'field-block';
+                var passLabel = document.createElement('div');
+                passLabel.className = 'field-label';
+                passLabel.textContent = 'Password';
+                var passValue = document.createElement('div');
+                passValue.className = 'field-value mono';
+                passValue.id = 'pass-' + idx;
+                passValue.dataset.revealed = '0';
+                passValue.textContent = '••••••••';
+                passBlock.appendChild(passLabel);
+                passBlock.appendChild(passValue);
+
+                var passActions = document.createElement('div');
+                passActions.className = 'field-actions';
+
+                var toggleBtn = document.createElement('button');
+                toggleBtn.className = 'btn tiny';
+                toggleBtn.textContent = 'Show';
+                toggleBtn.onclick = (function(i, b) {
+                    return function() { toggleReveal(i, b); };
+                })(idx, toggleBtn);
+                passActions.appendChild(toggleBtn);
+
+                var copyPassBtn = document.createElement('button');
+                copyPassBtn.className = 'btn tiny';
+                copyPassBtn.textContent = 'Copy';
+                copyPassBtn.onclick = (function(p, b) {
+                    return function() { copyField(p, b, 'Password copied'); };
+                })(item.password || '', copyPassBtn);
+                passActions.appendChild(copyPassBtn);
+
+                passRow.appendChild(passBlock);
+                passRow.appendChild(passActions);
+                card.appendChild(passRow);
+
+                // Card actions
+                var cardActions = document.createElement('div');
+                cardActions.className = 'card-actions';
+
+                var editBtn = document.createElement('button');
+                editBtn.className = 'btn';
+                editBtn.textContent = 'Edit';
+                editBtn.onclick = (function(i) {
+                    return function() { editCard(i); };
+                })(idx);
+                cardActions.appendChild(editBtn);
+
+                var delBtn = document.createElement('button');
+                delBtn.className = 'btn danger';
+                delBtn.textContent = 'Delete';
+                delBtn.onclick = (function(i) {
+                    return function() { deleteCard(i); };
+                })(idx);
+                cardActions.appendChild(delBtn);
+
+                card.appendChild(cardActions);
                 root.appendChild(card);
             });
-        }
 
-        function copyPass(idx, btnElement) {
-            var pass = allData[idx].password;
-            if(pass) {
-                var triggerSuccessUI = function() {
-                    var originalText = btnElement.innerText;
-                    btnElement.innerText = "Copied!";
-                    btnElement.style.background = "#28a745";
-                    setTimeout(function() {
-                        btnElement.innerText = originalText;
-                        btnElement.style.background = "#222";
-                    }, 1500);
-                };
-
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(pass).then(function() {
-                        triggerSuccessUI();
-                    }).catch(function() {
-                        fallbackCopy(pass, triggerSuccessUI);
-                    });
-                } else {
-                    fallbackCopy(pass, triggerSuccessUI);
-                }
+            if (rendered === 0) {
+                root.innerHTML = '<div style="text-align:center; color:#666; margin-top:40px;">No matches.</div>';
             }
         }
 
-        function fallbackCopy(pass, successCallback) {
-            var temp = document.createElement("input");
-            temp.value = pass;
+        function toggleReveal(idx, btn) {
+            var el = document.getElementById('pass-' + idx);
+            if (!el) return;
+            var revealed = el.dataset.revealed === '1';
+            if (revealed) {
+                el.textContent = '••••••••';
+                el.dataset.revealed = '0';
+                btn.textContent = 'Show';
+            } else {
+                el.textContent = allData[idx].password || '';
+                el.dataset.revealed = '1';
+                btn.textContent = 'Hide';
+            }
+        }
+
+        function copyField(text, btn, label) {
+            if (!text) { showToast('Nothing to copy'); return; }
+
+            var done = function() {
+                showToast(label);
+                if (btn) {
+                    var orig = btn.textContent;
+                    btn.textContent = 'Copied';
+                    btn.style.background = '#28a745';
+                    btn.style.borderColor = '#28a745';
+                    btn.style.color = '#fff';
+                    setTimeout(function() {
+                        btn.textContent = orig;
+                        btn.style.background = '';
+                        btn.style.borderColor = '';
+                        btn.style.color = '';
+                    }, 1200);
+                }
+            };
+
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(done).catch(function() {
+                    fallbackCopy(text, done);
+                });
+            } else {
+                fallbackCopy(text, done);
+            }
+        }
+
+        function fallbackCopy(text, successCallback) {
+            var temp = document.createElement('input');
+            temp.value = text;
             document.body.appendChild(temp);
             temp.select();
             try {
-                document.execCommand("copy");
+                document.execCommand('copy');
                 successCallback();
             } catch (err) {
-                console.error("Fallback copy failed");
+                console.error('Fallback copy failed');
             }
             document.body.removeChild(temp);
         }
 
         function deleteCard(idx) {
-            if(confirm("Delete this saved password?")) {
+            if (confirm('Delete this saved password?')) {
                 var item = allData[idx];
-                if(typeof spoonVaultMessage !== 'undefined') {
-                    spoonVaultMessage.postMessage(JSON.stringify({ action: 'DELETE_LOGIN', host: item.host, username: item.username }));
+                if (typeof spoonVaultMessage !== 'undefined') {
+                    spoonVaultMessage.postMessage(JSON.stringify({
+                        action: 'DELETE_LOGIN',
+                        host: item.host,
+                        username: item.username
+                    }));
                 }
                 allData.splice(idx, 1);
                 renderCards();
@@ -167,7 +297,7 @@
 
         function openModal() {
             isEditing = false;
-            document.getElementById('modal-title').innerText = "Add Credential";
+            document.getElementById('modal-title').innerText = 'Add Credential';
             document.getElementById('m-host').value = '';
             document.getElementById('m-user').value = '';
             document.getElementById('m-pass').value = '';
@@ -179,12 +309,12 @@
             var item = allData[idx];
             editOriginalHost = item.host;
             editOriginalUser = item.username;
-            
-            document.getElementById('modal-title').innerText = "Edit Credential";
+
+            document.getElementById('modal-title').innerText = 'Edit Credential';
             document.getElementById('m-host').value = item.host;
             document.getElementById('m-user').value = item.username;
             document.getElementById('m-pass').value = item.password || '';
-            
+
             document.getElementById('modal').style.display = 'flex';
         }
 
@@ -197,26 +327,37 @@
             var u = document.getElementById('m-user').value.trim();
             var p = document.getElementById('m-pass').value;
 
-            if(!h || !u || !p) return;
+            if (!h || !u || !p) { showToast('All fields required'); return; }
 
-            if(typeof spoonVaultMessage !== 'undefined') {
+            if (typeof spoonVaultMessage !== 'undefined') {
                 if (isEditing && (h !== editOriginalHost || u !== editOriginalUser)) {
-                    spoonVaultMessage.postMessage(JSON.stringify({ action: 'DELETE_LOGIN', host: editOriginalHost, username: editOriginalUser }));
+                    spoonVaultMessage.postMessage(JSON.stringify({
+                        action: 'DELETE_LOGIN',
+                        host: editOriginalHost,
+                        username: editOriginalUser
+                    }));
                 }
-                spoonVaultMessage.postMessage(JSON.stringify({ action: 'SAVE_LOGIN', host: h, username: u, password: p }));
+                spoonVaultMessage.postMessage(JSON.stringify({
+                    action: 'SAVE_LOGIN',
+                    host: h,
+                    username: u,
+                    password: p
+                }));
             }
 
             if (isEditing) {
-                var found = allData.find(i => i.host === editOriginalHost && i.username === editOriginalUser);
-                if(found) { found.host = h; found.username = u; found.password = p; }
+                var found = allData.find(function(i) {
+                    return i.host === editOriginalHost && i.username === editOriginalUser;
+                });
+                if (found) { found.host = h; found.username = u; found.password = p; }
             } else {
-                allData.push({host: h, username: u, password: p});
+                allData.push({ host: h, username: u, password: p });
             }
 
             closeModal();
             renderCards();
+            showToast(isEditing ? 'Updated' : 'Saved');
         }
     </script>
 </body>
 </html>
-
