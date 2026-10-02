@@ -1,6 +1,6 @@
 package com.spoondon.browser;
 
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -23,14 +23,18 @@ import androidx.annotation.NonNull;
 /**
  * Custom main-menu dialog anchored to the top-right corner.
  *
- * 2026-10-02 (v5):
- *   - Menu shortened: Search Engine and Allow HTTP sites moved into the
- *     Settings submenu. Top-level rows: 15 -> 12.
- *   - Row width no longer stretches via weight=1. Each row is WRAP_CONTENT
- *     with a fixed-width right slot for the toggle checkmark, so all rows
- *     share the same right edge and the dialog hugs the widest label.
- *   - Window gravity applied BEFORE show() so there is no center-flash.
- *   - Row / header padding tightened.
+ * 2026-10-02 (v6):
+ *   - Migrated from AlertDialog to a plain Dialog. AlertDialog's theme
+ *     (Theme.Material.Dialog) sets android:windowMinWidthMajor / Minor
+ *     to ~65% / 55% of screen width. That minimum is enforced on the
+ *     Dialog's decor view, not on LayoutParams.width, so
+ *     setLayout(WRAP_CONTENT) was silently clamped to ~55% of the
+ *     screen even when the longest label only needed ~30%. Result:
+ *     ~240px of dead gray space on the right edge of every row.
+ *     Plain Dialog carries none of those theme size hints.
+ *   - Decor view minimum width / height are additionally zeroed after
+ *     setContentView() - this runs before show(), so no flash.
+ *   - Menu contents unchanged from v5.
  */
 public class MainMenuDialog {
 
@@ -119,9 +123,12 @@ public class MainMenuDialog {
         scroll.setClipToOutline(true);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
-        AlertDialog dialog = new AlertDialog.Builder(themed)
-                .setView(scroll)
-                .create();
+        // Plain Dialog - not AlertDialog. AlertDialog's theme would
+        // otherwise clamp the window to ~55% of the screen regardless
+        // of WRAP_CONTENT, which is the whole reason for the dead
+        // gray space on the right edge of every row.
+        Dialog dialog = new Dialog(themed);
+        dialog.setContentView(scroll);
 
         // Configure the window BEFORE show() so the dialog is laid out
         // at its final position and final width on the first frame.
@@ -143,6 +150,16 @@ public class MainMenuDialog {
             params.x = dp(ctx, SIDE_MARGIN_DP);
             params.y = dp(ctx, TOP_MARGIN_DP);
             window.setAttributes(params);
+
+            // setContentView() above installed the decor view, so this
+            // is valid now and runs before show(). Zeroing the minimum
+            // dimensions clears any residual min-width inherited from
+            // the theme, ensuring the dialog truly hugs its content.
+            View decor = window.getDecorView();
+            if (decor != null) {
+                decor.setMinimumWidth(0);
+                decor.setMinimumHeight(0);
+            }
         }
 
         dialog.show();
@@ -232,7 +249,7 @@ public class MainMenuDialog {
             textCol.addView(subView);
         }
 
-        // WRAP_CONTENT text column — no weight. Rows hug their content
+        // WRAP_CONTENT text column - no weight. Rows hug their content
         // width; the dialog hugs the widest row.
         row.addView(textCol, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
