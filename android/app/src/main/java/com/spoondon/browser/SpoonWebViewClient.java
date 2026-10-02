@@ -226,7 +226,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 return true;
             }
         }
-
+                
         if (url.startsWith("intent://")) {
             try {
                 android.content.Context context = view.getContext();
@@ -234,6 +234,7 @@ public class SpoonWebViewClient extends WebViewClient {
                 if (intent != null) {
                     if (intent.getPackage() != null
                             && intent.getPackage().equals(context.getPackageName())) {
+                        view.stopLoading();
                         return true;
                     }
                     android.content.pm.PackageManager pm = context.getPackageManager();
@@ -242,17 +243,21 @@ public class SpoonWebViewClient extends WebViewClient {
                     if (info != null) {
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(intent);
+                        view.stopLoading();
                     } else {
                         String fallbackUrl = intent.getStringExtra("browser_fallback_url");
                         if (fallbackUrl != null
                                 && (fallbackUrl.startsWith("http://")
                                     || fallbackUrl.startsWith("https://"))) {
                             view.loadUrl(fallbackUrl);
+                        } else {
+                            view.stopLoading();
                         }
                     }
                     return true;
                 }
             } catch (Exception e) {
+                view.stopLoading();
                 return true;
             }
         }
