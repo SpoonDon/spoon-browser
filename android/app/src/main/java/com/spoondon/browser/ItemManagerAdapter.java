@@ -1,8 +1,9 @@
 package com.spoondon.browser;
 
 import android.content.Context;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.text.TextUtils;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -22,13 +23,14 @@ import java.util.Locale;
 /**
  * Adapter for the unified History + Bookmarks manager.
  *
- * Holds the full item list as {@code source} and exposes a filtered/sorted
- * view as {@code visible}. Filter and sort are pure client-side operations
- * — the DB is queried once by the dialog and never again until reopen.
- *
- * Rows use {@code activatedBackgroundIndicator} so ListView's built-in
- * CHOICE_MODE_MULTIPLE_MODAL highlights checked rows without needing a
- * Checkable row layout.
+ * 2026-10-03 (v2, chrome re-skin):
+ *   - Rows match the polished menu visual language: 14sp white title,
+ *     11sp muted URL, tighter padding (16/11), overflow icon tinted #B8B8B8.
+ *   - Activation highlight is now a custom StateListDrawable (subtle accent
+ *     tint for the multi-select CAB, soft white for press) instead of the
+ *     theme's activatedBackgroundIndicator, which rendered as an opaque
+ *     blue stripe that clashed on the dark surface.
+ *   - Public API unchanged.
  */
 public class ItemManagerAdapter extends BaseAdapter {
 
@@ -41,10 +43,24 @@ public class ItemManagerAdapter extends BaseAdapter {
         void onOverflow(@NonNull View anchor, int position);
     }
 
+    // Palette (matches MainMenuDialog / SettingsDialog / ItemManagerDialog v2)
+    private static final int COLOR_TEXT_PRIMARY = 0xFFEDEDED;
+    private static final int COLOR_TEXT_MUTED   = 0xFF8E8E93;
+    private static final int COLOR_ICON         = 0xFFB8B8B8;
+
+    // Activation / press states — subtle enough to read on #1E1E20 surface.
+    private static final int COLOR_ACTIVATED = 0x334D6BFE; // accent @ 20%
+    private static final int COLOR_PRESSED   = 0x1AFFFFFF; // white @ 10%
+    private static final int COLOR_CLEAR     = 0x00000000;
+
+    private static final int ROW_PAD_H_DP = 16;
+    private static final int ROW_PAD_V_DP = 11;
+    private static final int ICON_DP      = 20;
+
     private final Context context;
     private final int padX;
     private final int padY;
-    private final int activatedBgRes;
+    private final StateListDrawable rowBackground;
 
     private final List<ManagedItem> source  = new ArrayList<>();
     private final List<ManagedItem> visible = new ArrayList<>();
@@ -57,13 +73,29 @@ public class ItemManagerAdapter extends BaseAdapter {
     public ItemManagerAdapter(@NonNull Context context) {
         this.context = context;
         float d = context.getResources().getDisplayMetrics().density;
-        this.padX = (int) (16 * d);
-        this.padY = (int) (12 * d);
+        this.padX = (int) (ROW_PAD_H_DP * d);
+        this.padY = (int) (ROW_PAD_V_DP * d);
+        this.rowBackground = buildRowBackground();
+    }
 
-        TypedValue tv = new TypedValue();
-        boolean ok = context.getTheme().resolveAttribute(
-                android.R.attr.activatedBackgroundIndicator, tv, true);
-        this.activatedBgRes = (ok && tv.resourceId != 0) ? tv.resourceId : 0;
+    /**
+     * Custom activation / press state list.
+     *
+     * ListView's CHOICE_MODE_MULTIPLE_MODAL sets {@code state_activated} on
+     * checked rows. The platform's {@code activatedBackgroundIndicator}
+     * renders an opaque blue bar that looks wrong on our dark surface, so
+     * we define our own: translucent accent for activated, soft white for
+     * pressed, transparent otherwise.
+     */
+    @NonNull
+    private static StateListDrawable buildRowBackground() {
+        StateListDrawable sld = new StateListDrawable();
+        sld.addState(new int[]{ android.R.attr.state_activated },
+                new ColorDrawable(COLOR_ACTIVATED));
+        sld.addState(new int[]{ android.R.attr.state_pressed },
+                new ColorDrawable(COLOR_PRESSED));
+        sld.addState(new int[]{}, new ColorDrawable(COLOR_CLEAR));
+        return sld;
     }
 
     public void setOnOverflowClickListener(@Nullable OnOverflowClickListener l) {
@@ -104,9 +136,7 @@ public class ItemManagerAdapter extends BaseAdapter {
 
     private void rebuild() {
         visible.clear();
-        String[] needles = filter.isEmpty()
-                ? new String[0]
-                : filter.split("\\s+");
+        String[] needles = filter.isEmpty() ? new String[0] : filter.split("\\s+");
         for (ManagedItem it : source) {
             if (needles.length == 0 || it.matches(needles)) visible.add(it);
         }
@@ -143,30 +173,39 @@ public class ItemManagerAdapter extends BaseAdapter {
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(padX, padY, padX, padY);
-            if (activatedBgRes != 0) row.setBackgroundResource(activatedBgRes);
+            row.setBackground(rowBackground.getConstantState() != null
+                    ? (android.graphics.drawable.Drawable) rowBackground.getConstantState().newDrawable()
+                    : rowBackground);
 
             LinearLayout col = new LinearLayout(context);
             col.setOrientation(LinearLayout.VERTICAL);
 
             TextView title = new TextView(context);
-            title.setTextSize(16);
+            title.setTextSize(14);
+            title.setTextColor(COLOR_TEXT_PRIMARY);
             title.setMaxLines(1);
             title.setEllipsize(TextUtils.TruncateAt.END);
 
             TextView url = new TextView(context);
-            url.setTextSize(12);
-            url.setAlpha(0.65f);
+            url.setTextSize(11);
+            url.setTextColor(COLOR_TEXT_MUTED);
             url.setMaxLines(1);
             url.setEllipsize(TextUtils.TruncateAt.END);
+            url.setPadding(0, (int) (2 * context.getResources()
+                    .getDisplayMetrics().density), 0, 0);
 
             col.addView(title);
             col.addView(url);
 
             TextView overflow = new TextView(context);
             overflow.setText("\u22EE"); // vertical ellipsis
-            overflow.setTextSize(22);
+            overflow.setTextSize(20);
+            overflow.setTextColor(COLOR_ICON);
             overflow.setPadding(padX, 0, 0, 0);
             overflow.setGravity(Gravity.CENTER);
+            overflow.setMinWidth((int) (ICON_DP * context.getResources()
+                    .getDisplayMetrics().density));
+            overflow.setMinHeight(overflow.getMinHeight());
 
             row.addView(col, new LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
