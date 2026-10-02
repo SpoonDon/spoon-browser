@@ -159,7 +159,7 @@ public class AdBlockController {
      * Summary-first dialog: shows active count, engine state, and everything
      * the user can do. No deep navigation forced on them.
      */        
-    public void showFilterListsDialog() {
+    public void showFilterListsDialog() {                
         final CharSequence[] items = new CharSequence[] {
                 "Preset catalog",
                 "Manage subscriptions",
@@ -167,6 +167,7 @@ public class AdBlockController {
                 "Import from clipboard",
                 "Update all subscriptions",
                 "Auto-update interval",
+                "Site allowlist",
                 "Clear all lists"
         };
 
@@ -202,7 +203,8 @@ public class AdBlockController {
                         case 3: showImportFromClipboardDialog(); break;
                         case 4: refreshAll(); break;
                         case 5: showAutoUpdateDialog(); break;
-                        case 6: confirmClearAll(); break;
+                        case 6: showSiteAllowlistDialog(); break;
+                        case 7: confirmClearAll(); break;
                     }
                 })
                 .setNegativeButton("Close", null)
@@ -621,6 +623,116 @@ public class AdBlockController {
                             "Auto-update: " + labels[which],
                             Toast.LENGTH_SHORT).show();
                     d.dismiss();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+    
+    // ========================================================================
+    // Site allowlist (Phase 3)
+    // ========================================================================
+
+    /**
+     * Manage the hosts where ads are allowed.
+     *
+     * Empty state: explain what the list is + offer "Add host".
+     * Non-empty state: scrollable list; long-press a row to remove;
+     * "Add host" appends; "Clear all" wipes.
+     */
+    private void showSiteAllowlistDialog() {
+        final List<String> hosts = AdBlockEngine.getWhitelistedDomainsSorted();
+
+        if (hosts.isEmpty()) {
+            new AlertDialog.Builder(activity)
+                    .setTitle("Site allowlist")
+                    .setMessage("Ads are blocked everywhere. "
+                            + "Add a host here to allow ads on that site.\n\n"
+                            + "Subdomains are covered: adding google.com also "
+                            + "allows mail.google.com, but NOT evil-google.com.")
+                    .setPositiveButton("Add host", (d, w) -> showAddAllowlistHostDialog())
+                    .setNegativeButton("Close", null)
+                    .show();
+            return;
+        }
+
+        ListView lv = new ListView(activity);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                activity, android.R.layout.simple_list_item_1, hosts);
+        lv.setAdapter(adapter);
+
+        final AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setTitle("Site allowlist (" + hosts.size() + ")")
+                .setView(lv)
+                .setPositiveButton("Add host",
+                        (d, w) -> showAddAllowlistHostDialog())
+                .setNeutralButton("Clear all", (d, w) -> confirmClearAllowlist())
+                .setNegativeButton("Close", null)
+                .create();
+
+        lv.setOnItemLongClickListener((parent, view, pos, id) -> {
+            String host = hosts.get(pos);
+            new AlertDialog.Builder(activity)
+                    .setTitle("Remove from allowlist?")
+                    .setMessage("Ads will be blocked again on " + host + " "
+                            + "and its subdomains.")
+                    .setPositiveButton("Remove", (d2, w2) -> {
+                        AdBlockEngine.removeWhitelistedDomain(activity, host);
+                        Toast.makeText(activity,
+                                "Ads will be blocked on " + host,
+                                Toast.LENGTH_SHORT).show();
+                        dialog.dismiss();
+                        showSiteAllowlistDialog();
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+            return true;
+        });
+
+        dialog.show();
+    }
+
+    private void showAddAllowlistHostDialog() {
+        final EditText input = new EditText(activity);
+        input.setHint("example.com");
+        input.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_URI);
+
+        new AlertDialog.Builder(activity)
+                .setTitle("Add host to allowlist")
+                .setMessage("Ads will be allowed on this host and its subdomains.")
+                .setView(input)
+                .setPositiveButton("Add", (d, w) -> {
+                    String raw = input.getText().toString().trim();
+                    if (raw.isEmpty()) return;
+                    String before = AdBlockEngine.getWhitelistSize() > 0
+                            ? AdBlockEngine.getWhitelistedDomainsSorted().toString()
+                            : "";
+                    AdBlockEngine.addWhitelistedDomain(activity, raw);
+                    String after = AdBlockEngine.getWhitelistedDomainsSorted().toString();
+                    if (before.equals(after)) {
+                        Toast.makeText(activity,
+                                "Already in allowlist (or invalid host)",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(activity,
+                                "Ads allowed on " + raw,
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    showSiteAllowlistDialog();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmClearAllowlist() {
+        int count = AdBlockEngine.getWhitelistSize();
+        new AlertDialog.Builder(activity)
+                .setTitle("Clear allowlist?")
+                .setMessage("Remove all " + count + " hosts. Ads will be blocked "
+                        + "everywhere again.")
+                .setPositiveButton("Clear", (d, w) -> {
+                    AdBlockEngine.clearWhitelist(activity);
+                    Toast.makeText(activity, "Allowlist cleared",
+                            Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
