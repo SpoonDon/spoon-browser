@@ -294,8 +294,6 @@ public final class SpoonDialog {
 
         dialog.setContentView(root);
 
-        // tag root as the shell root so show() can find it
-        root.setTag(R.id.spoon_dialog_root, root);
         return new Shell(themed, dialog, body);
     }
 
