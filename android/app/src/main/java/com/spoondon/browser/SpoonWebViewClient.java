@@ -48,6 +48,12 @@ import java.util.Map;
 public class SpoonWebViewClient extends WebViewClient {
     private final MainActivity activity;
     private final WebViewAssetLoader assetLoader;
+    /**
+     * Cached top-frame URL. Updated on the UI thread in onPageStarted /
+     * doUpdateVisitedHistory so that shouldInterceptRequest (which runs on
+     * a background thread) can consult it without calling WebView methods.
+     */
+    private volatile String cachedMainFrameUrl;
     private String lastRecordedHistoryUrl = "";
     private long lastRecordedHistoryTime = 0;
 
@@ -284,6 +290,7 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
+        cachedMainFrameUrl = url;
 
         boolean vaultPage = VaultUrls.isVaultUrl(url);
 
@@ -336,6 +343,7 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public void doUpdateVisitedHistory(WebView view, String url, boolean isReload) {
         super.doUpdateVisitedHistory(view, url, isReload);
+        if (url != null) cachedMainFrameUrl = url;
         injectBlobHook(view);
 
         if (url == null || url.isEmpty() || url.equals("about:blank")) return;
