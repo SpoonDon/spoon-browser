@@ -92,7 +92,7 @@ public class SpoonWebViewClient extends WebViewClient {
             }
 
             int resourceType = classifyResource(request);
-            String sourceHost = extractSourceHost(view);
+            String sourceHost = getCachedSourceHost();
 
             if (AdBlockEngine.shouldBlock(url, resourceType, sourceHost)) {
                 return new WebResourceResponse(
