@@ -178,19 +178,6 @@ public class AdBlockController {
                 activity.getResources().getDisplayMetrics());
     }
 
-    /** Row in the main dialog list — header rows are non-clickable. */
-    private static final class Row {
-        final CharSequence label;
-        final int actionId;   // -1 = header/spacer
-        Row(CharSequence label, int actionId) {
-            this.label = label;
-            this.actionId = actionId;
-        }
-        static Row header(CharSequence s) { return new Row(s, -1); }
-        static Row spacer()               { return new Row(" ", -1); }
-        static Row action(CharSequence s, int id) { return new Row(s, id); }
-    }
-
     /**
      * Summary text shown at the top of the main dialog.
      *
