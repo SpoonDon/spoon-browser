@@ -2,14 +2,19 @@ package com.spoondon.browser;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.ContextThemeWrapper;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -21,10 +26,13 @@ import androidx.annotation.NonNull;
  * because the row list is short, static while open, and benefits more from
  * local cohesion than from recycling.
  *
- * 2026-10-02 (v2): Width is capped at 340dp / 92% of screen. Height is
- * capped at 72% of screen height via {@link MaxHeightScrollView} so the
- * dialog never eats the whole viewport on small displays. Row padding and
- * font sizes tightened to fit more items without scrolling.
+ * 2026-10-02 (v3):
+ *   - Dialog is anchored to the TOP|END corner with margins, so it hangs
+ *     off the toolbar's menu button rather than centering on screen.
+ *   - Width is WRAP_CONTENT (capped at 88% of screen). The dialog hugs the
+ *     widest row instead of forcing every row into a wide rectangle.
+ *   - Height is capped at 72% of screen via {@link MaxSizeScrollView}.
+ *   - Row padding and font sizes tightened to fit more items.
  *
  * Row types:
  *   HEADER  — section label, muted, non-tappable
@@ -47,7 +55,6 @@ public class MainMenuDialog {
         void onAction(@NonNull String actionId);
     }
 
-    // Action ids (caller-parsed strings)
     public static final String ACTION_NEW_TAB              = "new_tab";
     public static final String ACTION_NEW_INCOGNITO        = "new_incognito";
     public static final String ACTION_RELOAD               = "reload";
@@ -65,14 +72,20 @@ public class MainMenuDialog {
     public static final String ACTION_ABOUT                = "about";
     public static final String ACTION_EXIT                 = "exit";
 
-    /** Upper bound on dialog width regardless of screen size. */
-    private static final int MAX_WIDTH_DP = 340;
+    /** Fraction of screen width the dialog may occupy (upper bound). */
+    private static final float MAX_WIDTH_FRACTION = 0.88f;
 
-    /** Fraction of screen height the dialog is allowed to occupy. */
+    /** Fraction of screen height the dialog may occupy (upper bound). */
     private static final float MAX_HEIGHT_FRACTION = 0.72f;
 
+    /** Distance from the top of the window (below the toolbar). */
+    private static final int TOP_MARGIN_DP = 60;
+
+    /** Distance from the right edge of the window. */
+    private static final int SIDE_MARGIN_DP = 8;
+
     /**
-     * Shows the menu.
+     * Shows the menu anchored to the top-right corner of the window.
      *
      * @param ctx         host context
      * @param desktopOn   current desktop-site state for the active tab
@@ -135,7 +148,7 @@ public class MainMenuDialog {
         root.addView(spacer(themed));
         root.addView(dangerItem(themed, ACTION_EXIT, "Exit", cb));
 
-        MaxHeightScrollView scroll = new MaxHeightScrollView(themed);
+        MaxSizeScrollView scroll = new MaxSizeScrollView(themed);
         scroll.addView(root);
         scroll.setBackground(roundedBackground());
         scroll.setClipToOutline(true);
@@ -146,16 +159,25 @@ public class MainMenuDialog {
                 .create();
 
         dialog.setOnShowListener(d -> {
-            if (dialog.getWindow() == null) return;
+            Window window = dialog.getWindow();
+            if (window == null) return;
 
             DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
-            int widthPx = Math.min((int) (dm.widthPixels * 0.92f), dp(ctx, MAX_WIDTH_DP));
+            int maxWidthPx  = (int) (dm.widthPixels  * MAX_WIDTH_FRACTION);
             int maxHeightPx = (int) (dm.heightPixels * MAX_HEIGHT_FRACTION);
 
+            scroll.setMaxWidth(maxWidthPx);
             scroll.setMaxHeight(maxHeightPx);
 
-            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            dialog.getWindow().setLayout(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setLayout(ViewGroup.LayoutParams.WRAP_CONTENT,
+                             ViewGroup.LayoutParams.WRAP_CONTENT);
+
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.gravity = Gravity.TOP | Gravity.END;
+            params.x = dp(ctx, SIDE_MARGIN_DP);
+            params.y = dp(ctx, TOP_MARGIN_DP);
+            window.setAttributes(params);
         });
 
         dialog.show();
@@ -221,7 +243,7 @@ public class MainMenuDialog {
                                  View trailing) {
         LinearLayout row = new LinearLayout(ctx);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(ctx, 20), dp(ctx, 10), dp(ctx, 20), dp(ctx, 10));
         row.setMinimumHeight(dp(ctx, 44));
         row.setBackgroundResource(selectableItemBackground(ctx));
@@ -246,6 +268,10 @@ public class MainMenuDialog {
             textCol.addView(subView);
         }
 
+        // textCol gets weight=1 so the trailing checkmark is pushed right
+        // if the row is stretched. Because the parent dialog is now
+        // WRAP_CONTENT, rows are only as wide as the widest one — no
+        // artificial gap after the text.
         row.addView(textCol, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
@@ -253,7 +279,6 @@ public class MainMenuDialog {
             row.addView(trailing);
         }
 
-        // Default click → fire action. Toggle overrides after this call.
         row.setOnClickListener(v -> cb.onAction(actionId));
         return row;
     }
@@ -292,21 +317,26 @@ public class MainMenuDialog {
     }
 
     // ------------------------------------------------------------------
-    // Max-height ScrollView
+    // Max-size ScrollView
     // ------------------------------------------------------------------
 
     /**
-     * ScrollView that will not exceed a caller-supplied maximum height.
-     * If the wrapped content is shorter than the cap, it wraps; if it's
-     * taller, it caps and scrolls. This is what prevents the dialog from
-     * filling the entire viewport on phones.
+     * ScrollView that will not exceed a caller-supplied maximum width or
+     * height. If the wrapped content is smaller, it wraps; if it exceeds
+     * either cap, it caps and scrolls.
      */
-    private static class MaxHeightScrollView extends ScrollView {
+    private static class MaxSizeScrollView extends ScrollView {
 
+        private int maxWidthPx = Integer.MAX_VALUE;
         private int maxHeightPx = Integer.MAX_VALUE;
 
-        MaxHeightScrollView(@NonNull Context context) {
+        MaxSizeScrollView(@NonNull Context context) {
             super(context);
+        }
+
+        void setMaxWidth(int px) {
+            this.maxWidthPx = px;
+            requestLayout();
         }
 
         void setMaxHeight(int px) {
@@ -316,9 +346,20 @@ public class MainMenuDialog {
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int cappedSpec = MeasureSpec.makeMeasureSpec(
-                    maxHeightPx, MeasureSpec.AT_MOST);
-            super.onMeasure(widthMeasureSpec, cappedSpec);
+            super.onMeasure(
+                    capSpec(widthMeasureSpec, maxWidthPx),
+                    capSpec(heightMeasureSpec, maxHeightPx));
+        }
+
+        private static int capSpec(int spec, int cap) {
+            int mode = MeasureSpec.getMode(spec);
+            if (mode == MeasureSpec.UNSPECIFIED) {
+                return MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST);
+            }
+            if (MeasureSpec.getSize(spec) > cap) {
+                return MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST);
+            }
+            return spec;
         }
     }
 }
