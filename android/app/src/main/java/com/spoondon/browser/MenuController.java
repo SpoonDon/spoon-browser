@@ -134,35 +134,40 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // Settings submenu
-    // ------------------------------------------------------------------------        
+    // Settings submenu (routed through SettingsDialog)
+    // ------------------------------------------------------------------------
+
     private void showSettingsDialog() {
-        String[] items = {
-                "Search engine",
-                "Allow HTTP sites",
-                "Clear cache",
-                "Clear history",
-                "Startup animation",
-                "Manage filter lists",
-                "Import passwords (CSV)",
-                "Export passwords (CSV)"
-        };
-        new AlertDialog.Builder(activity)
-                .setTitle("Settings")
-                .setItems(items, (d, which) -> {
-                    switch (which) {
-                        case 0: showSearchEngineDialog();            break;
-                        case 1: showCleartextHostsDialog();          break;
-                        case 2: callbacks.clearCache();              break;
-                        case 3: callbacks.clearHistory();            break;
-                        case 4: callbacks.toggleStartupAnimation();  break;
-                        case 5: callbacks.showFilterLists();         break;
-                        case 6: callbacks.importPasswords();         break;
-                        case 7: callbacks.exportPasswords();         break;
-                    }
-                })
-                .setNegativeButton("Close", null)
-                .show();
+        SettingsDialog.show(activity, this::handleSettingsAction);
+    }
+
+    private void handleSettingsAction(@NonNull String actionId) {
+        switch (actionId) {
+            case SettingsDialog.ACTION_SEARCH_ENGINE:
+                showSearchEngineDialog();
+                return;
+            case SettingsDialog.ACTION_ALLOW_HTTP:
+                showCleartextHostsDialog();
+                return;
+            case SettingsDialog.ACTION_CLEAR_CACHE:
+                callbacks.clearCache();
+                return;
+            case SettingsDialog.ACTION_CLEAR_HISTORY:
+                callbacks.clearHistory();
+                return;
+            case SettingsDialog.ACTION_STARTUP_ANIMATION:
+                callbacks.toggleStartupAnimation();
+                return;
+            case SettingsDialog.ACTION_FILTER_LISTS:
+                callbacks.showFilterLists();
+                return;
+            case SettingsDialog.ACTION_IMPORT_PASSWORDS:
+                callbacks.importPasswords();
+                return;
+            case SettingsDialog.ACTION_EXPORT_PASSWORDS:
+                callbacks.exportPasswords();
+                return;
+        }
     }
 
     // ------------------------------------------------------------------------
