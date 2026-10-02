@@ -105,13 +105,17 @@ public class SpoonWebViewClient extends WebViewClient {
         return super.shouldInterceptRequest(view, request);
     }
 
+    /**
+     * Background-safe source host lookup. Reads the cached top-frame URL
+     * that was stashed on the UI thread in onPageStarted /
+     * doUpdateVisitedHistory. Never touches WebView.
+     */
     @Nullable
-    private static String extractSourceHost(@Nullable WebView view) {
-        if (view == null) return null;
-        String topUrl = view.getUrl();
-        if (topUrl == null) return null;
+    private String getCachedSourceHost() {
+        String u = cachedMainFrameUrl;
+        if (u == null) return null;
         try {
-            return Uri.parse(topUrl).getHost();
+            return Uri.parse(u).getHost();
         } catch (Exception e) {
             return null;
         }
