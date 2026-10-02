@@ -135,9 +135,11 @@ public class MenuController {
 
     // ------------------------------------------------------------------------
     // Settings submenu
-    // ------------------------------------------------------------------------
+    // ------------------------------------------------------------------------        
     private void showSettingsDialog() {
         String[] items = {
+                "Search engine",
+                "Allow HTTP sites",
                 "Clear cache",
                 "Clear history",
                 "Startup animation",
@@ -149,12 +151,14 @@ public class MenuController {
                 .setTitle("Settings")
                 .setItems(items, (d, which) -> {
                     switch (which) {
-                        case 0: callbacks.clearCache();       break;
-                        case 1: callbacks.clearHistory();     break;
-                        case 2: callbacks.toggleStartupAnimation(); break;
-                        case 3: callbacks.showFilterLists();  break;
-                        case 4: callbacks.importPasswords();  break;
-                        case 5: callbacks.exportPasswords();  break;
+                        case 0: showSearchEngineDialog();            break;
+                        case 1: showCleartextHostsDialog();          break;
+                        case 2: callbacks.clearCache();              break;
+                        case 3: callbacks.clearHistory();            break;
+                        case 4: callbacks.toggleStartupAnimation();  break;
+                        case 5: callbacks.showFilterLists();         break;
+                        case 6: callbacks.importPasswords();         break;
+                        case 7: callbacks.exportPasswords();         break;
                     }
                 })
                 .setNegativeButton("Close", null)
