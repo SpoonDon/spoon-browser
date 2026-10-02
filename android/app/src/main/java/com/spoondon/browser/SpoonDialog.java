@@ -292,8 +292,9 @@ public final class SpoonDialog {
         root.addView(header);
         root.addView(body);
 
-        dialog.setContentView(root);
-
+        // Do NOT setContentView here. show() wraps root in a MaxSizeScrollView
+        // first, then attaches via s.dialog.setContentView(scroll). Attaching
+        // root early would give it a parent and break the addView in show().
         return new Shell(themed, dialog, body);
     }
 
