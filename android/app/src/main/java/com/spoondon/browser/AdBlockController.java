@@ -158,39 +158,42 @@ public class AdBlockController {
      * the user can do. No deep navigation forced on them.
      */        
     public void showFilterListsDialog() {
-        final List<Row> rows = new ArrayList<>();
-
-        // Summary header rows — non-clickable.
-        for (String line : buildSummaryText().split("\n")) {
-            if (!line.isEmpty()) rows.add(Row.header(line));
-        }
-        rows.add(Row.spacer());
-
-        // Action rows.
-        rows.add(Row.action("Preset catalog", 0));
-        rows.add(Row.action("Manage subscriptions", 1));
-        rows.add(Row.action("Add custom URL", 2));
-        rows.add(Row.action("Import from clipboard", 3));
-        rows.add(Row.action("Update all subscriptions", 4));
-        rows.add(Row.action("Auto-update interval", 5));
-        rows.add(Row.action("Clear all lists", 6));
-
-        final CharSequence[] labels = new CharSequence[rows.size()];
-        for (int i = 0; i < rows.size(); i++) labels[i] = rows.get(i).label;
-
-        ArrayAdapter<CharSequence> adapter = new ArrayAdapter<CharSequence>(
-                activity, android.R.layout.simple_list_item_1, labels) {
-            @Override public boolean areAllItemsEnabled() { return false; }
-            @Override public boolean isEnabled(int position) {
-                return rows.get(position).actionId >= 0;
-            }
+        final CharSequence[] items = new CharSequence[] {
+                "Preset catalog",
+                "Manage subscriptions",
+                "Add custom URL",
+                "Import from clipboard",
+                "Update all subscriptions",
+                "Auto-update interval",
+                "Clear all lists"
         };
 
+        // Custom title area: heading + summary. This is the only reliable
+        // way to combine an info block with a setItems() list — setMessage()
+        // and setItems() collide in AlertController, and setCustomTitle()
+        // sidesteps the conflict entirely.
+        LinearLayout titleBox = new LinearLayout(activity);
+        titleBox.setOrientation(LinearLayout.VERTICAL);
+        int padH = dp(24);
+        int padV = dp(16);
+        titleBox.setPadding(padH, padV, padH, dp(8));
+
+        TextView heading = new TextView(activity);
+        heading.setText("Filter Lists");
+        heading.setTextSize(20);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleBox.addView(heading);
+
+        TextView summary = new TextView(activity);
+        summary.setText(buildSummaryText());
+        summary.setTextSize(13);
+        summary.setPadding(0, dp(8), 0, 0);
+        titleBox.addView(summary);
+
         new AlertDialog.Builder(activity)
-                .setTitle("Filter Lists")
-                .setAdapter(adapter, (dialog, which) -> {
-                    Row r = rows.get(which);
-                    switch (r.actionId) {
+                .setCustomTitle(titleBox)
+                .setItems(items, (dialog, which) -> {
+                    switch (which) {
                         case 0: showPresetCatalog(); break;
                         case 1: showManageSubscriptions(); break;
                         case 2: showAddCustomListDialog(); break;
@@ -202,6 +205,12 @@ public class AdBlockController {
                 })
                 .setNegativeButton("Close", null)
                 .show();
+    }
+
+    private int dp(int value) {
+        return (int) android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_DIP, value,
+                activity.getResources().getDisplayMetrics());
     }
 
     /** Row in the main dialog list — header rows are non-clickable. */
