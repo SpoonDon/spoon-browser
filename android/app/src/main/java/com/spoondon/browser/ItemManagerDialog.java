@@ -92,7 +92,7 @@ public final class ItemManagerDialog {
     private final ItemManagerAdapter adapter;
     private final ListView listView;
     private final TextView emptyView;
-    private final Dialog dialog;
+    private Dialog dialog;
 
     private ItemManagerDialog(@NonNull Activity activity,
                               @NonNull String title,
@@ -129,7 +129,9 @@ public final class ItemManagerDialog {
         closeBtn.setTextSize(16);
         closeBtn.setTextColor(COLOR_ICON);
         closeBtn.setPadding(dp(8), dp(8), dp(4), dp(8));
-        closeBtn.setOnClickListener(v -> dialog.dismiss());
+        closeBtn.setOnClickListener(v -> {
+            if (dialog != null) dialog.dismiss();
+        });
         header.addView(closeBtn);
 
         LinearLayout searchRow = new LinearLayout(themed);
