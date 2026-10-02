@@ -5,6 +5,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.ContextThemeWrapper;
 import android.view.View;
@@ -19,6 +20,11 @@ import androidx.annotation.NonNull;
  * Custom main-menu dialog. Built programmatically (no XML, no RecyclerView)
  * because the row list is short, static while open, and benefits more from
  * local cohesion than from recycling.
+ *
+ * 2026-10-02 (v2): Width is capped at 340dp / 92% of screen. Height is
+ * capped at 72% of screen height via {@link MaxHeightScrollView} so the
+ * dialog never eats the whole viewport on small displays. Row padding and
+ * font sizes tightened to fit more items without scrolling.
  *
  * Row types:
  *   HEADER  — section label, muted, non-tappable
@@ -59,6 +65,12 @@ public class MainMenuDialog {
     public static final String ACTION_ABOUT                = "about";
     public static final String ACTION_EXIT                 = "exit";
 
+    /** Upper bound on dialog width regardless of screen size. */
+    private static final int MAX_WIDTH_DP = 340;
+
+    /** Fraction of screen height the dialog is allowed to occupy. */
+    private static final float MAX_HEIGHT_FRACTION = 0.72f;
+
     /**
      * Shows the menu.
      *
@@ -77,7 +89,7 @@ public class MainMenuDialog {
         LinearLayout root = new LinearLayout(themed);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackground(roundedBackground());
-        root.setPadding(dp(themed, 4), dp(themed, 8), dp(themed, 4), dp(themed, 12));
+        root.setPadding(dp(themed, 4), dp(themed, 6), dp(themed, 4), dp(themed, 8));
 
         // --- Navigation -------------------------------------------------
         root.addView(header(themed, "Navigation"));
@@ -123,20 +135,29 @@ public class MainMenuDialog {
         root.addView(spacer(themed));
         root.addView(dangerItem(themed, ACTION_EXIT, "Exit", cb));
 
-        ScrollView scroll = new ScrollView(themed);
+        MaxHeightScrollView scroll = new MaxHeightScrollView(themed);
         scroll.addView(root);
+        scroll.setBackground(roundedBackground());
+        scroll.setClipToOutline(true);
+        scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         AlertDialog dialog = new AlertDialog.Builder(themed)
                 .setView(scroll)
                 .create();
+
         dialog.setOnShowListener(d -> {
-            if (dialog.getWindow() != null) {
-                dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                dialog.getWindow().setLayout(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT);
-            }
+            if (dialog.getWindow() == null) return;
+
+            DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+            int widthPx = Math.min((int) (dm.widthPixels * 0.92f), dp(ctx, MAX_WIDTH_DP));
+            int maxHeightPx = (int) (dm.heightPixels * MAX_HEIGHT_FRACTION);
+
+            scroll.setMaxHeight(maxHeightPx);
+
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            dialog.getWindow().setLayout(widthPx, ViewGroup.LayoutParams.WRAP_CONTENT);
         });
+
         dialog.show();
     }
 
@@ -147,10 +168,10 @@ public class MainMenuDialog {
     private static TextView header(@NonNull Context ctx, @NonNull String text) {
         TextView tv = new TextView(ctx);
         tv.setText(text.toUpperCase());
-        tv.setTextSize(11);
+        tv.setTextSize(10);
         tv.setTextColor(0xFF8E8E93);
         tv.setLetterSpacing(0.1f);
-        tv.setPadding(dp(ctx, 22), dp(ctx, 16), dp(ctx, 22), dp(ctx, 6));
+        tv.setPadding(dp(ctx, 20), dp(ctx, 10), dp(ctx, 20), dp(ctx, 4));
         return tv;
     }
 
@@ -178,7 +199,7 @@ public class MainMenuDialog {
         final boolean[] state = { initial };
         final TextView check = new TextView(ctx);
         check.setText("✓");
-        check.setTextSize(20);
+        check.setTextSize(18);
         check.setTextColor(0xFF4D6BFE);
         check.setVisibility(initial ? View.VISIBLE : View.INVISIBLE);
 
@@ -201,8 +222,8 @@ public class MainMenuDialog {
         LinearLayout row = new LinearLayout(ctx);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(ctx, 22), dp(ctx, 14), dp(ctx, 22), dp(ctx, 14));
-        row.setMinimumHeight(dp(ctx, 52));
+        row.setPadding(dp(ctx, 20), dp(ctx, 10), dp(ctx, 20), dp(ctx, 10));
+        row.setMinimumHeight(dp(ctx, 44));
         row.setBackgroundResource(selectableItemBackground(ctx));
         row.setClickable(true);
         row.setFocusable(true);
@@ -212,16 +233,16 @@ public class MainMenuDialog {
 
         TextView titleView = new TextView(ctx);
         titleView.setText(title);
-        titleView.setTextSize(16);
+        titleView.setTextSize(15);
         titleView.setTextColor(danger ? 0xFFFF453A : 0xFFFFFFFF);
         textCol.addView(titleView);
 
         if (subtitle != null && !subtitle.isEmpty()) {
             TextView subView = new TextView(ctx);
             subView.setText(subtitle);
-            subView.setTextSize(12);
+            subView.setTextSize(11);
             subView.setTextColor(0xFF8E8E93);
-            subView.setPadding(0, dp(ctx, 2), 0, 0);
+            subView.setPadding(0, dp(ctx, 1), 0, 0);
             textCol.addView(subView);
         }
 
@@ -241,7 +262,7 @@ public class MainMenuDialog {
         View v = new View(ctx);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 1));
-        lp.setMargins(dp(ctx, 22), dp(ctx, 12), dp(ctx, 22), dp(ctx, 4));
+        lp.setMargins(dp(ctx, 20), dp(ctx, 8), dp(ctx, 20), dp(ctx, 2));
         v.setLayoutParams(lp);
         v.setBackgroundColor(0xFF2C2C2E);
         return v;
@@ -268,5 +289,36 @@ public class MainMenuDialog {
     private static int dp(@NonNull Context ctx, int value) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
                 value, ctx.getResources().getDisplayMetrics());
+    }
+
+    // ------------------------------------------------------------------
+    // Max-height ScrollView
+    // ------------------------------------------------------------------
+
+    /**
+     * ScrollView that will not exceed a caller-supplied maximum height.
+     * If the wrapped content is shorter than the cap, it wraps; if it's
+     * taller, it caps and scrolls. This is what prevents the dialog from
+     * filling the entire viewport on phones.
+     */
+    private static class MaxHeightScrollView extends ScrollView {
+
+        private int maxHeightPx = Integer.MAX_VALUE;
+
+        MaxHeightScrollView(@NonNull Context context) {
+            super(context);
+        }
+
+        void setMaxHeight(int px) {
+            this.maxHeightPx = px;
+            requestLayout();
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int cappedSpec = MeasureSpec.makeMeasureSpec(
+                    maxHeightPx, MeasureSpec.AT_MOST);
+            super.onMeasure(widthMeasureSpec, cappedSpec);
+        }
     }
 }
