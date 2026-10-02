@@ -198,7 +198,10 @@ public class AdBlockEngine {
         }
         whitelistedDomains = whiteSet;
 
-        if (loadEngineFromCache(context)) return;
+        // Cache disabled: with large real-world filter lists (OISD, EasyList,
+        // uBO Filters) the JSON cache exceeded 100 MB and OOM-killed the app
+        // on a 512 MB heap. Cold start now always re-parses the local filter
+        // files. That happens on the background executor, so no UI hitch.
         if (filterLists == null || filterLists.isEmpty()) return;
 
         Builder b = new Builder();
@@ -216,7 +219,6 @@ public class AdBlockEngine {
         lastSkippedCount = b.skipped;
         lastParsedRuleCount = b.parsed;
         applyBuilder(b);
-        saveEngineToCache(context);
     }
 
     public static void checkAndRefreshFilters(Context context,
@@ -264,7 +266,6 @@ public class AdBlockEngine {
                 lastSkippedCount = b.skipped;
                 lastParsedRuleCount = b.parsed;
                 applyBuilder(b);
-                saveEngineToCache(context);
             }
 
             if (allOk) prefs.edit().putLong(KEY_REFRESH_TIME, System.currentTimeMillis()).apply();
@@ -300,7 +301,6 @@ public class AdBlockEngine {
             lastSkippedCount = b.skipped;
             lastParsedRuleCount = b.parsed;
             applyBuilder(b);
-            saveEngineToCache(context);
         });
     }
 
