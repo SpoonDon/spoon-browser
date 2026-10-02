@@ -189,6 +189,7 @@ public class MainActivity extends AppCompatActivity {
         handleIncomingIntent(getIntent());
         setIntent(new Intent());                
         if (wiring != null) {
+            wiring.getTabManager().resumeActiveTab();
             wiring.maybeRunAutoUpdate();
         }
     }
