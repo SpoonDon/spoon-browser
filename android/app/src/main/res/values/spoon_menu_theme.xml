@@ -10,12 +10,15 @@
       content only needs 30%. Result: massive dead gray space on the
       right side of every row. Overriding them to 0dp lets the dialog
       truly wrap the widest row.
+
+      NOTE: windowFixedWidthMajor / windowFixedWidthMinor are PRIVATE
+      framework attributes and cannot be referenced from an app theme
+      (AAPT2 rejects them with "is private"). They are not needed for
+      our fix - the min-width overrides above are what actually matters.
     -->
     <style name="SpoonMenuDialog" parent="android:Theme.Material.Dialog">
         <item name="android:windowMinWidthMajor">0dip</item>
         <item name="android:windowMinWidthMinor">0dip</item>
-        <item name="android:windowFixedWidthMajor">0dip</item>
-        <item name="android:windowFixedWidthMinor">0dip</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:colorBackgroundFloating">@android:color/transparent</item>
         <item name="android:windowIsFloating">true</item>
