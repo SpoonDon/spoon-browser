@@ -13,8 +13,6 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
-import android.widget.LinearLayout;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -158,57 +156,20 @@ public class AdBlockController {
      *
      * Summary-first dialog: shows active count, engine state, and everything
      * the user can do. No deep navigation forced on them.
-     */        
-    public void showFilterListsDialog() {                
-        final CharSequence[] items = new CharSequence[] {
-                "Preset catalog",
-                "Manage subscriptions",
-                "Add custom URL",
-                "Import from clipboard",
-                "Update all subscriptions",
-                "Auto-update interval",
-                "Site allowlist",
-                "Clear all lists"
-        };
-
-        // Custom title area: heading + summary. This is the only reliable
-        // way to combine an info block with a setItems() list — setMessage()
-        // and setItems() collide in AlertController, and setCustomTitle()
-        // sidesteps the conflict entirely.
-        LinearLayout titleBox = new LinearLayout(activity);
-        titleBox.setOrientation(LinearLayout.VERTICAL);
-        int padH = dp(24);
-        int padV = dp(16);
-        titleBox.setPadding(padH, padV, padH, dp(8));
-
-        TextView heading = new TextView(activity);
-        heading.setText("Filter Lists");
-        heading.setTextSize(20);
-        heading.setTypeface(null, android.graphics.Typeface.BOLD);
-        titleBox.addView(heading);
-
-        TextView summary = new TextView(activity);
-        summary.setText(buildSummaryText());
-        summary.setTextSize(13);
-        summary.setPadding(0, dp(8), 0, 0);
-        titleBox.addView(summary);
-
-        new AlertDialog.Builder(activity)
-                .setCustomTitle(titleBox)
-                .setItems(items, (dialog, which) -> {
-                    switch (which) {
-                        case 0: showPresetCatalog(); break;
-                        case 1: showManageSubscriptions(); break;
-                        case 2: showAddCustomListDialog(); break;
-                        case 3: showImportFromClipboardDialog(); break;
-                        case 4: refreshAll(); break;
-                        case 5: showAutoUpdateDialog(); break;
-                        case 6: showSiteAllowlistDialog(); break;
-                        case 7: confirmClearAll(); break;
-                    }
-                })
-                .setNegativeButton("Close", null)
-                .show();
+     */                
+    public void showFilterListsDialog() {
+        FilterListsDialog.show(activity, buildSummaryText(), actionId -> {
+            switch (actionId) {
+                case FilterListsDialog.ACTION_PRESET_CATALOG: showPresetCatalog(); break;
+                case FilterListsDialog.ACTION_MANAGE_SUBS:    showManageSubscriptions(); break;
+                case FilterListsDialog.ACTION_ADD_CUSTOM:     showAddCustomListDialog(); break;
+                case FilterListsDialog.ACTION_IMPORT_CLIP:    showImportFromClipboardDialog(); break;
+                case FilterListsDialog.ACTION_UPDATE_ALL:     refreshAll(); break;
+                case FilterListsDialog.ACTION_AUTO_UPDATE:    showAutoUpdateDialog(); break;
+                case FilterListsDialog.ACTION_SITE_ALLOWLIST: showSiteAllowlistDialog(); break;
+                case FilterListsDialog.ACTION_CLEAR_ALL:      confirmClearAll(); break;
+            }
+        });
     }
 
     private int dp(int value) {
