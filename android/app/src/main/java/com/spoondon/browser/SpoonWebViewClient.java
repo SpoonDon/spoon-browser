@@ -256,18 +256,26 @@ public class SpoonWebViewClient extends WebViewClient {
                 return true;
             }
         }
-
+                
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
             try {
                 Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
                 if (intent != null) {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     view.getContext().startActivity(intent);
+                    // Cancel any pending navigation. Without this, WebView
+                    // can remain stuck in a "loading" state after an
+                    // external app takes over the URI (magnet:, market://,
+                    // tel:, mailto:, custom app schemes, etc.), which
+                    // breaks back/forward/reload/scroll until the tab is
+                    // recreated.
+                    view.stopLoading();
                     return true;
                 }
             } catch (Exception e) {
                 Toast.makeText(view.getContext(), "No app found to handle this link",
                         Toast.LENGTH_SHORT).show();
+                view.stopLoading();
                 return true;
             }
         }
