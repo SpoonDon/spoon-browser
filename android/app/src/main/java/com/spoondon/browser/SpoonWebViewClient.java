@@ -307,6 +307,20 @@ public class SpoonWebViewClient extends WebViewClient {
     @Override
     public void onPageStarted(WebView view, String url, Bitmap favicon) {
         super.onPageStarted(view, url, favicon);
+        // Defensive: if WebView leaks a non-web scheme into onPageStarted
+        // (some devices do this for magnet:, market:, tel:, custom apps),
+        // stop the phantom load and bail without touching our state.
+        if (url != null
+                && !url.startsWith("http://")
+                && !url.startsWith("https://")
+                && !url.startsWith("about:")
+                && !url.startsWith("data:")
+                && !VaultUrls.isVaultUrl(url)
+                && !url.startsWith(HomePageRenderer.HOME_SCHEME)
+                && !url.startsWith("spoonsearch://")) {
+            view.stopLoading();
+            return;
+        }
         cachedMainFrameUrl = url;
 
         boolean vaultPage = VaultUrls.isVaultUrl(url);
