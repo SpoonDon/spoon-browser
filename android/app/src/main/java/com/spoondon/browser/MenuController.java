@@ -9,9 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.ContextThemeWrapper;
 import android.view.Gravity;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
@@ -20,7 +18,6 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -35,20 +32,22 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Owns the main popup menu, the "About" bottom sheet, the search-engine
- * picker, the "Find in Page" overlay, and the "Trusted cleartext hosts"
- * manager.
+ * Owns the main menu (routed through {@link MainMenuDialog}), the Settings
+ * submenu, the Ad Blocking dialog, the "About" bottom sheet, the search
+ * engine picker, the "Find in Page" overlay, and the "Allow HTTP sites"
+ * (cleartext hosts) manager.
  *
- * 2026-09-30: "Downloads" now opens {@code DownloadsController}'s list.
- * The system downloads app is still reachable from the dialog's positive
- * button.
+ * 2026-10-02: The main menu is no longer a PopupMenu. It's a custom
+ * AlertDialog+LinearLayout grouped into sections, built by
+ * {@link MainMenuDialog}. The {@link Callbacks} interface is unchanged —
+ * only the surface presentation moved.
  */
 public class MenuController {
 
     public static final String KEY_SEARCH_ENGINE = "search_engine";
 
     // ------------------------------------------------------------------------
-    // Callbacks
+    // Callbacks (unchanged)
     // ------------------------------------------------------------------------
     public interface Callbacks {
         void newTab(boolean incognito);
@@ -99,98 +98,110 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // Main popup menu
+    // Main menu (routes through MainMenuDialog)
     // ------------------------------------------------------------------------
+
+    /**
+     * Shows the main menu. The {@code anchor} argument is retained for
+     * source compatibility with the old PopupMenu implementation but is
+     * no longer used — the new dialog is centered, not anchored.
+     */
     public void showMainMenu(@NonNull View anchor) {
-        Context wrapper = new ContextThemeWrapper(activity,
-                android.R.style.Widget_Material_Light_PopupMenu);
-        PopupMenu popup = new PopupMenu(wrapper, anchor, Gravity.END);
-
-        // Static entries.
-        popup.getMenu().add("New Tab");
-        popup.getMenu().add("New Incognito Tab");
-        popup.getMenu().add("Reload");
-        popup.getMenu().add("Downloads");
-        popup.getMenu().add("Find in Page");
-        popup.getMenu().add("Bookmarks");
-        popup.getMenu().add("Add Bookmark");
-        popup.getMenu().add("History");
-        popup.getMenu().add("Clear History");
-        popup.getMenu().add("Clear Cache");
-        popup.getMenu().add("Filter Lists");
-
-        // Dynamic-label toggles.
-        boolean filterEnabled = AdBlockEngine.checkIsEngineEnabled(activity);
-        MenuItem filterToggle = popup.getMenu().add(
-                filterEnabled ? "Disable Filterlists" : "Enable Filterlists");
-
         boolean desktopOn = callbacks.isDesktopEnabledForCurrentSite();
-        MenuItem desktopToggle = popup.getMenu().add(
-                desktopOn ? "Desktop Site [ON]" : "Desktop Site [OFF]");
-
-        popup.getMenu().add("Trusted cleartext hosts");
-        popup.getMenu().add("Passwords");
-        popup.getMenu().add("🔑 Vault (Copy)");
-        popup.getMenu().add("Search Engine");
-        popup.getMenu().add("About");
-        popup.getMenu().add("Startup Animation");
-        popup.getMenu().add("Exit");
-
-        filterToggle.setCheckable(false);
-        desktopToggle.setCheckable(false);
-
-        popup.setOnMenuItemClickListener(item -> {
-            String title = item.getTitle().toString();
-            switch (title) {
-                case "New Tab":                   callbacks.newTab(false); return true;
-                case "New Incognito Tab":         callbacks.newTab(true);  return true;
-                case "Reload":                    callbacks.reload(); return true;
-                case "Downloads":                 callbacks.showDownloads(); return true;
-                case "Find in Page":              callbacks.findInPage(); return true;
-                case "Bookmarks":                 callbacks.showBookmarks(); return true;
-                case "Add Bookmark":              callbacks.addBookmark(); return true;
-                case "History":                   callbacks.showHistory(); return true;
-                case "Clear History":             callbacks.clearHistory(); return true;
-                case "Clear Cache":               callbacks.clearCache(); return true;
-                case "Filter Lists":              callbacks.showFilterLists(); return true;
-                case "Disable Filterlists":
-                case "Enable Filterlists":        callbacks.toggleFilterEngine(); return true;
-                case "Desktop Site [OFF]":
-                case "Desktop Site [ON]":         callbacks.toggleDesktopMode(); return true;
-                case "Trusted cleartext hosts":   showCleartextHostsDialog(); return true;
-                case "Passwords":                 showPasswordsSubmenu(); return true;
-                case "🔑 Vault (Copy)":           callbacks.showVaultForCurrentSite(); return true;
-                case "Search Engine":             showSearchEngineDialog(); return true;
-                case "About":                     showAbout(); return true;
-                case "Startup Animation":         callbacks.toggleStartupAnimation(); return true;
-                case "Exit":                      callbacks.exit(); return true;
-            }
-            return false;
-        });
-
-        popup.show();
+        boolean adBlockOn = AdBlockEngine.checkIsEngineEnabled(activity);
+        MainMenuDialog.show(activity, desktopOn, adBlockOn, this::handleAction);
     }
 
-    private void showPasswordsSubmenu() {
-        String[] options = {
-                "Open Vault",
-                "Saved Passwords (dialog)",
-                "Import from CSV",
-                "Export to CSV"
+    private void handleAction(@NonNull String actionId) {
+        switch (actionId) {
+            case MainMenuDialog.ACTION_NEW_TAB:         callbacks.newTab(false);          return;
+            case MainMenuDialog.ACTION_NEW_INCOGNITO:   callbacks.newTab(true);           return;
+            case MainMenuDialog.ACTION_RELOAD:          callbacks.reload();               return;
+            case MainMenuDialog.ACTION_FIND_IN_PAGE:    callbacks.findInPage();           return;
+            case MainMenuDialog.ACTION_TOGGLE_DESKTOP:  callbacks.toggleDesktopMode();    return;
+            case MainMenuDialog.ACTION_BOOKMARKS:       callbacks.showBookmarks();        return;
+            case MainMenuDialog.ACTION_ADD_BOOKMARK:    callbacks.addBookmark();          return;
+            case MainMenuDialog.ACTION_HISTORY:         callbacks.showHistory();          return;
+            case MainMenuDialog.ACTION_DOWNLOADS:       callbacks.showDownloads();        return;
+            case MainMenuDialog.ACTION_PASSWORDS:       callbacks.showVault();            return;
+            case MainMenuDialog.ACTION_AD_BLOCKING:     showAdBlockingDialog();           return;
+            case MainMenuDialog.ACTION_SEARCH_ENGINE:   showSearchEngineDialog();         return;
+            case MainMenuDialog.ACTION_CLEARTEXT_HOSTS: showCleartextHostsDialog();       return;
+            case MainMenuDialog.ACTION_SETTINGS:        showSettingsDialog();             return;
+            case MainMenuDialog.ACTION_ABOUT:           showAbout();                      return;
+            case MainMenuDialog.ACTION_EXIT:            callbacks.exit();                 return;
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Settings submenu
+    // ------------------------------------------------------------------------
+    private void showSettingsDialog() {
+        String[] items = {
+                "Clear cache",
+                "Clear history",
+                "Startup animation",
+                "Manage filter lists",
+                "Import passwords (CSV)",
+                "Export passwords (CSV)"
         };
         new AlertDialog.Builder(activity)
-                .setTitle("Password Management")
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0)      callbacks.showVault();
-                    else if (which == 1) callbacks.showSavedPasswords();
-                    else if (which == 2) callbacks.importPasswords();
-                    else if (which == 3) callbacks.exportPasswords();
+                .setTitle("Settings")
+                .setItems(items, (d, which) -> {
+                    switch (which) {
+                        case 0: callbacks.clearCache();       break;
+                        case 1: callbacks.clearHistory();     break;
+                        case 2: callbacks.toggleStartupAnimation(); break;
+                        case 3: callbacks.showFilterLists();  break;
+                        case 4: callbacks.importPasswords();  break;
+                        case 5: callbacks.exportPasswords();  break;
+                    }
                 })
+                .setNegativeButton("Close", null)
                 .show();
     }
 
     // ------------------------------------------------------------------------
-    // Trusted cleartext hosts
+    // Ad Blocking submenu
+    // ------------------------------------------------------------------------
+
+    /**
+     * Small dialog offering the enable/disable toggle plus a path into the
+     * filter-list manager. The top-level menu uses a toggle row directly,
+     * but the user can also reach the manager from here.
+     */
+    private void showAdBlockingDialog() {
+        boolean enabled = AdBlockEngine.checkIsEngineEnabled(activity);
+        String[] options = {
+                enabled ? "Disable ad blocking" : "Enable ad blocking",
+                "Manage filter lists",
+                "Site allowlist"
+        };
+        new AlertDialog.Builder(activity)
+                .setTitle("Ad Blocking")
+                .setItems(options, (d, which) -> {
+                    if (which == 0)      callbacks.toggleFilterEngine();
+                    else if (which == 1) callbacks.showFilterLists();
+                    else if (which == 2) showSiteAllowlistStub();
+                })
+                .setNegativeButton("Close", null)
+                .show();
+    }
+
+    /**
+     * Placeholder for the allowlist — the real dialog lives inside
+     * {@code AdBlockController}. We just hand off to the same code path
+     * the "Manage filter lists" dialog uses.
+     */
+    private void showSiteAllowlistStub() {
+        // AdBlockController already surfaces the allowlist from inside
+        // the filter-lists dialog; reuse that entry point rather than
+        // duplicating the UI here.
+        callbacks.showFilterLists();
+    }
+
+    // ------------------------------------------------------------------------
+    // Allow HTTP sites (formerly: Trusted cleartext hosts)
     // ------------------------------------------------------------------------
     private void showCleartextHostsDialog() {
         Set<String> hosts = CleartextPreferences.getUserHosts(activity);
@@ -199,13 +210,15 @@ public class MenuController {
 
         if (list.isEmpty()) {
             new AlertDialog.Builder(activity)
-                    .setTitle("Trusted cleartext hosts")
-                    .setMessage("No user-added hosts yet.\n\n"
-                            + "Hosts added here are permitted to load over http:// "
+                    .setTitle("Allow HTTP sites")
+                    .setMessage("No sites added yet.\n\n"
+                            + "Sites added here are allowed to load over http:// "
                             + "instead of being auto-upgraded to https://.\n\n"
-                            + "The compiled default list (router brands, gateway IPs, "
-                            + "localhost, emulator host, mDNS) is always trusted.")
-                    .setPositiveButton("Add", (d, w) -> showAddCleartextHostDialog())
+                            + "Use this for routers, local devices, and development "
+                            + "hosts that don't support HTTPS. The built-in list "
+                            + "(router brands, gateway IPs, localhost, emulator host, "
+                            + "mDNS) is always trusted.")
+                    .setPositiveButton("Add site", (d, w) -> showAddCleartextHostDialog())
                     .setNegativeButton("Close", null)
                     .show();
             return;
@@ -219,7 +232,7 @@ public class MenuController {
         listView.setOnItemLongClickListener((parent, view, pos, id) -> {
             String host = list.get(pos);
             new AlertDialog.Builder(activity)
-                    .setTitle("Remove trusted host?")
+                    .setTitle("Remove trusted site?")
                     .setMessage(host)
                     .setPositiveButton("Remove", (d, w) -> {
                         CleartextPreferences.removeUserHost(activity, host);
@@ -233,9 +246,10 @@ public class MenuController {
         });
 
         new AlertDialog.Builder(activity)
-                .setTitle("Trusted cleartext hosts")
+                .setTitle("Allow HTTP sites")
+                .setMessage("Long-press a site to remove it.")
                 .setView(listView)
-                .setPositiveButton("Add", (d, w) -> showAddCleartextHostDialog())
+                .setPositiveButton("Add site", (d, w) -> showAddCleartextHostDialog())
                 .setNegativeButton("Close", null)
                 .show();
     }
@@ -245,8 +259,8 @@ public class MenuController {
         input.setHint("192.168.1.100  or  router.example.com");
 
         new AlertDialog.Builder(activity)
-                .setTitle("Add trusted host")
-                .setMessage("HTTP loads for this host will not be upgraded to HTTPS.")
+                .setTitle("Add site")
+                .setMessage("HTTP loads for this site will not be upgraded to HTTPS.")
                 .setView(input)
                 .setPositiveButton("Add", (d, w) -> {
                     String raw = input.getText().toString().trim();
