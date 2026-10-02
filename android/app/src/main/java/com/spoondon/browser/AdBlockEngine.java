@@ -21,6 +21,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -179,6 +180,100 @@ public class AdBlockEngine {
      */
     public static int getLastParsedRuleCount() {
         return lastParsedRuleCount;
+    }
+    
+    // ========================================================================
+    // Site allowlist (Phase 3)
+    // ========================================================================
+
+    /**
+     * Sorted snapshot of every host in the allowlist. Lowercased,
+     * scheme/path/port stripped. Stable order for list UIs.
+     */
+    @NonNull
+    public static List<String> getWhitelistedDomainsSorted() {
+        List<String> out = new ArrayList<>(whitelistedDomains);
+        Collections.sort(out);
+        return out;
+    }
+
+    public static int getWhitelistSize() {
+        return whitelistedDomains.size();
+    }
+
+    /**
+     * True if the given host is directly present in the allowlist. Does NOT
+     * walk the parent chain — that's what shouldBlock does. This is for UI
+     * state ("is this exact host allowed").
+     */
+    public static boolean isHostDirectlyWhitelisted(@Nullable String rawHost) {
+        String h = normalizeHost(rawHost);
+        return !h.isEmpty() && whitelistedDomains.contains(h);
+    }
+
+    /**
+     * Adds a host. Normalizes: lowercases, strips scheme://, strips /path,
+     * strips :port. Idempotent. Persists immediately and evicts the decision
+     * cache so the change takes effect on the next request.
+     */
+    public static void addWhitelistedDomain(@NonNull Context context,
+                                            @NonNull String rawHost) {
+        String h = normalizeHost(rawHost);
+        if (h.isEmpty()) return;
+        HashSet<String> updated = new HashSet<>(whitelistedDomains);
+        if (!updated.add(h)) return;
+        whitelistedDomains = updated;
+        persistWhitelist(context, updated);
+        decisionCache.evictAll();
+    }
+
+    public static void removeWhitelistedDomain(@NonNull Context context,
+                                               @NonNull String rawHost) {
+        String h = normalizeHost(rawHost);
+        if (h.isEmpty()) return;
+        HashSet<String> updated = new HashSet<>(whitelistedDomains);
+        if (!updated.remove(h)) return;
+        whitelistedDomains = updated;
+        persistWhitelist(context, updated);
+        decisionCache.evictAll();
+    }
+
+    public static void clearWhitelist(@NonNull Context context) {
+        if (whitelistedDomains.isEmpty()) return;
+        whitelistedDomains = new HashSet<>();
+        persistWhitelist(context, whitelistedDomains);
+        decisionCache.evictAll();
+    }
+
+    private static void persistWhitelist(Context context, Set<String> set) {
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (String h : set) {
+            if (!first) sb.append(',');
+            sb.append(h);
+            first = false;
+        }
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+               .edit().putString(KEY_WHITELIST, sb.toString()).apply();
+    }
+
+    /**
+     * Accepts anything a user might paste — "https://Example.com/foo?bar",
+     * "example.com:8080", "  example.com  " — and returns "example.com".
+     * Returns "" for input we can't salvage.
+     */
+    @NonNull
+    private static String normalizeHost(@Nullable String raw) {
+        if (raw == null) return "";
+        String h = raw.trim().toLowerCase(Locale.ROOT);
+        if (h.isEmpty()) return "";
+        int scheme = h.indexOf("://");
+        if (scheme != -1) h = h.substring(scheme + 3);
+        int slash = h.indexOf('/');
+        if (slash != -1) h = h.substring(0, slash);
+        int colon = h.indexOf(':');
+        if (colon != -1) h = h.substring(0, colon);
+        return h.trim();
     }
 
     // ========================================================================
