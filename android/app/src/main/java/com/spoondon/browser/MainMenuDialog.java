@@ -13,28 +13,25 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 
 /**
- * Custom main-menu dialog anchored to the top-right corner.
+ * Top-right anchored main menu dialog.
  *
- * 2026-10-02 (v6):
- *   - Migrated from AlertDialog to a plain Dialog. AlertDialog's theme
- *     (Theme.Material.Dialog) sets android:windowMinWidthMajor / Minor
- *     to ~65% / 55% of screen width. That minimum is enforced on the
- *     Dialog's decor view, not on LayoutParams.width, so
- *     setLayout(WRAP_CONTENT) was silently clamped to ~55% of the
- *     screen even when the longest label only needed ~30%. Result:
- *     ~240px of dead gray space on the right edge of every row.
- *     Plain Dialog carries none of those theme size hints.
- *   - Decor view minimum width / height are additionally zeroed after
- *     setContentView() - this runs before show(), so no flash.
- *   - Menu contents unchanged from v5.
+ * 2026-10-03 (v7.1):
+ *   - Width fix: custom theme zeroes windowMinWidthMajor/Minor.
+ *   - Row width: two-pass measure forces all rows to the natural width of
+ *     the widest row, so chevrons / checkmarks align on the same right
+ *     edge. Fixes a bug where the first measure pass reported the cap
+ *     width (MATCH_PARENT default), not the natural content width.
+ *   - Dividers tagged via View.setTag so the first measure pass can
+ *     exclude them from width computation.
  */
 public class MainMenuDialog {
 
@@ -59,88 +56,126 @@ public class MainMenuDialog {
     public static final String ACTION_ABOUT                = "about";
     public static final String ACTION_EXIT                 = "exit";
 
-    private static final float MAX_WIDTH_FRACTION  = 0.88f;
-    private static final float MAX_HEIGHT_FRACTION = 0.80f;
+    private static final float MAX_WIDTH_FRACTION  = 0.72f;
+    private static final float MAX_HEIGHT_FRACTION = 0.85f;
     private static final int   TOP_MARGIN_DP       = 60;
     private static final int   SIDE_MARGIN_DP      = 8;
 
-    /** Size of the reserved right slot on every row (checkmark home). */
-    private static final int RIGHT_SLOT_DP = 24;
+    private static final int COLOR_SURFACE       = 0xFF1E1E20;
+    private static final int COLOR_TEXT_PRIMARY  = 0xFFEDEDED;
+    private static final int COLOR_ICON          = 0xFFB8B8B8;
+    private static final int COLOR_DIVIDER       = 0xFF2C2C2E;
+    private static final int COLOR_DANGER_TEXT   = 0xFFFF5A4D;
+    private static final int COLOR_ACCENT        = 0xFF4D6BFE;
 
-    /** Gap between text block and right slot. */
-    private static final int RIGHT_SLOT_GAP_DP = 16;
+    private static final int ROW_PAD_H_DP     = 16;
+    private static final int ROW_PAD_V_DP     = 11;
+    private static final int ICON_SIZE_DP     = 20;
+    private static final int ICON_GAP_DP      = 16;
+    private static final int CHEVRON_SIZE_SP  = 20;
+
+    /** Marker tag for dividers so the measure pre-pass can skip them. */
+    private static final String TAG_DIVIDER = "spoon_menu_divider";
 
     public static void show(@NonNull Context ctx,
                             boolean desktopOn,
                             boolean adBlockOn,
                             @NonNull Callback cb) {
 
-        Context themed = new ContextThemeWrapper(ctx, android.R.style.Theme_Material_Dialog);
+        Context themed = new ContextThemeWrapper(ctx, R.style.SpoonMenuDialog);
 
         LinearLayout root = new LinearLayout(themed);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackground(roundedBackground());
-        root.setPadding(dp(themed, 2), dp(themed, 4), dp(themed, 2), dp(themed, 6));
+        root.setPadding(0, dp(themed, 6), 0, dp(themed, 6));
 
-        // --- Navigation -------------------------------------------------
-        root.addView(header(themed, "Navigation"));
-        root.addView(item(themed, ACTION_NEW_TAB,       "New Tab",       null, cb));
-        root.addView(item(themed, ACTION_NEW_INCOGNITO, "New Incognito", null, cb));
-        root.addView(item(themed, ACTION_RELOAD,        "Reload",        null, cb));
+        // Group 1 - Navigation
+        root.addView(row(themed, ACTION_NEW_TAB,       R.drawable.ic_menu_new_tab,   "New Tab",       cb));
+        root.addView(row(themed, ACTION_NEW_INCOGNITO, R.drawable.ic_menu_incognito, "New Incognito", cb));
+        root.addView(row(themed, ACTION_RELOAD,        R.drawable.ic_menu_reload,    "Reload",        cb));
+        root.addView(divider(themed));
 
-        // --- View -------------------------------------------------------
-        root.addView(header(themed, "View"));
-        root.addView(item(themed, ACTION_FIND_IN_PAGE, "Find in Page", null, cb));
-        root.addView(toggle(themed, ACTION_TOGGLE_DESKTOP, "Desktop Site", desktopOn, cb));
+        // Group 2 - View
+        root.addView(row(themed, ACTION_FIND_IN_PAGE, R.drawable.ic_menu_search, "Find in Page", cb));
+        root.addView(toggle(themed, ACTION_TOGGLE_DESKTOP, R.drawable.ic_menu_desktop, "Desktop Site", desktopOn, cb));
+        root.addView(divider(themed));
 
-        // --- Library ----------------------------------------------------
-        root.addView(header(themed, "Library"));
-        root.addView(item(themed, ACTION_BOOKMARKS,    "Bookmarks",    null, cb));
-        root.addView(item(themed, ACTION_ADD_BOOKMARK, "Add Bookmark", null, cb));
-        root.addView(item(themed, ACTION_HISTORY,      "History",      null, cb));
-        root.addView(item(themed, ACTION_DOWNLOADS,    "Downloads",    null, cb));
+        // Group 3 - Library
+        root.addView(row(themed, ACTION_BOOKMARKS,    R.drawable.ic_menu_bookmark,     "Bookmarks",    cb));
+        root.addView(row(themed, ACTION_ADD_BOOKMARK, R.drawable.ic_menu_bookmark_add, "Add Bookmark", cb));
+        root.addView(row(themed, ACTION_HISTORY,      R.drawable.ic_menu_history,      "History",      cb));
+        root.addView(row(themed, ACTION_DOWNLOADS,    R.drawable.ic_menu_download,     "Downloads",    cb));
+        root.addView(divider(themed));
 
-        // --- Security ---------------------------------------------------
-        root.addView(header(themed, "Security"));
-        root.addView(item(themed, ACTION_PASSWORDS,    "Passwords",   null, cb));
-        root.addView(toggle(themed, ACTION_AD_BLOCKING, "Ad Blocking", adBlockOn, cb));
+        // Group 4 - Security
+        root.addView(row(themed, ACTION_PASSWORDS, R.drawable.ic_menu_key, "Passwords", cb));
+        root.addView(toggle(themed, ACTION_AD_BLOCKING, R.drawable.ic_menu_shield, "Ad Blocking", adBlockOn, cb));
+        root.addView(divider(themed));
 
-        // --- Settings ---------------------------------------------------
-        root.addView(header(themed, "Settings"));
-        root.addView(item(themed, ACTION_SETTINGS, "Settings ▸", null, cb));
+        // Group 5 - Settings (submenu)
+        root.addView(submenu(themed, ACTION_SETTINGS, R.drawable.ic_menu_settings, "Settings", cb));
+        root.addView(divider(themed));
 
-        // --- Info -------------------------------------------------------
-        root.addView(header(themed, "Info"));
-        root.addView(item(themed, ACTION_ABOUT, "About", null, cb));
+        // Group 6 - Info
+        root.addView(row(themed, ACTION_ABOUT, R.drawable.ic_menu_info, "About", cb));
+        root.addView(divider(themed));
 
-        // --- Exit -------------------------------------------------------
-        root.addView(spacer(themed));
-        root.addView(dangerItem(themed, ACTION_EXIT, "Exit", cb));
+        // Group 7 - Exit
+        root.addView(dangerRow(themed, ACTION_EXIT, R.drawable.ic_menu_exit, "Exit", cb));
+
+        DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
+        int capWidthPx  = (int) (dm.widthPixels  * MAX_WIDTH_FRACTION);
+        int capHeightPx = (int) (dm.heightPixels * MAX_HEIGHT_FRACTION);
+
+        // --- FIRST PASS ---------------------------------------------------
+        // Force rows to WRAP_CONTENT so LinearLayout reports the natural
+        // maximum width across all rows. Dividers get width 0 so they
+        // don't inflate the measurement. Without this, the default
+        // MATCH_PARENT params cause every row to fill the AT_MOST spec,
+        // so root.getMeasuredWidth() == capWidthPx and the dialog ends up
+        // as wide as the cap rather than hugging its content.
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View child = root.getChildAt(i);
+            ViewGroup.LayoutParams lp = child.getLayoutParams();
+            if (lp instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams llp = (LinearLayout.LayoutParams) lp;
+                if (TAG_DIVIDER.equals(child.getTag())) {
+                    llp.width = 0;
+                } else {
+                    llp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+                }
+            }
+        }
+        root.measure(
+                View.MeasureSpec.makeMeasureSpec(capWidthPx, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0,          View.MeasureSpec.UNSPECIFIED));
+        int contentWidth = Math.min(root.getMeasuredWidth(), capWidthPx);
+
+        // --- SECOND PASS --------------------------------------------------
+        // Pin every child to the natural width so chevrons and checkmarks
+        // sit at the same right edge across all rows.
+        for (int i = 0; i < root.getChildCount(); i++) {
+            View child = root.getChildAt(i);
+            ViewGroup.LayoutParams lp = child.getLayoutParams();
+            if (lp != null) {
+                lp.width = contentWidth;
+                child.setLayoutParams(lp);
+            }
+        }
 
         MaxSizeScrollView scroll = new MaxSizeScrollView(themed);
         scroll.addView(root);
         scroll.setBackground(roundedBackground());
         scroll.setClipToOutline(true);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        scroll.setMaxWidth(capWidthPx);
+        scroll.setMaxHeight(capHeightPx);
 
-        // Plain Dialog - not AlertDialog. AlertDialog's theme would
-        // otherwise clamp the window to ~55% of the screen regardless
-        // of WRAP_CONTENT, which is the whole reason for the dead
-        // gray space on the right edge of every row.
         Dialog dialog = new Dialog(themed);
         dialog.setContentView(scroll);
 
-        // Configure the window BEFORE show() so the dialog is laid out
-        // at its final position and final width on the first frame.
         Window window = dialog.getWindow();
         if (window != null) {
-            DisplayMetrics dm = ctx.getResources().getDisplayMetrics();
-            int maxWidthPx  = (int) (dm.widthPixels  * MAX_WIDTH_FRACTION);
-            int maxHeightPx = (int) (dm.heightPixels * MAX_HEIGHT_FRACTION);
-
-            scroll.setMaxWidth(maxWidthPx);
-            scroll.setMaxHeight(maxHeightPx);
-
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             window.setLayout(ViewGroup.LayoutParams.WRAP_CONTENT,
                              ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -151,10 +186,6 @@ public class MainMenuDialog {
             params.y = dp(ctx, TOP_MARGIN_DP);
             window.setAttributes(params);
 
-            // setContentView() above installed the decor view, so this
-            // is valid now and runs before show(). Zeroing the minimum
-            // dimensions clears any residual min-width inherited from
-            // the theme, ensuring the dialog truly hugs its content.
             View decor = window.getDecorView();
             if (decor != null) {
                 decor.setMinimumWidth(0);
@@ -165,135 +196,109 @@ public class MainMenuDialog {
         dialog.show();
     }
 
-    // ------------------------------------------------------------------
-    // Row builders
-    // ------------------------------------------------------------------
-
-    private static TextView header(@NonNull Context ctx, @NonNull String text) {
-        TextView tv = new TextView(ctx);
-        tv.setText(text.toUpperCase());
-        tv.setTextSize(10);
-        tv.setTextColor(0xFF8E8E93);
-        tv.setLetterSpacing(0.1f);
-        tv.setPadding(dp(ctx, 18), dp(ctx, 8), dp(ctx, 18), dp(ctx, 3));
-        return tv;
+    private static View row(@NonNull Context ctx, @NonNull String actionId,
+                            @DrawableRes int iconRes, @NonNull String title,
+                            @NonNull Callback cb) {
+        return buildRow(ctx, actionId, iconRes, title, cb, false, null, false);
     }
 
-    private static View item(@NonNull Context ctx,
-                             @NonNull String actionId,
-                             @NonNull String title,
-                             String subtitle,
-                             @NonNull Callback cb) {
-        return buildRow(ctx, actionId, title, subtitle, cb, false, null);
+    private static View dangerRow(@NonNull Context ctx, @NonNull String actionId,
+                                  @DrawableRes int iconRes, @NonNull String title,
+                                  @NonNull Callback cb) {
+        return buildRow(ctx, actionId, iconRes, title, cb, true, null, false);
     }
 
-    private static View dangerItem(@NonNull Context ctx,
-                                   @NonNull String actionId,
-                                   @NonNull String title,
-                                   @NonNull Callback cb) {
-        return buildRow(ctx, actionId, title, null, cb, true, null);
+    private static View submenu(@NonNull Context ctx, @NonNull String actionId,
+                                @DrawableRes int iconRes, @NonNull String title,
+                                @NonNull Callback cb) {
+        return buildRow(ctx, actionId, iconRes, title, cb, false, null, true);
     }
 
-    private static View toggle(@NonNull Context ctx,
-                               @NonNull String actionId,
-                               @NonNull String title,
-                               boolean initial,
-                               @NonNull Callback cb) {
+    private static View toggle(@NonNull Context ctx, @NonNull String actionId,
+                               @DrawableRes int iconRes, @NonNull String title,
+                               boolean initial, @NonNull Callback cb) {
         final boolean[] state = { initial };
         final TextView check = new TextView(ctx);
-        check.setText("✓");
-        check.setTextSize(17);
-        check.setTextColor(0xFF4D6BFE);
+        check.setText("\u2713");
+        check.setTextSize(18);
+        check.setTextColor(COLOR_ACCENT);
         check.setVisibility(initial ? View.VISIBLE : View.INVISIBLE);
 
-        View row = buildRow(ctx, actionId, title, null, cb, false, check);
-        row.setOnClickListener(v -> {
+        View rowView = buildRow(ctx, actionId, iconRes, title, cb, false, check, false);
+        rowView.setOnClickListener(v -> {
             state[0] = !state[0];
             check.setVisibility(state[0] ? View.VISIBLE : View.INVISIBLE);
             cb.onAction(actionId);
         });
-        return row;
+        return rowView;
     }
 
-    private static View buildRow(@NonNull Context ctx,
-                                 @NonNull String actionId,
-                                 @NonNull String title,
-                                 String subtitle,
-                                 @NonNull Callback cb,
-                                 boolean danger,
-                                 View trailing) {
+    private static View buildRow(@NonNull Context ctx, @NonNull String actionId,
+                                 @DrawableRes int iconRes, @NonNull String title,
+                                 @NonNull Callback cb, boolean danger,
+                                 View trailing, boolean chevron) {
+
         LinearLayout row = new LinearLayout(ctx);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(ctx, 18), dp(ctx, 8), dp(ctx, 18), dp(ctx, 8));
-        row.setMinimumHeight(dp(ctx, 38));
+        row.setPadding(dp(ctx, ROW_PAD_H_DP), dp(ctx, ROW_PAD_V_DP),
+                       dp(ctx, ROW_PAD_H_DP), dp(ctx, ROW_PAD_V_DP));
         row.setBackgroundResource(selectableItemBackground(ctx));
         row.setClickable(true);
         row.setFocusable(true);
 
-        LinearLayout textCol = new LinearLayout(ctx);
-        textCol.setOrientation(LinearLayout.VERTICAL);
+        ImageView icon = new ImageView(ctx);
+        icon.setImageResource(iconRes);
+        icon.setColorFilter(danger ? COLOR_DANGER_TEXT : COLOR_ICON);
+        row.addView(icon, new LinearLayout.LayoutParams(
+                dp(ctx, ICON_SIZE_DP), dp(ctx, ICON_SIZE_DP)));
 
-        TextView titleView = new TextView(ctx);
-        titleView.setText(title);
-        titleView.setTextSize(15);
-        titleView.setTextColor(danger ? 0xFFFF453A : 0xFFFFFFFF);
-        textCol.addView(titleView);
-
-        if (subtitle != null && !subtitle.isEmpty()) {
-            TextView subView = new TextView(ctx);
-            subView.setText(subtitle);
-            subView.setTextSize(11);
-            subView.setTextColor(0xFF8E8E93);
-            subView.setPadding(0, dp(ctx, 1), 0, 0);
-            textCol.addView(subView);
-        }
-
-        // WRAP_CONTENT text column - no weight. Rows hug their content
-        // width; the dialog hugs the widest row.
-        row.addView(textCol, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        // Fixed-width right slot. Every row reserves it so all rows share
-        // the same right edge. Toggle rows place the checkmark inside;
-        // other rows leave it empty.
-        FrameLayout rightSlot = new FrameLayout(ctx);
-        LinearLayout.LayoutParams slotParams = new LinearLayout.LayoutParams(
-                dp(ctx, RIGHT_SLOT_DP), dp(ctx, RIGHT_SLOT_DP));
-        slotParams.setMarginStart(dp(ctx, RIGHT_SLOT_GAP_DP));
-        row.addView(rightSlot, slotParams);
+        TextView label = new TextView(ctx);
+        label.setText(title);
+        label.setTextSize(14);
+        label.setTextColor(danger ? COLOR_DANGER_TEXT : COLOR_TEXT_PRIMARY);
+        label.setSingleLine(true);
+        LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        labelLp.setMarginStart(dp(ctx, ICON_GAP_DP));
+        row.addView(label, labelLp);
 
         if (trailing != null) {
-            FrameLayout.LayoutParams innerLp = new FrameLayout.LayoutParams(
+            LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT);
-            innerLp.gravity = Gravity.CENTER;
-            rightSlot.addView(trailing, innerLp);
+            tLp.setMarginStart(dp(ctx, 12));
+            row.addView(trailing, tLp);
+        } else if (chevron) {
+            TextView chev = new TextView(ctx);
+            chev.setText("\u203A");
+            chev.setTextSize(CHEVRON_SIZE_SP);
+            chev.setTextColor(COLOR_ICON);
+            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            cLp.setMarginStart(dp(ctx, 12));
+            row.addView(chev, cLp);
         }
 
         row.setOnClickListener(v -> cb.onAction(actionId));
         return row;
     }
 
-    private static View spacer(@NonNull Context ctx) {
+    private static View divider(@NonNull Context ctx) {
         View v = new View(ctx);
+        v.setBackgroundColor(COLOR_DIVIDER);
+        v.setTag(TAG_DIVIDER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(ctx, 1));
-        lp.setMargins(dp(ctx, 18), dp(ctx, 6), dp(ctx, 18), dp(ctx, 2));
         v.setLayoutParams(lp);
-        v.setBackgroundColor(0xFF2C2C2E);
         return v;
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
-
     private static GradientDrawable roundedBackground() {
         GradientDrawable g = new GradientDrawable();
-        g.setColor(0xFF1C1C1E);
-        g.setCornerRadius(24f);
+        g.setColor(COLOR_SURFACE);
+        g.setCornerRadius(28f);
         return g;
     }
 
@@ -310,15 +315,12 @@ public class MainMenuDialog {
     }
 
     private static class MaxSizeScrollView extends ScrollView {
-
-        private int maxWidthPx = Integer.MAX_VALUE;
+        private int maxWidthPx  = Integer.MAX_VALUE;
         private int maxHeightPx = Integer.MAX_VALUE;
 
-        MaxSizeScrollView(@NonNull Context context) {
-            super(context);
-        }
+        MaxSizeScrollView(@NonNull Context context) { super(context); }
 
-        void setMaxWidth(int px) { this.maxWidthPx = px; requestLayout(); }
+        void setMaxWidth(int px)  { this.maxWidthPx = px; requestLayout(); }
         void setMaxHeight(int px) { this.maxHeightPx = px; requestLayout(); }
 
         @Override
