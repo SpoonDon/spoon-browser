@@ -12,6 +12,8 @@ import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
