@@ -1,6 +1,5 @@
 package com.spoondon.browser;
 
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -28,8 +27,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 /**
- * Owns the main menu, Settings submenu, Ad Blocking dialog, "About" dialog,
- * search engine picker, "Find in Page" overlay, and "Allow HTTP sites" manager.
+ * Owns the main menu, Settings submenu, "About" dialog, search engine picker,
+ * "Find in Page" overlay, and "Allow HTTP sites" manager.
+ *
+ * 2026-10-03 (option A):
+ *   Ad Blocking is now a pure toggle on the main menu — the row's ✓ reflects
+ *   the real engine state, tapping flips the engine via callbacks.toggleFilterEngine().
+ *   The old showAdBlockingDialog() AlertDialog submenu is gone. "Manage filter
+ *   lists" stays in Settings; "Site allowlist" moves into Settings as a new row.
  *
  * 2026-10-03 (v7): About re-skinned from BottomSheetDialog to shared Dialog
  * chrome (matches Downloads / Settings / Main Menu).
@@ -52,6 +57,7 @@ public class MenuController {
 
         void showFilterLists();
         void toggleFilterEngine();
+        void showSiteAllowlist();
 
         void toggleDesktopMode();
         boolean isDesktopEnabledForCurrentSite();
@@ -104,7 +110,7 @@ public class MenuController {
             case MainMenuDialog.ACTION_HISTORY:         callbacks.showHistory();          return;
             case MainMenuDialog.ACTION_DOWNLOADS:       callbacks.showDownloads();        return;
             case MainMenuDialog.ACTION_PASSWORDS:       callbacks.showVault();            return;
-            case MainMenuDialog.ACTION_AD_BLOCKING:     showAdBlockingDialog();           return;
+            case MainMenuDialog.ACTION_AD_BLOCKING:     callbacks.toggleFilterEngine();   return;
             case MainMenuDialog.ACTION_SEARCH_ENGINE:   showSearchEngineDialog();         return;
             case MainMenuDialog.ACTION_CLEARTEXT_HOSTS: showCleartextHostsDialog();       return;
             case MainMenuDialog.ACTION_SETTINGS:        showSettingsDialog();             return;
@@ -141,6 +147,9 @@ public class MenuController {
             case SettingsDialog.ACTION_FILTER_LISTS:
                 callbacks.showFilterLists();
                 return;
+            case SettingsDialog.ACTION_SITE_ALLOWLIST:
+                callbacks.showSiteAllowlist();
+                return;
             case SettingsDialog.ACTION_IMPORT_PASSWORDS:
                 callbacks.importPasswords();
                 return;
@@ -154,31 +163,6 @@ public class MenuController {
         SharedPreferences sp = activity.getSharedPreferences(
                 "browser_prefs", Context.MODE_PRIVATE);
         return sp.getBoolean("show_splash_screen", true);
-    }
-
-    // ------------------------------------------------------------------------
-    // Ad Blocking submenu
-    // ------------------------------------------------------------------------
-    private void showAdBlockingDialog() {
-        boolean enabled = AdBlockEngine.checkIsEngineEnabled(activity);
-        String[] options = {
-                enabled ? "Disable ad blocking" : "Enable ad blocking",
-                "Manage filter lists",
-                "Site allowlist"
-        };
-        new AlertDialog.Builder(activity)
-                .setTitle("Ad Blocking")
-                .setItems(options, (d, which) -> {
-                    if (which == 0)      callbacks.toggleFilterEngine();
-                    else if (which == 1) callbacks.showFilterLists();
-                    else if (which == 2) showSiteAllowlistStub();
-                })
-                .setNegativeButton("Close", null)
-                .show();
-    }
-
-    private void showSiteAllowlistStub() {
-        callbacks.showFilterLists();
     }
 
     // ------------------------------------------------------------------------
@@ -308,7 +292,7 @@ public class MenuController {
         input.requestFocus();
     }
 
-        // ------------------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // About dialog (modernized — zero backslash escapes)
     // ------------------------------------------------------------------------
     public void showAbout() {
@@ -525,7 +509,7 @@ public class MenuController {
             return "?";
         }
     }
-    
+
     private int dp(float value) {
         return (int) android.util.TypedValue.applyDimension(
                 android.util.TypedValue.COMPLEX_UNIT_DIP, value,
