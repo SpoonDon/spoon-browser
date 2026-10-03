@@ -452,7 +452,7 @@ public class AdBlockController {
     // Site allowlist — tap a row to remove, footer to add
     // ========================================================================
 
-    private void showSiteAllowlistDialog() {
+    public void showSiteAllowlistDialog() {
         final List<String> hosts = AdBlockEngine.getWhitelistedDomainsSorted();
 
         if (hosts.isEmpty()) {
