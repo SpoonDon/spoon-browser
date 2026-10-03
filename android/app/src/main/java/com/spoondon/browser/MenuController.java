@@ -384,7 +384,7 @@ public class MenuController {
 
         // ---- version pill ----
         TextView versionPill = new TextView(ctx);
-        versionPill.setText("v" + getAppVersion());
+        versionPill.setText(getAppVersion());
         versionPill.setTextColor(0xFF4D6BFE);
         versionPill.setTextSize(12);
         versionPill.setGravity(Gravity.CENTER);
