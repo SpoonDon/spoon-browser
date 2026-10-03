@@ -436,11 +436,13 @@ public class MenuController {
         sp.topMargin = dp(22);
         body.addView(stats, sp);
 
-        // ---- signature ----
+        // ---- signature ----                
         TextView sig = new TextView(ctx);
-        sig.setText("Built one green commit at a time.\n"
-                + "Designed to evolve dynamically with Android WebView.\n\n"
-                + "— with love, Plaban.");
+        String sigText = String.format("%s%n%s%n%n%s",
+                "Built one green commit at a time.",
+                "Designed to evolve dynamically with Android WebView.",
+                "\u2014 with love, Plaban.");
+        sig.setText(sigText);
         sig.setTextSize(12);
         sig.setGravity(Gravity.CENTER);
         sig.setTextColor(0xFF636366);
