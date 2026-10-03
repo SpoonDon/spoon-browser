@@ -110,6 +110,9 @@ public class TabManager implements ThermalController.Listener {
             "  if (window.__spoonRafOrigCaf) window.cancelAnimationFrame = window.__spoonRafOrigCaf;" +
             "})();";
 
+    private static final int THUMB_MAX_W = 480;
+    private static final int THUMB_MAX_H = 1000;
+
     // ------------------------------------------------------------------------
     // State
     // ------------------------------------------------------------------------
@@ -801,8 +804,20 @@ public class TabManager implements ThermalController.Listener {
     // thread. Only captures WebViews that are currently laid out (width
     // and height > 0); a GONE WebView that has never been measured is
     // skipped - that case is handled by TabAdapter's letter-tile fallback
-    // and by the async capture pass above.
+    // and by the async capture pass.
+    //
+    // Downscaling policy (2026-10-03): previews are decorative; the
+    // switcher card is at most ~360dp wide. Capturing the raw WebView
+    // size (1080x2000 on a modern phone) as ARGB_8888 costs ~8 MB per
+    // tab - 20 tabs = ~160 MB of bitmaps sitting in the heap alongside
+    // the WebViews themselves. Instead we fit into MAX_W x MAX_H and use
+    // RGB_565 (no alpha - WebView content is opaque). That's ~940 KB per
+    // tab, an ~8.5x reduction, with no visible quality loss at switcher
+    // card size on a 3x display.
     // ------------------------------------------------------------------------
+    private static final int THUMB_MAX_W = 480;
+    private static final int THUMB_MAX_H = 1000;
+
     private void captureThumbnail(@Nullable TabState tab) {
         if (tab == null) return;
         WebView wv = tab.getWebView();
@@ -812,9 +827,20 @@ public class TabManager implements ThermalController.Listener {
         int h = wv.getHeight();
         if (w <= 0 || h <= 0) return;
 
+        int targetW = w;
+        int targetH = h;
+        if (targetW > THUMB_MAX_W || targetH > THUMB_MAX_H) {
+            float scale = Math.min(
+                    (float) THUMB_MAX_W / w,
+                    (float) THUMB_MAX_H / h);
+            targetW = Math.max(1, Math.round(w * scale));
+            targetH = Math.max(1, Math.round(h * scale));
+        }
+
         try {
-            Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Bitmap bmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.RGB_565);
             Canvas canvas = new Canvas(bmp);
+            canvas.scale((float) targetW / w, (float) targetH / h);
             wv.draw(canvas);
             tab.setThumbnail(bmp);
         } catch (Exception ignored) {
