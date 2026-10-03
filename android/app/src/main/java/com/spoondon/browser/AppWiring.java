@@ -301,6 +301,10 @@ public class AppWiring {
                 adBlockController.toggleEngine(tabManager.getCurrentWebView());
             }
 
+            @Override public void showSiteAllowlist() {    
+                adBlockController.showSiteAllowlistDialog();
+            }
+
             @Override public void toggleDesktopMode() {
                 NavigationHelper.toggleDesktopMode(
                         activity,
