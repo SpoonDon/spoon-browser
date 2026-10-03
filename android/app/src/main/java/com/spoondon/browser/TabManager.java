@@ -814,9 +814,7 @@ public class TabManager implements ThermalController.Listener {
     // RGB_565 (no alpha - WebView content is opaque). That's ~940 KB per
     // tab, an ~8.5x reduction, with no visible quality loss at switcher
     // card size on a 3x display.
-    // ------------------------------------------------------------------------
-    private static final int THUMB_MAX_W = 480;
-    private static final int THUMB_MAX_H = 1000;
+    // ------------------------------------------------------------------------    
 
     private void captureThumbnail(@Nullable TabState tab) {
         if (tab == null) return;
