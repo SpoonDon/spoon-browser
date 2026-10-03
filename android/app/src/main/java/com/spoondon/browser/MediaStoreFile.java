@@ -109,6 +109,33 @@ public final class MediaStoreFile implements SeekableFile {
         }
     }
 
+    /**
+     * Reopen an existing MediaStore row after a process restart. Used by
+     * DownloadEngine.restoreFromDisk() for COMPLETED tasks.
+     *
+     * @param knownSize the byte size we recorded last — assigned to the
+     *                  cached high-water mark so size() works before any
+     *                  further writes.
+     */
+    @Nullable
+    public static MediaStoreFile reopen(@NonNull Context context,
+                                        @NonNull Uri uri,
+                                        long knownSize) {
+        try {
+            Context appContext = context.getApplicationContext();
+            ParcelFileDescriptor pfd = appContext.getContentResolver()
+                    .openFileDescriptor(uri, "rw");
+            if (pfd == null) return null;
+            FileChannel ch = new FileOutputStream(pfd.getFileDescriptor()).getChannel();
+            MediaStoreFile f = new MediaStoreFile(appContext, uri, pfd, ch);
+            f.highWater = knownSize;
+            return f;
+        } catch (Exception e) {
+            Log.w(TAG, "reopen failed for " + uri, e);
+            return null;
+        }
+    }
+
     // ------------------------------------------------------------------------
     // SeekableFile
     // ------------------------------------------------------------------------
