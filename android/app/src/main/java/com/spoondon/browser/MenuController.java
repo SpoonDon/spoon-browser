@@ -5,6 +5,7 @@ import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -22,29 +23,21 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 /**
  * Owns the main menu, Settings submenu, Ad Blocking dialog, "About" dialog,
- * search engine picker, "Find in Page" overlay, and "Allow HTTP sites"
- * manager.
+ * search engine picker, "Find in Page" overlay, and "Allow HTTP sites" manager.
  *
- * 2026-10-03 (v7):
- *   - About section re-skinned from BottomSheetDialog to the shared Dialog
- *     chrome (matches Downloads / Settings / Main Menu). Adds app name,
- *     version pill, tighter stats card, ScrollView body.
- *   - All other dialogs unchanged from v6.
+ * 2026-10-03 (v7): About re-skinned from BottomSheetDialog to shared Dialog
+ * chrome (matches Downloads / Settings / Main Menu).
  */
 public class MenuController {
 
     public static final String KEY_SEARCH_ENGINE = "search_engine";
 
-    // ------------------------------------------------------------------------
-    // Callbacks (unchanged)
-    // ------------------------------------------------------------------------
     public interface Callbacks {
         void newTab(boolean incognito);
         void reload();
@@ -78,9 +71,6 @@ public class MenuController {
         @NonNull SharedPreferences getPreferences();
     }
 
-    // ------------------------------------------------------------------------
-    // State
-    // ------------------------------------------------------------------------
     private final MainActivity activity;
     private final Callbacks callbacks;
     private final SharedPreferences prefs;
@@ -94,7 +84,7 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // Main menu (routes through MainMenuDialog)
+    // Main menu
     // ------------------------------------------------------------------------
     public void showMainMenu(@NonNull View anchor) {
         boolean desktopOn = callbacks.isDesktopEnabledForCurrentSite();
@@ -126,7 +116,6 @@ public class MenuController {
     // ------------------------------------------------------------------------
     // Settings submenu
     // ------------------------------------------------------------------------
-
     private void showSettingsDialog() {
         boolean startupOn = isStartupAnimationOn();
         SettingsDialog.show(activity, startupOn, this::handleSettingsAction);
@@ -161,7 +150,6 @@ public class MenuController {
         }
     }
 
-    /** Reads the same pref MainActivity.toggleStartupAnimation() toggles. */
     private boolean isStartupAnimationOn() {
         SharedPreferences sp = activity.getSharedPreferences(
                 "browser_prefs", Context.MODE_PRIVATE);
@@ -194,14 +182,14 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // Allow HTTP sites (routes through HttpSitesDialog)
+    // Allow HTTP sites
     // ------------------------------------------------------------------------
     private void showCleartextHostsDialog() {
         HttpSitesDialog.show(activity);
     }
 
     // ------------------------------------------------------------------------
-    // Search engine (routes through SearchEngineDialog)
+    // Search engine
     // ------------------------------------------------------------------------
     public void showSearchEngineDialog() {
         String current = prefs != null
@@ -266,12 +254,12 @@ public class MenuController {
         barLayout.addView(countText);
 
         android.widget.Button prevBtn = new android.widget.Button(activity);
-        prevBtn.setText("\u2227"); // ∧
+        prevBtn.setText(String.valueOf((char) 0x2227));
         prevBtn.setTextColor(Color.WHITE);
         prevBtn.setBackground(null);
 
         android.widget.Button nextBtn = new android.widget.Button(activity);
-        nextBtn.setText("\u2228"); // ∨
+        nextBtn.setText(String.valueOf((char) 0x2228));
         nextBtn.setTextColor(Color.WHITE);
         nextBtn.setBackground(null);
 
@@ -320,11 +308,12 @@ public class MenuController {
         input.requestFocus();
     }
 
-    // ------------------------------------------------------------------------
-    // About dialog (modernized)
+        // ------------------------------------------------------------------------
+    // About dialog (modernized — zero backslash escapes)
     // ------------------------------------------------------------------------
     public void showAbout() {
         final Context ctx = activity;
+        final char NL = (char) 10;
 
         LinearLayout root = new LinearLayout(ctx);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -343,12 +332,12 @@ public class MenuController {
         title.setText("About");
         title.setTextColor(0xFFEDEDED);
         title.setTextSize(17);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setTypeface(null, Typeface.BOLD);
         header.addView(title, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView close = new TextView(ctx);
-        close.setText("✕");
+        close.setText(String.valueOf((char) 0x2715));
         close.setTextColor(0xFF9A9A9A);
         close.setTextSize(16);
         close.setPadding(dp(14), dp(6), dp(4), dp(6));
@@ -386,7 +375,7 @@ public class MenuController {
         name.setText("Spoon Browser");
         name.setTextColor(0xFFEDEDED);
         name.setTextSize(19);
-        name.setTypeface(null, android.graphics.Typeface.BOLD);
+        name.setTypeface(null, Typeface.BOLD);
         name.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams nameP = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -428,7 +417,7 @@ public class MenuController {
         stats.addView(createStatRow("Bookmarks", String.valueOf(activity.getBookmarkCount()), true));
         stats.addView(createStatRow("History",   String.valueOf(activity.getHistoryCount()), true));
 
-        View adBlockRow = createStatRow("Ad Block rules", "…", false);
+        View adBlockRow = createStatRow("Ad Block rules", "...", false);
         stats.addView(adBlockRow);
 
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
@@ -436,17 +425,15 @@ public class MenuController {
         sp.topMargin = dp(22);
         body.addView(stats, sp);
 
-        // ---- signature ----                
+        // ---- signature ----
+        String sigText = "Built one green commit at a time." + NL
+                + "Designed to evolve dynamically with Android WebView." + NL + NL
+                + "- with love, Plaban.";
         TextView sig = new TextView(ctx);
-        String sigText = String.format("%s%n%s%n%n%s",
-                "Built one green commit at a time.",
-                "Designed to evolve dynamically with Android WebView.",
-                "\u2014 with love, Plaban.");
         sig.setText(sigText);
         sig.setTextSize(12);
         sig.setGravity(Gravity.CENTER);
         sig.setTextColor(0xFF636366);
-                }
         sig.setLineSpacing(0, 1.25f);
         LinearLayout.LayoutParams sigP = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -470,7 +457,6 @@ public class MenuController {
             w.setLayout(dp(400), dp(620));
         }
 
-        // poll AdBlock rule count while dialog is showing
         final Handler handler = new Handler(Looper.getMainLooper());
         Runnable updater = new Runnable() {
             @Override
@@ -481,6 +467,7 @@ public class MenuController {
                         tv.setText(String.valueOf(AdBlockEngine.getBlocklistSize()));
                     }
                     handler.postDelayed(this, 1500);
+                }
             }
         };
 
