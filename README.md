@@ -50,3 +50,7 @@ from the `ANDROID_KEYSTORE_BASE64` secret; see `.github/workflows/android-build.
 - `.github/workflows/android-build.yml` — release build on push to `main`, tag push,
   and manual dispatch. Attaches the raw APK to the GitHub release on `v*` tags.
 - `.github/workflows/main.yml` — debug build on PR to `main` and manual dispatch.
+
+## Thanks
+
+See [THANKS.md](THANKS.md).
