@@ -150,7 +150,6 @@ public final class DownloadNaming {
         Matcher m = RFC5987.matcher(cd);
         if (!m.find()) return null;
         try {
-            // RFC 5987 percent-encodes; '+' is literal, not space.
             return URLDecoder.decode(m.group(2).trim().replace("+", "%2B"), "UTF-8");
         } catch (UnsupportedEncodingException e) {
             return m.group(2).trim();
