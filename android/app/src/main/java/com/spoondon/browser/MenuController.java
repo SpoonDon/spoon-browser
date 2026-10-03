@@ -525,8 +525,8 @@ public class MenuController {
             return "?";
         }
     }
-
-    private int dp(int value) {
+    
+    private int dp(float value) {
         return (int) android.util.TypedValue.applyDimension(
                 android.util.TypedValue.COMPLEX_UNIT_DIP, value,
                 activity.getResources().getDisplayMetrics());
