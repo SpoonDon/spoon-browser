@@ -24,7 +24,6 @@ import androidx.viewpager2.widget.ViewPager2;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Owns the tab lifecycle: creating, switching, closing, and destroying WebView
@@ -36,6 +35,17 @@ import java.util.function.Consumer;
  * 2026-10-01 - Thermal tier 2: subscribes to ThermalController, throttles
  *              hidden tabs via injected requestAnimationFrame wrapping when
  *              the device is MODERATE or above, restores on show or cooldown.
+ * 2026-10-03 - Thumbnail preview fix:
+ *                (a) switchToTab() snapshots the OUTGOING tab before hiding
+ *                    it, so every tab that has ever been foregrounded
+ *                    carries a valid thumbnail for the switcher.
+ *                (b) showTabSwitcher() captures the CURRENT tab
+ *                    synchronously (was async via mainHandler.post, which
+ *                    raced the ViewPager2 bind and caused the first-open
+ *                    black tile), and does so BEFORE pauseTimers().
+ *                (c) Tabs that have never been foregrounded (restored-from-
+ *                    session, opened-in-background) fall back to a letter
+ *                    tile drawn by TabAdapter instead of pure black.
  *
  * Threading: all public methods must be called on the main thread.
  */
@@ -192,6 +202,25 @@ public class TabManager implements ThermalController.Listener {
 
     public void switchToTab(int index) {
         if (index < 0 || index >= tabs.size()) return;
+
+        // Snapshot the outgoing tab BEFORE we hide it. At this point the
+        // outgoing WebView is still VISIBLE and laid out, so webView.draw()
+        // captures real pixels. This is what makes previously-foregrounded
+        // tabs show previews in the switcher without ever being re-selected.
+        if (currentPosition >= 0
+                && currentPosition < tabs.size()
+                && currentPosition != index) {
+            TabState outgoing = tabs.get(currentPosition);
+            WebView outgoingWv = outgoing.getWebView();
+            if (outgoingWv != null) {
+                String t = outgoingWv.getTitle();
+                if (t != null) outgoing.setTitle(t);
+                String u = outgoingWv.getUrl();
+                if (u != null) outgoing.setUrl(u);
+                captureThumbnail(outgoing);
+            }
+        }
+
         currentPosition = index;
 
         for (int i = 0; i < tabs.size(); i++) {
@@ -264,8 +293,7 @@ public class TabManager implements ThermalController.Listener {
         switchToTab(currentPosition);
         callbacks.onTabCountChanged(tabs.size());
     }
-
-
+    
     // ------------------------------------------------------------------------
     // Session restore
     // ------------------------------------------------------------------------
@@ -510,22 +538,28 @@ public class TabManager implements ThermalController.Listener {
     // Tab switcher overlay
     // ------------------------------------------------------------------------
     public void showTabSwitcher() {
-        WebView currentWv = getCurrentWebView();
-        if (currentWv != null) currentWv.pauseTimers();
-
+        // 1. Snapshot the CURRENT tab BEFORE pausing its timers or building
+        //    the adapter. This has to be synchronous: if we deferred it to
+        //    mainHandler.post() (the old behaviour), the ViewPager2 would
+        //    have already bound the current row with a null thumbnail, and
+        //    the user saw a black tile until the next open.
         TabState currentTab = getCurrentTabState();
         if (currentTab != null) {
             WebView tabWv = currentTab.getWebView();
             if (tabWv != null) {
-                currentTab.setTitle(tabWv.getTitle() != null ? tabWv.getTitle() : "New Tab");
-                currentTab.setUrl(tabWv.getUrl() != null ? tabWv.getUrl() : "");
-                captureWebViewSnapshotAsync(tabWv, bitmap -> {
-                    currentTab.setThumbnail(bitmap);
-                    if (tabAdapter != null) tabAdapter.notifyItemChanged(currentPosition);
-                });
+                String t = tabWv.getTitle();
+                currentTab.setTitle(t != null ? t : "New Tab");
+                String u = tabWv.getUrl();
+                if (u != null) currentTab.setUrl(u);
+                captureThumbnail(currentTab);
             }
         }
 
+        // 2. Now pause timers to save battery while the switcher is open.
+        WebView currentWv = getCurrentWebView();
+        if (currentWv != null) currentWv.pauseTimers();
+
+        // 3. Build the overlay lazily on first use.
         if (tabSwitcherOverlay == null) {
             LayoutInflater inflater = LayoutInflater.from(activity);
             ViewGroup root = activity.findViewById(android.R.id.content);
@@ -560,6 +594,9 @@ public class TabManager implements ThermalController.Listener {
                     hideTabSwitcher());
         }
 
+        // 4. Build a fresh adapter so every row binds against the
+        //    thumbnails we just captured (plus any previously captured
+        //    ones stored on TabState).
         tabAdapter = new TabAdapter(tabs, new TabAdapter.OnTabActionListener() {
             @Override
             public void onTabSelected(int position) {
@@ -607,29 +644,37 @@ public class TabManager implements ThermalController.Listener {
     }
 
     // ------------------------------------------------------------------------
-    // Internal
+    // Thumbnail capture
+    //
+    // Synchronous, safe, silent on failure. MUST be called on the main
+    // thread. Only captures WebViews that are currently laid out (width
+    // and height > 0); a GONE WebView has zero dimensions and is skipped -
+    // that case is covered by TabAdapter's letter-tile fallback.
+    //
+    // Rationale for capture timing:
+    //   - switchToTab(): captures the outgoing tab while it's still VISIBLE,
+    //     just before we flip its visibility to GONE.
+    //   - showTabSwitcher(): captures the current tab, which is still
+    //     VISIBLE behind the switcher overlay.
+    // Both call sites therefore see a fully laid-out, painted WebView.
     // ------------------------------------------------------------------------
-    private void captureWebViewSnapshotAsync(WebView webView, Consumer<Bitmap> callback) {
-        if (webView == null) {
-            callback.accept(null);
-            return;
+    private void captureThumbnail(@Nullable TabState tab) {
+        if (tab == null) return;
+        WebView wv = tab.getWebView();
+        if (wv == null) return;
+
+        int w = wv.getWidth();
+        int h = wv.getHeight();
+        if (w <= 0 || h <= 0) return;
+
+        try {
+            Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bmp);
+            wv.draw(canvas);
+            tab.setThumbnail(bmp);
+        } catch (Exception ignored) {
+            // Swallow - a missing thumbnail is never worth crashing over.
         }
-        mainHandler.post(() -> {
-            try {
-                int w = webView.getWidth();
-                int h = webView.getHeight();
-                if (w <= 0 || h <= 0) {
-                    callback.accept(null);
-                    return;
-                }
-                Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bmp);
-                webView.draw(canvas);
-                callback.accept(bmp);
-            } catch (Exception e) {
-                callback.accept(null);
-            }
-        });
     }
 
     // ------------------------------------------------------------------------
