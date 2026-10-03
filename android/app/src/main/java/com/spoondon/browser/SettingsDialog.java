@@ -27,6 +27,12 @@ import androidx.annotation.Nullable;
  * same theme, same top-right anchor, same two-pass measure, same divider
  * treatment. Rows are icons + labels + optional trailing view.
  *
+ * 2026-10-03 (v3):
+ *   - Added "Site allowlist" row under Manage filter lists. Ad Blocking
+ *     on the main menu became a pure toggle (Option A); its sub-items
+ *     redistributed here — Manage filter lists already existed, Site
+ *     allowlist is new.
+ *
  * 2026-10-03 (v2):
  *   - Startup animation is now a proper toggle row with a checkmark when on.
  *   - buildRow gained a trailing-view slot for the checkmark.
@@ -43,6 +49,7 @@ public class SettingsDialog {
     public static final String ACTION_CLEAR_HISTORY      = "settings_clear_history";
     public static final String ACTION_STARTUP_ANIMATION  = "settings_startup_animation";
     public static final String ACTION_FILTER_LISTS       = "settings_filter_lists";
+    public static final String ACTION_SITE_ALLOWLIST     = "settings_site_allowlist";
     public static final String ACTION_IMPORT_PASSWORDS   = "settings_import_passwords";
     public static final String ACTION_EXPORT_PASSWORDS   = "settings_export_passwords";
 
@@ -91,6 +98,8 @@ public class SettingsDialog {
                 "Startup animation", startupAnimationOn, cb));
         root.addView(row(themed, ACTION_FILTER_LISTS, R.drawable.ic_menu_shield,
                 "Manage filter lists", cb));
+        root.addView(row(themed, ACTION_SITE_ALLOWLIST, R.drawable.ic_menu_shield,
+                "Site allowlist", cb));
         root.addView(divider(themed));
 
         root.addView(row(themed, ACTION_IMPORT_PASSWORDS, R.drawable.ic_settings_import,
