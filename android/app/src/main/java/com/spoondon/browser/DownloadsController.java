@@ -18,20 +18,24 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.content.FileProvider;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Public façade over {@link DownloadEngine}. Owns the downloads dialog.
+ * Public facade over {@link DownloadEngine}. Owns the downloads dialog.
  *
- * Same API as before (when this was backed by Android's DownloadManager),
- * so callers in AppWiring / MenuController / DownloadHandler / MainActivity
- * do not change. The engine lives behind DownloadService.getEngine() and
- * survives this controller's lifetime.
+ * 2026-10-03 refactor:
+ *   - enqueue() now takes the Content-Disposition header and resolves the
+ *     filename through {@link DownloadNaming} (CD -> URL basename -> MIME).
+ *     The old caller-supplied name is used only as a weak fallback.
+ *   - open()/share() use {@link SeekableFile#toOpenUri(Context)} — works
+ *     for both MediaStore URIs (API 29+) and FileProvider URIs (legacy).
+ *   - The overflow menu gained a "Details" entry for every terminal state;
+ *     it opens a read-only summary sheet.
+ *   - The item context menu runs through SpoonDialog for visual consistency
+ *     with the rest of the app.
  *
  * Status values on DownloadItem remain DownloadManager.STATUS_* constants
  * so any caller that switches on item.status keeps compiling and working.
@@ -49,18 +53,14 @@ public final class DownloadsController {
     public DownloadsController(@NonNull MainActivity activity) {
         this.activity = activity;
         this.engine = DownloadService.getEngine(activity);
-        // Service isn't started here — ensureRunning() is called on first
-        // enqueue and whenever the user opens the dialog.
     }
 
     // ------------------------------------------------------------------------
     // Lifecycle (kept for API compatibility)
     // ------------------------------------------------------------------------
 
-    /** No-op. There is no BroadcastReceiver to register any more. */
     public void register() { }
 
-    /** No-op. See register(). */
     public void unregister() { }
 
     // ------------------------------------------------------------------------
@@ -69,14 +69,34 @@ public final class DownloadsController {
 
     /**
      * Start a download. Returns the task id, or -1 on failure. Never throws.
+     *
+     * @param contentDisposition the HTTP Content-Disposition header, or null.
+     *                           Used by DownloadNaming to extract the filename.
+     * @param callerFileName     hint from the caller (URLUtil.guessFileName or
+     *                           similar). Only used if DownloadNaming falls
+     *                           back to "download.bin".
      */
     public long enqueue(@NonNull String url,
                         @Nullable String userAgent,
                         @Nullable String mime,
-                        @NonNull String fileName,
+                        @Nullable String contentDisposition,
+                        @Nullable String callerFileName,
                         @Nullable String referer) {
         try {
-            String safeName = sanitizeFileName(fileName);
+            // Resolve best name: Content-Disposition > URL basename > MIME ext.
+            String resolved = DownloadNaming.resolve(url, contentDisposition, mime);
+
+            // If DownloadNaming couldn't find anything better than ".bin",
+            // fall back to the caller's hint (which may have come from a
+            // page-supplied filename attribute).
+            if (DownloadNaming.isWeakName(resolved)
+                    && callerFileName != null
+                    && !DownloadNaming.isWeakName(callerFileName)) {
+                resolved = DownloadNaming.sanitize(callerFileName);
+            }
+
+            String safeName = DownloadNaming.sanitize(resolved);
+            if (safeName.isEmpty()) safeName = "download.bin";
 
             String cookies = null;
             try {
@@ -112,22 +132,6 @@ public final class DownloadsController {
         }
     }
 
-    @NonNull
-    private static String sanitizeFileName(@NonNull String name) {
-        String s = name;
-        s = s.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_");
-        s = s.replaceAll("^[.\\s]+", "").replaceAll("[.\\s]+$", "");
-        s = s.replaceAll("_{2,}", "_");
-        if (s.isEmpty()) s = "download";
-        if (s.length() > 180) {
-            String ext = "";
-            int dot = s.lastIndexOf('.');
-            if (dot > 0 && s.length() - dot <= 10) ext = s.substring(dot);
-            s = s.substring(0, 180 - ext.length()) + ext;
-        }
-        return s;
-    }
-
     // ------------------------------------------------------------------------
     // Query — maps engine state to the legacy DownloadManager-shaped item
     // ------------------------------------------------------------------------
@@ -146,7 +150,6 @@ public final class DownloadsController {
             item.mime = t.getSpec().mime;
             out.add(item);
         }
-        // Engine returns oldest-first; match the old UI (newest-first).
         java.util.Collections.reverse(out);
         return out;
     }
@@ -164,9 +167,6 @@ public final class DownloadsController {
     }
 
     private static int mapReason(@NonNull DownloadTask.State s) {
-        // We don't expose DownloadManager reason codes. Return ERROR_UNKNOWN;
-        // the dialog's describeReason() will print "unknown error" for failed
-        // items, and the errorMessage is shown separately in the details view.
         return DownloadManager.ERROR_UNKNOWN;
     }
 
@@ -179,7 +179,7 @@ public final class DownloadsController {
     }
 
     // ------------------------------------------------------------------------
-    // Actions — open / share / remove
+    // Actions — open / share / remove / pause / resume
     // ------------------------------------------------------------------------
 
     public void open(long id) {
@@ -192,12 +192,11 @@ public final class DownloadsController {
             Toast.makeText(activity, "File not ready yet", Toast.LENGTH_SHORT).show();
             return;
         }
-        File f = t.getTargetFile();
-        if (f == null || !f.exists()) {
-            Toast.makeText(activity, "File missing", Toast.LENGTH_SHORT).show();
+        Uri uri = t.getTarget().toOpenUri(activity);
+        if (uri == null) {
+            Toast.makeText(activity, "File URI unavailable", Toast.LENGTH_SHORT).show();
             return;
         }
-        Uri uri = fileUri(f);
         String mime = (t.getSpec().mime != null && !t.getSpec().mime.isEmpty())
                 ? t.getSpec().mime : "*/*";
         try {
@@ -218,12 +217,11 @@ public final class DownloadsController {
             Toast.makeText(activity, "Download not found", Toast.LENGTH_SHORT).show();
             return;
         }
-        File f = t.getTargetFile();
-        if (f == null || !f.exists()) {
-            Toast.makeText(activity, "File not available", Toast.LENGTH_SHORT).show();
+        Uri uri = t.getTarget().toOpenUri(activity);
+        if (uri == null) {
+            Toast.makeText(activity, "File URI unavailable", Toast.LENGTH_SHORT).show();
             return;
         }
-        Uri uri = fileUri(f);
         String mime = (t.getSpec().mime != null && !t.getSpec().mime.isEmpty())
                 ? t.getSpec().mime : "*/*";
         try {
@@ -251,12 +249,6 @@ public final class DownloadsController {
         engine.resume(id);
         DownloadService.ensureRunning(activity);
         if (activeAdapter != null) activeAdapter.setItems(queryAll());
-    }
-
-    @NonNull
-    private Uri fileUri(@NonNull File f) {
-        String authority = activity.getPackageName() + ".fileprovider";
-        return FileProvider.getUriForFile(activity, authority, f);
     }
 
     // ------------------------------------------------------------------------
@@ -369,48 +361,101 @@ public final class DownloadsController {
         }
     }
 
+    // ------------------------------------------------------------------------
+    // Item context menu — now routed through SpoonDialog for visual parity
+    // ------------------------------------------------------------------------
+
     private void showItemOptions(@NonNull DownloadItem item) {
         DownloadTask t = engine.getTask(item.id);
         if (t == null) return;
 
-        List<String> options = new ArrayList<>();
+        List<SpoonDialog.Item> options = new ArrayList<>();
         DownloadTask.State s = t.getState();
         if (s == DownloadTask.State.COMPLETED) {
-            options.add("Open");
-            options.add("Share");
+            options.add(new SpoonDialog.Item("Open", null, 0, false, false));
+            options.add(new SpoonDialog.Item("Share", null, 0, false, false));
         } else if (s == DownloadTask.State.RUNNING || s == DownloadTask.State.QUEUED) {
-            options.add("Pause");
+            options.add(new SpoonDialog.Item("Pause", null, 0, false, false));
         } else if (s == DownloadTask.State.PAUSED) {
-            options.add("Resume");
-        } else if (s == DownloadTask.State.FAILED) {
-            options.add("Details");
+            options.add(new SpoonDialog.Item("Resume", null, 0, false, false));
         }
-        options.add("Remove");
+        // Details is available for any terminal state.
+        if (s == DownloadTask.State.COMPLETED
+                || s == DownloadTask.State.FAILED
+                || s == DownloadTask.State.CANCELLED) {
+            options.add(new SpoonDialog.Item("Details", null, 0, false, false));
+        }
+        options.add(new SpoonDialog.Item("Remove", null, 0, false, true));
 
-        final String[] arr = options.toArray(new String[0]);
-        new AlertDialog.Builder(activity)
-                .setTitle(t.getSpec().fileName)
-                .setItems(arr, (d, which) -> {
-                    String choice = arr[which];
-                    switch (choice) {
-                        case "Open":     open(item.id); break;
-                        case "Share":    share(item.id); break;
-                        case "Pause":    pause(item.id); break;
-                        case "Resume":   resume(item.id); break;
-                        case "Remove":   remove(item.id); break;
-                        case "Details":
-                            new AlertDialog.Builder(activity)
-                                    .setTitle("Download failed")
-                                    .setMessage("Reason: "
-                                            + (t.getErrorMessage() != null
-                                                ? t.getErrorMessage()
-                                                : "unknown"))
-                                    .setPositiveButton("OK", null)
-                                    .show();
-                            break;
-                    }
-                })
-                .show();
+        SpoonDialog.list(activity, t.getSpec().fileName, options, which -> {
+            String label = options.get(which).title;
+            switch (label) {
+                case "Open":    open(item.id); break;
+                case "Share":   share(item.id); break;
+                case "Pause":   pause(item.id); break;
+                case "Resume":  resume(item.id); break;
+                case "Remove":  remove(item.id); break;
+                case "Details": showDetails(item); break;
+            }
+        });
+    }
+
+    /**
+     * Read-only summary of everything we know about a download.
+     * Uses SpoonDialog.message so it matches the rest of the app's chrome.
+     */
+    private void showDetails(@NonNull DownloadItem item) {
+        DownloadTask t = engine.getTask(item.id);
+        if (t == null) return;
+
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("Name:\n").append(t.getSpec().fileName).append("\n\n");
+
+        String stateLabel;
+        switch (t.getState()) {
+            case COMPLETED: stateLabel = "Completed"; break;
+            case RUNNING:   stateLabel = "Downloading"; break;
+            case PAUSED:    stateLabel = "Paused"; break;
+            case QUEUED:    stateLabel = "Queued"; break;
+            case FAILED:    stateLabel = "Failed"; break;
+            case CANCELLED: stateLabel = "Cancelled"; break;
+            default:        stateLabel = "Unknown";
+        }
+        sb.append("Status: ").append(stateLabel).append("\n\n");
+
+        long total = t.getBytesTotal();
+        long done = t.getBytesDownloaded();
+        if (total > 0) {
+            sb.append("Size: ").append(humanSize(done))
+              .append(" / ").append(humanSize(total)).append("\n\n");
+        } else if (done > 0) {
+            sb.append("Size: ").append(humanSize(done)).append("\n\n");
+        }
+
+        String mime = t.getSpec().mime;
+        if (mime != null && !mime.isEmpty()) {
+            sb.append("Type: ").append(mime).append("\n\n");
+        }
+
+        sb.append("Source:\n").append(t.getSpec().url).append("\n\n");
+
+        String path = t.getTarget().toDisplayPath();
+        if (path != null && !path.isEmpty()) {
+            sb.append("Saved to:\n").append(path);
+        }
+
+        String err = t.getErrorMessage();
+        if (err != null && !err.isEmpty()) {
+            sb.append("\n\nError:\n").append(err);
+        }
+
+        SpoonDialog.message(activity,
+                "Download details",
+                sb.toString(),
+                "OK",
+                null,
+                () -> { });
     }
 
     // ------------------------------------------------------------------------
@@ -489,17 +534,18 @@ public final class DownloadsController {
                     return "Unknown";
             }
         }
+    }
 
-        private static String humanSize(long bytes) {
-            if (bytes < 0) return "?";
-            if (bytes < 1024) return bytes + " B";
-            if (bytes < 1024L * 1024) return (bytes / 1024) + " KB";
-            if (bytes < 1024L * 1024 * 1024) return (bytes / (1024 * 1024)) + " MB";
-            if (bytes < 1024L * 1024 * 1024 * 1024)
-                return String.format(Locale.US, "%.1f GB",
-                        bytes / (double) (1024L * 1024 * 1024));
-            return String.format(Locale.US, "%.1f TB",
-                    bytes / (double) (1024L * 1024 * 1024 * 1024));
-        }
+    @NonNull
+    private static String humanSize(long bytes) {
+        if (bytes < 0) return "?";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024L * 1024) return (bytes / 1024) + " KB";
+        if (bytes < 1024L * 1024 * 1024) return (bytes / (1024 * 1024)) + " MB";
+        if (bytes < 1024L * 1024 * 1024 * 1024)
+            return String.format(Locale.US, "%.1f GB",
+                    bytes / (double) (1024L * 1024 * 1024));
+        return String.format(Locale.US, "%.1f TB",
+                bytes / (double) (1024L * 1024 * 1024 * 1024));
     }
 }
