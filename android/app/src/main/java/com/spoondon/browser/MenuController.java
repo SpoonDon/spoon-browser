@@ -1,9 +1,11 @@
 package com.spoondon.browser;
 
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -12,29 +14,29 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.webkit.WebView;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.google.android.material.bottomsheet.BottomSheetDialog;
-
 /**
- * Owns the main menu, Settings submenu, Ad Blocking dialog, "About" bottom
- * sheet, search engine picker, "Find in Page" overlay, and "Allow HTTP sites"
+ * Owns the main menu, Settings submenu, Ad Blocking dialog, "About" dialog,
+ * search engine picker, "Find in Page" overlay, and "Allow HTTP sites"
  * manager.
  *
- * 2026-10-03 (v6):
- *   - Settings submenu routed through {@link SettingsDialog} with startup
- *     animation toggle indicator.
- *   - Search engine picker routed through {@link SearchEngineDialog}.
- *   - Allow HTTP sites manager routed through {@link HttpSitesDialog}.
- *   - All three share the polished menu visual language.
+ * 2026-10-03 (v7):
+ *   - About section re-skinned from BottomSheetDialog to the shared Dialog
+ *     chrome (matches Downloads / Settings / Main Menu). Adds app name,
+ *     version pill, tighter stats card, ScrollView body.
+ *   - All other dialogs unchanged from v6.
  */
 public class MenuController {
 
@@ -319,136 +321,211 @@ public class MenuController {
     }
 
     // ------------------------------------------------------------------------
-    // About bottom sheet (unchanged)
+    // About dialog (modernized)
     // ------------------------------------------------------------------------
     public void showAbout() {
-        BottomSheetDialog bottomSheet = new BottomSheetDialog(activity);
+        final Context ctx = activity;
 
-        LinearLayout root = new LinearLayout(activity);
+        LinearLayout root = new LinearLayout(ctx);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(64), dp(64), dp(64), dp(80));
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundColor(Color.parseColor("#1C1C1E"));
+        GradientDrawable rootBg = new GradientDrawable();
+        rootBg.setColor(0xFF1B1B1D);
+        rootBg.setCornerRadius(dp(14));
+        root.setBackground(rootBg);
 
-        ImageView icon = new ImageView(activity);
+        // ---- header ----
+        LinearLayout header = new LinearLayout(ctx);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(18), dp(14), dp(12), dp(12));
+
+        TextView title = new TextView(ctx);
+        title.setText("About");
+        title.setTextColor(0xFFEDEDED);
+        title.setTextSize(17);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(title, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView close = new TextView(ctx);
+        close.setText("✕");
+        close.setTextColor(0xFF9A9A9A);
+        close.setTextSize(16);
+        close.setPadding(dp(14), dp(6), dp(4), dp(6));
+        header.addView(close);
+
+        root.addView(header);
+
+        View headerDivider = new View(ctx);
+        headerDivider.setBackgroundColor(0xFF2C2C2E);
+        root.addView(headerDivider, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(0.5f))));
+
+        // ---- scrollable body ----
+        ScrollView scroll = new ScrollView(ctx);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+
+        LinearLayout body = new LinearLayout(ctx);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setGravity(Gravity.CENTER_HORIZONTAL);
+        body.setPadding(dp(24), dp(24), dp(24), dp(20));
+        scroll.addView(body, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // ---- launcher icon ----
+        ImageView icon = new ImageView(ctx);
         icon.setImageResource(R.mipmap.ic_launcher);
-        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(
-                dp(180), dp(180));
-        iconParams.setMargins(0, dp(32), 0, dp(16));
-        root.addView(icon, iconParams);
+        body.addView(icon, new LinearLayout.LayoutParams(dp(84), dp(84)));
 
-        TextView version = new TextView(activity);
-        version.setText("Version " + getAppVersion());
-        version.setTextSize(14);
-        version.setTextColor(Color.parseColor("#8E8E93"));
-        version.setGravity(Gravity.CENTER_HORIZONTAL);
-        LinearLayout.LayoutParams versionParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        versionParams.setMargins(0, 0, 0, dp(48));
-        root.addView(version, versionParams);
+        // ---- app name ----
+        TextView name = new TextView(ctx);
+        name.setText("Spoon Browser");
+        name.setTextColor(0xFFEDEDED);
+        name.setTextSize(19);
+        name.setTypeface(null, android.graphics.Typeface.BOLD);
+        name.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams nameP = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        nameP.topMargin = dp(14);
+        body.addView(name, nameP);
 
-        LinearLayout statsContainer = new LinearLayout(activity);
-        statsContainer.setOrientation(LinearLayout.VERTICAL);
+        // ---- version pill ----
+        TextView versionPill = new TextView(ctx);
+        versionPill.setText("v" + getAppVersion());
+        versionPill.setTextColor(0xFF4D6BFE);
+        versionPill.setTextSize(12);
+        versionPill.setGravity(Gravity.CENTER);
+        GradientDrawable pillBg = new GradientDrawable();
+        pillBg.setColor(0x1A4D6BFE);
+        pillBg.setCornerRadius(dp(10));
+        versionPill.setBackground(pillBg);
+        versionPill.setPadding(dp(10), dp(4), dp(10), dp(4));
+        LinearLayout.LayoutParams vp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vp.topMargin = dp(8);
+        body.addView(versionPill, vp);
 
-        GradientDrawable shape = new GradientDrawable();
-        shape.setShape(GradientDrawable.RECTANGLE);
-        shape.setCornerRadii(new float[]{32, 32, 32, 32, 32, 32, 32, 32});
-        shape.setColor(Color.parseColor("#2C2C2E"));
-        statsContainer.setBackground(shape);
-
-        LinearLayout.LayoutParams statsParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        statsParams.setMargins(dp(32), 0, dp(32), dp(48));
+        // ---- stats card ----
+        LinearLayout stats = new LinearLayout(ctx);
+        stats.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(0xFF2C2C2E);
+        cardBg.setCornerRadius(dp(12));
+        stats.setBackground(cardBg);
 
         String webViewVer = "Unknown";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             android.content.pm.PackageInfo pi = WebView.getCurrentWebViewPackage();
-            if (pi != null) webViewVer = pi.versionName;
+            if (pi != null && pi.versionName != null) webViewVer = pi.versionName;
         }
 
-        statsContainer.addView(createStatRow("WebView Engine", webViewVer, true));
-        statsContainer.addView(createStatRow("Tabs Open",
-                String.valueOf(activity.getTabCount()), true));
-        statsContainer.addView(createStatRow("Bookmarks Saved",
-                String.valueOf(activity.getBookmarkCount()), true));
-        statsContainer.addView(createStatRow("History Items",
-                String.valueOf(activity.getHistoryCount()), true));
+        stats.addView(createStatRow("WebView",   webViewVer, true));
+        stats.addView(createStatRow("Tabs",      String.valueOf(activity.getTabCount()), true));
+        stats.addView(createStatRow("Bookmarks", String.valueOf(activity.getBookmarkCount()), true));
+        stats.addView(createStatRow("History",   String.valueOf(activity.getHistoryCount()), true));
 
-        View adblockRow = createStatRow("AdBlock Rules", "Loading...", false);
-        statsContainer.addView(adblockRow);
+        View adBlockRow = createStatRow("Ad Block rules", "…", false);
+        stats.addView(adBlockRow);
 
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sp.topMargin = dp(22);
+        body.addView(stats, sp);
+
+        // ---- signature ----
+        TextView sig = new TextView(ctx);
+        sig.setText("Built one green commit at a time.\n"
+                + "Designed to evolve dynamically with Android WebView.\n\n"
+                + "— with love, Plaban.");
+        sig.setTextSize(12);
+        sig.setGravity(Gravity.CENTER);
+        sig.setTextColor(0xFF636366);
+                }
+        sig.setLineSpacing(0, 1.25f);
+        LinearLayout.LayoutParams sigP = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sigP.topMargin = dp(24);
+        body.addView(sig, sigP);
+
+        // ---- dialog ----
+        final Dialog dialog = new Dialog(ctx);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(root);
+        dialog.setCanceledOnTouchOutside(true);
+
+        Window w = dialog.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(0));
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.dimAmount = 0.55f;
+            lp.gravity = Gravity.CENTER;
+            w.setAttributes(lp);
+            w.setLayout(dp(400), dp(620));
+        }
+
+        // poll AdBlock rule count while dialog is showing
         final Handler handler = new Handler(Looper.getMainLooper());
         Runnable updater = new Runnable() {
             @Override
             public void run() {
-                if (bottomSheet.isShowing()) {
-                    TextView txt = adblockRow.findViewWithTag("AdBlock Rules");
-                    if (txt != null) {
-                        txt.setText(String.valueOf(AdBlockEngine.getBlocklistSize()));
+                if (dialog.isShowing()) {
+                    TextView tv = adBlockRow.findViewWithTag("stat_value");
+                    if (tv != null) {
+                        tv.setText(String.valueOf(AdBlockEngine.getBlocklistSize()));
                     }
-                    handler.postDelayed(this, 1000);
-                }
+                    handler.postDelayed(this, 1500);
             }
         };
-        handler.postDelayed(updater, 1000);
 
-        root.addView(statsContainer, statsParams);
+        close.setOnClickListener(v -> dialog.dismiss());
+        dialog.setOnDismissListener(d -> handler.removeCallbacksAndMessages(null));
 
-        TextView signature = new TextView(activity);
-        signature.setText("Built one green commit at a time.\n"
-                + "Designed to evolve dynamically with Android WebView.\n\n"
-                + "- with love, Plaban.");
-        signature.setTextSize(13);
-        signature.setGravity(Gravity.CENTER);
-        signature.setTextColor(Color.parseColor("#636366"));
-        signature.setLineSpacing(0, 1.2f);
-        root.addView(signature);
-
-        bottomSheet.setContentView(root);
-
-        View internal = bottomSheet.findViewById(
-                com.google.android.material.R.id.design_bottom_sheet);
-        if (internal != null) internal.setBackgroundColor(Color.TRANSPARENT);
-
-        bottomSheet.show();
+        dialog.show();
+        handler.postDelayed(updater, 300);
     }
 
     private View createStatRow(String labelText, String valueText, boolean drawDivider) {
+        LinearLayout wrap = new LinearLayout(activity);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+
         LinearLayout row = new LinearLayout(activity);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(dp(40), dp(32), dp(40), dp(32));
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), dp(14), dp(18), dp(14));
 
         TextView label = new TextView(activity);
         label.setText(labelText);
-        label.setTextColor(Color.WHITE);
-        label.setTextSize(15);
-        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        row.addView(label, labelParams);
+        label.setTextColor(0xFFEDEDED);
+        label.setTextSize(14);
+        row.addView(label, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView value = new TextView(activity);
         value.setText(valueText);
-        value.setTextColor(Color.parseColor("#8E8E93"));
-        value.setTextSize(15);
-        value.setTag(labelText);
+        value.setTextColor(0xFF9A9A9A);
+        value.setTextSize(14);
         value.setGravity(Gravity.END);
+        value.setSingleLine(true);
+        value.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        value.setTag("stat_value");
         row.addView(value);
 
-        if (!drawDivider) return row;
+        wrap.addView(row);
 
-        LinearLayout wrapper = new LinearLayout(activity);
-        wrapper.setOrientation(LinearLayout.VERTICAL);
-        wrapper.addView(row);
-
-        View divider = new View(activity);
-        divider.setBackgroundColor(Color.parseColor("#3A3A3C"));
-        LinearLayout.LayoutParams divParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 2);
-        divParams.setMargins(dp(40), 0, 0, 0);
-        wrapper.addView(divider, divParams);
-        return wrapper;
+        if (drawDivider) {
+            View divider = new View(activity);
+            divider.setBackgroundColor(0xFF3A3A3C);
+            LinearLayout.LayoutParams divP = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(0.5f)));
+            divP.leftMargin = dp(18);
+            wrap.addView(divider, divP);
+        }
+        return wrap;
     }
 
     private String getAppVersion() {
