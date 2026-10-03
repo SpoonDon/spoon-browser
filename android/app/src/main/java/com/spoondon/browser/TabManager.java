@@ -123,6 +123,8 @@ public class TabManager implements ThermalController.Listener {
     private int currentPosition = -1;
 
     private TabAdapter tabAdapter;
+    private long nextVisualStateRequestId = 1L;
+    private boolean thumbnailCaptureInFlight = false;
     private View tabSwitcherOverlay;
 
     // ------------------------------------------------------------------------
@@ -292,7 +294,7 @@ public class TabManager implements ThermalController.Listener {
 
         switchToTab(currentPosition);
         callbacks.onTabCountChanged(tabs.size());
-    }
+    }    
     
     // ------------------------------------------------------------------------
     // Session restore
@@ -395,23 +397,15 @@ public class TabManager implements ThermalController.Listener {
             WebView wv = tab.getWebView();
             if (wv == null) continue;
 
-            // Settings-level throttle. offscreenPreRaster keeps a hardware
-            // layer alive for smooth tab switching; drop it under heat.
             try {
                 WebSettings s = wv.getSettings();
                 s.setOffscreenPreRaster(!throttled);
             } catch (Exception ignored) {}
 
-            // RAF throttle: only on hidden tabs. Critical state is treated
-            // the same as throttled for now (RAF is already slow); we
-            // reserve CRITICAL for Tier 3's emergency brake.
             boolean isVisible = (i == currentPosition);
             boolean shouldThrottleThisTab = throttled && !isVisible;
             applyRafThrottle(wv, shouldThrottleThisTab);
 
-            // Under SEVERE+, drop the hardware layer for hidden tabs entirely.
-            // They'll be re-attached when the user switches to them (switchToTab
-            // sets visibility, which triggers a layer rebuild).
             if (critical && !isVisible) {
                 try {
                     wv.setLayerType(View.LAYER_TYPE_NONE, null);
@@ -487,7 +481,6 @@ public class TabManager implements ThermalController.Listener {
 
     /** Called from MainActivity.onDestroy. */
     public void destroyAll() {
-        // Unsubscribe first so no callback fires during teardown.
         try { thermalController.removeListener(this); } catch (Exception ignored) {}
 
         for (TabState tab : tabs) {
@@ -538,11 +531,11 @@ public class TabManager implements ThermalController.Listener {
     // Tab switcher overlay
     // ------------------------------------------------------------------------
     public void showTabSwitcher() {
-        // 1. Snapshot the CURRENT tab BEFORE pausing its timers or building
-        //    the adapter. This has to be synchronous: if we deferred it to
-        //    mainHandler.post() (the old behaviour), the ViewPager2 would
-        //    have already bound the current row with a null thumbnail, and
-        //    the user saw a black tile until the next open.
+        // 1. Snapshot the CURRENT tab synchronously BEFORE pausing timers
+        //    or building the adapter. Has to be synchronous - if deferred
+        //    to mainHandler.post() (the old behaviour), the ViewPager2
+        //    would bind the current row with a null thumbnail first and the
+        //    user saw a black tile until the next open.
         TabState currentTab = getCurrentTabState();
         if (currentTab != null) {
             WebView tabWv = currentTab.getWebView();
@@ -555,11 +548,11 @@ public class TabManager implements ThermalController.Listener {
             }
         }
 
-        // 2. Now pause timers to save battery while the switcher is open.
+        // 2. Pause timers while the switcher is open.
         WebView currentWv = getCurrentWebView();
         if (currentWv != null) currentWv.pauseTimers();
 
-        // 3. Build the overlay lazily on first use.
+        // 3. Lazy build the overlay.
         if (tabSwitcherOverlay == null) {
             LayoutInflater inflater = LayoutInflater.from(activity);
             ViewGroup root = activity.findViewById(android.R.id.content);
@@ -594,9 +587,7 @@ public class TabManager implements ThermalController.Listener {
                     hideTabSwitcher());
         }
 
-        // 4. Build a fresh adapter so every row binds against the
-        //    thumbnails we just captured (plus any previously captured
-        //    ones stored on TabState).
+        // 4. Fresh adapter so every row binds against the freshest thumbnails.
         tabAdapter = new TabAdapter(tabs, new TabAdapter.OnTabActionListener() {
             @Override
             public void onTabSelected(int position) {
@@ -633,9 +624,19 @@ public class TabManager implements ThermalController.Listener {
         pager.setCurrentItem(currentPosition, false);
 
         tabSwitcherOverlay.setVisibility(View.VISIBLE);
+
+        // 5. NEW: Async capture pass for tabs that still don't have a
+        //    thumbnail. Handles restored-from-session tabs and any tab
+        //    that was created but immediately switched away from before
+        //    Chromium had a chance to produce a frame. Runs one tab at a
+        //    time; each preview pops in via notifyItemChanged() as it
+        //    becomes available.
+        mainHandler.post(this::captureMissingThumbnailsAsync);
     }
 
     public void hideTabSwitcher() {
+        // Cancel any in-flight capture chain.
+        thumbnailCaptureInFlight = false;
         if (tabSwitcherOverlay != null) {
             tabSwitcherOverlay.setVisibility(View.GONE);
         }
@@ -644,19 +645,163 @@ public class TabManager implements ThermalController.Listener {
     }
 
     // ------------------------------------------------------------------------
+    // Async thumbnail capture (postVisualStateCallback)
+    //
+    // Walks every tab that still lacks a valid thumbnail and captures one
+    // at a time, gated on WebView.postVisualStateCallback(). For each tab:
+    //
+    //   1. Temporarily set the WebView VISIBLE with alpha ~0.01 and, if it
+    //      has never been measured (freshly restored tabs sit at width=0,
+    //      height=0 while GONE), force a layout pass against the container
+    //      bounds. The switcher overlay covers the screen, so the user
+    //      never sees the tab flicker.
+    //   2. Register a VisualStateCallback. Chromium fires it once the
+    //      renderer has produced a visual frame - at which point
+    //      WebView.draw() returns real pixels instead of a blank bitmap.
+    //   3. Capture, restore visibility/alpha, notify the adapter for that
+    //      row, and chain to the next missing tab after a short delay.
+    //
+    // A 500 ms timeout guards against pages that never reach visual state
+    // (about:blank, network errors). Both paths converge on finishCapture().
+    // The chain aborts automatically if the user closes the switcher.
+    // ------------------------------------------------------------------------
+    private void captureMissingThumbnailsAsync() {
+        if (thumbnailCaptureInFlight) return;
+        if (tabSwitcherOverlay == null
+                || tabSwitcherOverlay.getVisibility() != View.VISIBLE) {
+            return;
+        }
+
+        int targetIndex = -1;
+        for (int i = 0; i < tabs.size(); i++) {
+            TabState t = tabs.get(i);
+            if (t == null) continue;
+            Bitmap bmp = t.getThumbnail();
+            if (bmp == null || bmp.isRecycled()) {
+                targetIndex = i;
+                break;
+            }
+        }
+        if (targetIndex < 0) return;   // nothing left to do
+
+        final int index = targetIndex;
+        final TabState tab = tabs.get(index);
+        final WebView wv = tab.getWebView();
+        if (wv == null) {
+            mainHandler.post(this::captureMissingThumbnailsAsync);
+            return;
+        }
+
+        thumbnailCaptureInFlight = true;
+
+        final int oldVisibility = wv.getVisibility();
+        final float oldAlpha = wv.getAlpha();
+        final float captureAlpha = 0.01f;
+
+        // Set up the temporary state. alpha ~0 keeps the WebView invisible
+        // to the user while still non-zero, which keeps the compositor
+        // happy on all OEM ROMs (some drop alpha=0 surfaces entirely).
+        try {
+            wv.setAlpha(captureAlpha);
+            wv.setVisibility(View.VISIBLE);
+        } catch (Exception ignored) {}
+
+        // Force a layout if the WebView has never been measured. GONE
+        // children aren't measured, so restored tabs have 0x0 dimensions
+        // until we lay them out manually.
+        if (wv.getWidth() <= 0 || wv.getHeight() <= 0) {
+            View parent = (View) wv.getParent();
+            if (parent != null && parent.getWidth() > 0 && parent.getHeight() > 0) {
+                int pw = parent.getWidth();
+                int ph = parent.getHeight();
+                try {
+                    wv.measure(
+                            View.MeasureSpec.makeMeasureSpec(pw, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(ph, View.MeasureSpec.EXACTLY));
+                    wv.layout(0, 0, pw, ph);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        final long requestId = nextVisualStateRequestId++;
+
+        // Timeout guard.
+        final Runnable timeout = () -> {
+            if (tab.getThumbnail() == null || tab.getThumbnail().isRecycled()) {
+                captureThumbnail(tab);
+            }
+            finishCapture(tab, wv, oldVisibility, oldAlpha, index);
+        };
+        mainHandler.postDelayed(timeout, 500);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                wv.postVisualStateCallback(requestId, new WebView.VisualStateCallback() {
+                    @Override
+                    public void onComplete(long id) {
+                        mainHandler.removeCallbacks(timeout);
+                        if (tab.getThumbnail() == null || tab.getThumbnail().isRecycled()) {
+                            captureThumbnail(tab);
+                        }
+                        finishCapture(tab, wv, oldVisibility, oldAlpha, index);
+                    }
+                });
+            } catch (Exception e) {
+                mainHandler.removeCallbacks(timeout);
+                captureThumbnail(tab);
+                finishCapture(tab, wv, oldVisibility, oldAlpha, index);
+            }
+        } else {
+            // Dead branch on minSdk 24; kept for defensive parity.
+            wv.postOnAnimation(() -> {
+                mainHandler.removeCallbacks(timeout);
+                if (tab.getThumbnail() == null || tab.getThumbnail().isRecycled()) {
+                    captureThumbnail(tab);
+                }
+                finishCapture(tab, wv, oldVisibility, oldAlpha, index);
+            });
+        }
+    }
+
+    /**
+     * Restore the tab's visibility/alpha, notify the adapter, and chain to
+     * the next missing tab. The 60 ms gap between tabs keeps the main
+     * thread responsive - measure+draw of a full-size WebView is not free.
+     */
+    private void finishCapture(@NonNull TabState tab,
+                               @NonNull WebView wv,
+                               int oldVisibility,
+                               float oldAlpha,
+                               int index) {
+        try {
+            wv.setAlpha(oldAlpha);
+            wv.setVisibility(oldVisibility);
+        } catch (Exception ignored) {}
+
+        if (tabAdapter != null
+                && tabSwitcherOverlay != null
+                && tabSwitcherOverlay.getVisibility() == View.VISIBLE) {
+            try {
+                tabAdapter.notifyItemChanged(index);
+            } catch (Exception ignored) {}
+        }
+
+        thumbnailCaptureInFlight = false;
+
+        if (tabSwitcherOverlay != null
+                && tabSwitcherOverlay.getVisibility() == View.VISIBLE) {
+            mainHandler.postDelayed(this::captureMissingThumbnailsAsync, 60);
+        }
+    }
+
+    // ------------------------------------------------------------------------
     // Thumbnail capture
     //
     // Synchronous, safe, silent on failure. MUST be called on the main
     // thread. Only captures WebViews that are currently laid out (width
-    // and height > 0); a GONE WebView has zero dimensions and is skipped -
-    // that case is covered by TabAdapter's letter-tile fallback.
-    //
-    // Rationale for capture timing:
-    //   - switchToTab(): captures the outgoing tab while it's still VISIBLE,
-    //     just before we flip its visibility to GONE.
-    //   - showTabSwitcher(): captures the current tab, which is still
-    //     VISIBLE behind the switcher overlay.
-    // Both call sites therefore see a fully laid-out, painted WebView.
+    // and height > 0); a GONE WebView that has never been measured is
+    // skipped - that case is handled by TabAdapter's letter-tile fallback
+    // and by the async capture pass above.
     // ------------------------------------------------------------------------
     private void captureThumbnail(@Nullable TabState tab) {
         if (tab == null) return;
