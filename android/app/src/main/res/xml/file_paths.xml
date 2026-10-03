@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+
+    <!--
+      App-private staging area for in-flight and recently-completed downloads.
+      getExternalFilesDir(DIRECTORY_DOWNLOADS) resolves to
+      /storage/emulated/0/Android/data/<pkg>/files/Download/
+
+      Only this subtree is exposed via FileProvider. The previous config
+      exposed the entire external storage root (<external-path path="." />),
+      which lets any activity holding a content URI read arbitrary user
+      files outside the download folder.
+    -->
+    <external-files-path name="downloads" path="Download/" />
+    <external-files-path name="external_files" path="." />
+
+    <!-- Internal filesDir (safety net, unused for downloads today). -->
+    <files-path name="internal_files" path="." />
+
 </paths>
