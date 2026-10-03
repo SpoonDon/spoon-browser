@@ -1,18 +1,29 @@
 package com.spoondon.browser;
 
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.ArrayAdapter;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -26,27 +37,38 @@ import java.util.Locale;
 /**
  * Public facade over {@link DownloadEngine}. Owns the downloads dialog.
  *
- * 2026-10-03 refactor:
- *   - enqueue() now takes the Content-Disposition header and resolves the
- *     filename through {@link DownloadNaming} (CD -> URL basename -> MIME).
- *     The old caller-supplied name is used only as a weak fallback.
- *   - open()/share() use {@link SeekableFile#toOpenUri(Context)} — works
- *     for both MediaStore URIs (API 29+) and FileProvider URIs (legacy).
- *   - The overflow menu gained a "Details" entry for every terminal state;
- *     it opens a read-only summary sheet.
- *   - The item context menu runs through SpoonDialog for visual consistency
- *     with the rest of the app.
- *
- * Status values on DownloadItem remain DownloadManager.STATUS_* constants
- * so any caller that switches on item.status keeps compiling and working.
+ * 2026-10-03 UI modernization:
+ *   - Dialog chrome now matches MainMenuDialog / ItemManagerDialog v2:
+ *     plain Dialog (not AlertDialog), custom header (title + count badge
+ *     + ✕), dark row dividers (#2C2C2E), custom per-row StateListDrawable
+ *     press feedback, full-width footer action row.
+ *   - Active rows show a thin blue (#4D6BFE) progress bar.
+ *   - Status line uses a glyph prefix: down-arrow / check / pause / x.
+ *   - Empty state renders inside the dialog (no separate AlertDialog).
+ *   - enqueue() signature, open/share/pause/resume/remove(), polling
+ *     loop, DownloadItem shape all unchanged.
  */
 public final class DownloadsController {
+
+    // ------- design tokens (kept local so this file is self-contained) -------
+    private static final int COLOR_TEXT      = 0xFFEDEDED;
+    private static final int COLOR_TEXT_DIM  = 0xFF9A9A9A;
+    private static final int COLOR_ACCENT    = 0xFF4D6BFE;
+    private static final int COLOR_DIVIDER   = 0xFF2C2C2E;
+    private static final int COLOR_PRESS     = 0x1AFFFFFF; // 10% white
+    private static final int COLOR_SUCCESS   = 0xFF4CAF50;
+    private static final int COLOR_WARN      = 0xFFFFB74D;
+    private static final int COLOR_ERROR     = 0xFFE57373;
+
+    private static final int DIALOG_MAX_WIDTH_DP  = 460;
+    private static final int DIALOG_MAX_HEIGHT_DP = 560;
 
     private final MainActivity activity;
     private final DownloadEngine engine;
 
-    private AlertDialog activeDialog;
+    private Dialog activeDialog;
     private DownloadAdapter activeAdapter;
+    private TextView headerCountView;
     private final Handler pollHandler = new Handler(Looper.getMainLooper());
     private Runnable pollRunnable;
 
@@ -64,18 +86,9 @@ public final class DownloadsController {
     public void unregister() { }
 
     // ------------------------------------------------------------------------
-    // Enqueue
+    // Enqueue — unchanged signature
     // ------------------------------------------------------------------------
 
-    /**
-     * Start a download. Returns the task id, or -1 on failure. Never throws.
-     *
-     * @param contentDisposition the HTTP Content-Disposition header, or null.
-     *                           Used by DownloadNaming to extract the filename.
-     * @param callerFileName     hint from the caller (URLUtil.guessFileName or
-     *                           similar). Only used if DownloadNaming falls
-     *                           back to "download.bin".
-     */
     public long enqueue(@NonNull String url,
                         @Nullable String userAgent,
                         @Nullable String mime,
@@ -83,12 +96,8 @@ public final class DownloadsController {
                         @Nullable String callerFileName,
                         @Nullable String referer) {
         try {
-            // Resolve best name: Content-Disposition > URL basename > MIME ext.
             String resolved = DownloadNaming.resolve(url, contentDisposition, mime);
 
-            // If DownloadNaming couldn't find anything better than ".bin",
-            // fall back to the caller's hint (which may have come from a
-            // page-supplied filename attribute).
             if (DownloadNaming.isWeakName(resolved)
                     && callerFileName != null
                     && !DownloadNaming.isWeakName(callerFileName)) {
@@ -133,7 +142,7 @@ public final class DownloadsController {
     }
 
     // ------------------------------------------------------------------------
-    // Query — maps engine state to the legacy DownloadManager-shaped item
+    // Query
     // ------------------------------------------------------------------------
 
     @NonNull
@@ -179,7 +188,7 @@ public final class DownloadsController {
     }
 
     // ------------------------------------------------------------------------
-    // Actions — open / share / remove / pause / resume
+    // Actions
     // ------------------------------------------------------------------------
 
     public void open(long id) {
@@ -237,65 +246,171 @@ public final class DownloadsController {
 
     public void remove(long id) {
         engine.remove(id);
-        if (activeAdapter != null) activeAdapter.setItems(queryAll());
+        refreshIfOpen();
     }
 
     public void pause(long id) {
         engine.pause(id);
-        if (activeAdapter != null) activeAdapter.setItems(queryAll());
+        refreshIfOpen();
     }
 
     public void resume(long id) {
         engine.resume(id);
         DownloadService.ensureRunning(activity);
-        if (activeAdapter != null) activeAdapter.setItems(queryAll());
+        refreshIfOpen();
     }
 
     // ------------------------------------------------------------------------
-    // Dialog
+    // Shared helpers used by P2
+    // ------------------------------------------------------------------------
+
+    private void refreshIfOpen() {
+        if (activeAdapter != null) {
+            List<DownloadItem> items = queryAll();
+            activeAdapter.setItems(items);
+            updateHeaderCount(items.size());
+        }
+    }
+
+    private void updateHeaderCount(int n) {
+        if (headerCountView == null) return;
+        headerCountView.setText(n == 0 ? "" : String.valueOf(n));
+        headerCountView.setVisibility(n == 0 ? View.GONE : View.VISIBLE);
+    }
+
+    private static float dp(Context ctx, float v) {
+        return v * ctx.getResources().getDisplayMetrics().density;
+    }
+
+    private static int dpi(Context ctx, float v) {
+        return Math.round(dp(ctx, v));
+    }
+
+    // ------------------------------------------------------------------------
+    // Dialog — modernized chrome
     // ------------------------------------------------------------------------
 
     public void showDownloadsDialog() {
         DownloadService.ensureRunning(activity);
         List<DownloadItem> items = queryAll();
 
+        Context ctx = activity;
+
+        LinearLayout root = new LinearLayout(ctx);
+        root.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable rootBg = new GradientDrawable();
+        rootBg.setColor(0xFF1B1B1D);
+        rootBg.setCornerRadius(dpi(ctx, 14));
+        root.setBackground(rootBg);
+
+        // ---- header ----
+        LinearLayout header = new LinearLayout(ctx);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dpi(ctx, 18), dpi(ctx, 14), dpi(ctx, 12), dpi(ctx, 12));
+
+        TextView title = new TextView(ctx);
+        title.setText("Downloads");
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(17);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(title, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        headerCountView = new TextView(ctx);
+        headerCountView.setTextColor(COLOR_ACCENT);
+        headerCountView.setTextSize(12);
+        headerCountView.setPadding(dpi(ctx, 8), dpi(ctx, 2), dpi(ctx, 8), dpi(ctx, 2));
+        GradientDrawable badge = new GradientDrawable();
+        badge.setColor(0x1A4D6BFE);
+        badge.setCornerRadius(dpi(ctx, 10));
+        headerCountView.setBackground(badge);
+        headerCountView.setVisibility(View.GONE);
+        header.addView(headerCountView);
+
+        TextView close = new TextView(ctx);
+        close.setText("✕");
+        close.setTextColor(COLOR_TEXT_DIM);
+        close.setTextSize(16);
+        close.setPadding(dpi(ctx, 14), dpi(ctx, 6), dpi(ctx, 4), dpi(ctx, 6));
+        close.setOnClickListener(v -> { if (activeDialog != null) activeDialog.dismiss(); });
+        header.addView(close);
+
+        root.addView(header);
+        root.addView(makeDivider(ctx));
+
+        // ---- body ----
+        FrameLayout body = new FrameLayout(ctx);
+        root.addView(body, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
         if (items.isEmpty()) {
-            new AlertDialog.Builder(activity)
-                    .setTitle("Downloads")
-                    .setMessage("No downloads yet.")
-                    .setPositiveButton("Close", null)
-                    .show();
-            return;
+            body.addView(buildEmptyState(ctx));
+        } else {
+            ListView listView = new ListView(ctx);
+            listView.setDivider(new ColorDrawable(COLOR_DIVIDER));
+            listView.setDividerHeight(Math.max(1, dpi(ctx, 0.5f)));
+            listView.setBackgroundColor(0xFF1B1B1D);
+            listView.setVerticalScrollBarEnabled(false);
+            listView.setCacheColorHint(0);
+
+            activeAdapter = new DownloadAdapter(ctx);
+            activeAdapter.setItems(items);
+            listView.setAdapter(activeAdapter);
+
+            listView.setOnItemClickListener((p, v, pos, id) -> {
+                DownloadItem it = activeAdapter.getItem(pos);
+                if (it != null) onItemTapped(it);
+            });
+            listView.setOnItemLongClickListener((p, v, pos, id) -> {
+                DownloadItem it = activeAdapter.getItem(pos);
+                if (it != null) showItemOptions(it);
+                return true;
+            });
+            body.addView(listView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
         }
+        updateHeaderCount(items.size());
 
-        activeAdapter = new DownloadAdapter(activity);
-        activeAdapter.setItems(items);
+        // ---- footer ----
+        root.addView(makeDivider(ctx));
 
-        ListView listView = new ListView(activity);
-        listView.setAdapter(activeAdapter);
+        TextView clearBtn = new TextView(ctx);
+        clearBtn.setText("Clear finished");
+        clearBtn.setTextColor(COLOR_ACCENT);
+        clearBtn.setTextSize(14);
+        clearBtn.setGravity(Gravity.CENTER);
+        clearBtn.setPadding(dpi(ctx, 16), dpi(ctx, 14), dpi(ctx, 16), dpi(ctx, 14));
+        clearBtn.setBackground(buildRowBackground(ctx));
+        clearBtn.setOnClickListener(v -> clearFinished());
+        root.addView(clearBtn);
 
-        listView.setOnItemClickListener((parent, view, pos, id) -> {
-            DownloadItem item = activeAdapter.getItem(pos);
-            if (item != null) onItemTapped(item);
-        });
+        // ---- Dialog ----
+        Dialog dialog = new Dialog(ctx);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(root);
+        dialog.setCanceledOnTouchOutside(true);
 
-        listView.setOnItemLongClickListener((parent, view, pos, id) -> {
-            DownloadItem item = activeAdapter.getItem(pos);
-            if (item != null) showItemOptions(item);
-            return true;
-        });
-
-        AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setTitle("Downloads")
-                .setView(listView)
-                .setPositiveButton("Clear finished", (d, w) -> clearFinished())
-                .setNegativeButton("Close", null)
-                .create();
+        Window w = dialog.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(0));
+            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams lp = w.getAttributes();
+            lp.dimAmount = 0.55f;
+            lp.gravity = Gravity.CENTER;
+            w.setAttributes(lp);
+            w.setLayout(dpi(ctx, DIALOG_MAX_WIDTH_DP), dpi(ctx, DIALOG_MAX_HEIGHT_DP));
+        }
+        if (w != null) {
+            w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED);
+        }
 
         activeDialog = dialog;
         dialog.setOnDismissListener(d -> {
             activeDialog = null;
             activeAdapter = null;
+            headerCountView = null;
             stopPolling();
         });
         dialog.show();
@@ -303,30 +418,76 @@ public final class DownloadsController {
         startPolling();
     }
 
+    private View makeDivider(Context ctx) {
+        View v = new View(ctx);
+        v.setBackgroundColor(COLOR_DIVIDER);
+        v.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dpi(ctx, 0.5f))));
+        return v;
+    }
+
+    private View buildEmptyState(Context ctx) {
+        LinearLayout box = new LinearLayout(ctx);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dpi(ctx, 24), dpi(ctx, 48), dpi(ctx, 24), dpi(ctx, 48));
+
+        TextView glyph = new TextView(ctx);
+        glyph.setText("↓");
+        glyph.setTextColor(COLOR_TEXT_DIM);
+        glyph.setTextSize(34);
+        glyph.setGravity(Gravity.CENTER);
+        box.addView(glyph);
+
+        TextView msg = new TextView(ctx);
+        msg.setText("No downloads yet");
+        msg.setTextColor(COLOR_TEXT_DIM);
+        msg.setTextSize(14);
+        msg.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dpi(ctx, 12);
+        box.addView(msg, lp);
+
+        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        flp.gravity = Gravity.CENTER;
+        box.setLayoutParams(flp);
+        return box;
+    }
+
+    private static StateListDrawable buildRowBackground(Context ctx) {
+        GradientDrawable pressed = new GradientDrawable();
+        pressed.setColor(COLOR_PRESS);
+        GradientDrawable normal = new GradientDrawable();
+        normal.setColor(0x00000000);
+
+        StateListDrawable sl = new StateListDrawable();
+        sl.addState(new int[]{android.R.attr.state_pressed}, pressed);
+        sl.addState(new int[]{android.R.attr.state_focused}, pressed);
+        sl.addState(new int[]{}, normal);
+        return sl;
+    }
+
+    // ------------------------------------------------------------------------
+    // Tap handling
+    // ------------------------------------------------------------------------
+
     private void onItemTapped(@NonNull DownloadItem item) {
         DownloadTask t = engine.getTask(item.id);
         if (t == null) return;
         switch (t.getState()) {
-            case COMPLETED:
-                open(item.id);
-                break;
+            case COMPLETED: open(item.id); break;
             case RUNNING:
-            case QUEUED:
-                pause(item.id);
-                break;
-            case PAUSED:
-                resume(item.id);
-                break;
+            case QUEUED:    pause(item.id); break;
+            case PAUSED:    resume(item.id); break;
             case FAILED:
-            case CANCELLED:
-                showItemOptions(item);
-                break;
+            case CANCELLED: showItemOptions(item); break;
         }
     }
 
     private void clearFinished() {
-        List<DownloadTask> all = engine.getAll();
-        for (DownloadTask t : all) {
+        for (DownloadTask t : engine.getAll()) {
             DownloadTask.State s = t.getState();
             if (s == DownloadTask.State.COMPLETED
                     || s == DownloadTask.State.FAILED
@@ -334,10 +495,7 @@ public final class DownloadsController {
                 engine.remove(t.getId());
             }
         }
-        if (activeAdapter != null) activeAdapter.setItems(queryAll());
-        if (activeDialog != null && activeDialog.isShowing()) {
-            activeDialog.dismiss();
-        }
+        refreshIfOpen();
     }
 
     private void startPolling() {
@@ -346,7 +504,9 @@ public final class DownloadsController {
             @Override
             public void run() {
                 if (activeDialog != null && activeDialog.isShowing() && activeAdapter != null) {
-                    activeAdapter.setItems(queryAll());
+                    List<DownloadItem> items = queryAll();
+                    activeAdapter.setItems(items);
+                    updateHeaderCount(items.size());
                     pollHandler.postDelayed(this, 1000);
                 }
             }
@@ -362,7 +522,7 @@ public final class DownloadsController {
     }
 
     // ------------------------------------------------------------------------
-    // Item context menu — now routed through SpoonDialog for visual parity
+    // Context menu — routed through SpoonDialog
     // ------------------------------------------------------------------------
 
     private void showItemOptions(@NonNull DownloadItem item) {
@@ -379,7 +539,6 @@ public final class DownloadsController {
         } else if (s == DownloadTask.State.PAUSED) {
             options.add(new SpoonDialog.Item("Resume", null, 0, false, false));
         }
-        // Details is available for any terminal state.
         if (s == DownloadTask.State.COMPLETED
                 || s == DownloadTask.State.FAILED
                 || s == DownloadTask.State.CANCELLED) {
@@ -400,16 +559,11 @@ public final class DownloadsController {
         });
     }
 
-    /**
-     * Read-only summary of everything we know about a download.
-     * Uses SpoonDialog.message so it matches the rest of the app's chrome.
-     */
     private void showDetails(@NonNull DownloadItem item) {
         DownloadTask t = engine.getTask(item.id);
         if (t == null) return;
 
         StringBuilder sb = new StringBuilder();
-
         sb.append("Name:\n").append(t.getSpec().fileName).append("\n\n");
 
         String stateLabel;
@@ -437,38 +591,32 @@ public final class DownloadsController {
         if (mime != null && !mime.isEmpty()) {
             sb.append("Type: ").append(mime).append("\n\n");
         }
-
         sb.append("Source:\n").append(t.getSpec().url).append("\n\n");
 
         String path = t.getTarget().toDisplayPath();
         if (path != null && !path.isEmpty()) {
             sb.append("Saved to:\n").append(path);
         }
-
         String err = t.getErrorMessage();
         if (err != null && !err.isEmpty()) {
             sb.append("\n\nError:\n").append(err);
         }
 
-        SpoonDialog.message(activity,
-                "Download details",
-                sb.toString(),
-                "OK",
-                null,
-                () -> { });
+        SpoonDialog.message(activity, "Download details",
+                sb.toString(), "OK", null, () -> { });
     }
 
     // ------------------------------------------------------------------------
-    // Item + Adapter (shape unchanged from the DownloadManager version)
+    // Item + Adapter
     // ------------------------------------------------------------------------
 
     public static class DownloadItem {
         public long id;
         public String title;
-        public int status;              // DownloadManager.STATUS_*
+        public int status;
         public long bytesTotal;
         public long bytesDownloaded;
-        public int reason;              // always ERROR_UNKNOWN now
+        public int reason;
         public String mime;
     }
 
@@ -488,28 +636,69 @@ public final class DownloadsController {
         @Override
         public View getView(int position, View convertView, @NonNull ViewGroup parent) {
             Context ctx = getContext();
-            float density = ctx.getResources().getDisplayMetrics().density;
 
             LinearLayout row = new LinearLayout(ctx);
             row.setOrientation(LinearLayout.VERTICAL);
-            row.setPadding((int) (16 * density), (int) (12 * density),
-                    (int) (16 * density), (int) (12 * density));
+            row.setPadding(dpi(ctx, 18), dpi(ctx, 12), dpi(ctx, 18), dpi(ctx, 12));
+            row.setBackground(buildRowBackground(ctx));
 
             DownloadItem item = getItem(position);
             if (item == null) return row;
 
             TextView title = new TextView(ctx);
             title.setText(item.title != null ? item.title : "(unnamed)");
-            title.setTextSize(15);
+            title.setTextColor(COLOR_TEXT);
+            title.setTextSize(14);
             title.setSingleLine(true);
-            title.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            title.setEllipsize(TextUtils.TruncateAt.MIDDLE);
             row.addView(title);
 
+            LinearLayout statusRow = new LinearLayout(ctx);
+            statusRow.setOrientation(LinearLayout.HORIZONTAL);
+            statusRow.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            slp.topMargin = dpi(ctx, 4);
+            row.addView(statusRow, slp);
+
+            TextView glyph = new TextView(ctx);
+            glyph.setText(statusGlyph(item.status));
+            glyph.setTextColor(statusColor(item.status));
+            glyph.setTextSize(12);
+            glyph.setPadding(0, 0, dpi(ctx, 6), 0);
+            statusRow.addView(glyph);
+
             TextView status = new TextView(ctx);
-            status.setTextSize(12);
             status.setText(describeStatus(item));
-            status.setPadding(0, (int) (4 * density), 0, 0);
-            row.addView(status);
+            status.setTextColor(COLOR_TEXT_DIM);
+            status.setTextSize(12);
+            status.setSingleLine(true);
+            status.setEllipsize(TextUtils.TruncateAt.END);
+            statusRow.addView(status, new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            if (item.status == DownloadManager.STATUS_RUNNING
+                    || item.status == DownloadManager.STATUS_PENDING) {
+                ProgressBar pb = new ProgressBar(ctx, null,
+                        android.R.attr.progressBarStyleHorizontal);
+                pb.setMax(100);
+                int pct;
+                if (item.bytesTotal > 0) {
+                    pct = (int) (item.bytesDownloaded * 100L / item.bytesTotal);
+                    if (pct < 0) pct = 0;
+                    if (pct > 100) pct = 100;
+                } else {
+                    pct = 3;
+                }
+                pb.setProgress(pct);
+                pb.setProgressTintList(android.content.res.ColorStateList.valueOf(COLOR_ACCENT));
+                pb.setProgressBackgroundTintList(
+                        android.content.res.ColorStateList.valueOf(COLOR_DIVIDER));
+                LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dpi(ctx, 3));
+                plp.topMargin = dpi(ctx, 6);
+                row.addView(pb, plp);
+            }
 
             return row;
         }
@@ -533,6 +722,28 @@ public final class DownloadsController {
                 default:
                     return "Unknown";
             }
+        }
+    }
+
+    private static String statusGlyph(int status) {
+        switch (status) {
+            case DownloadManager.STATUS_SUCCESSFUL: return "✓";
+            case DownloadManager.STATUS_RUNNING:
+            case DownloadManager.STATUS_PENDING:    return "↓";
+            case DownloadManager.STATUS_PAUSED:     return "⏸";
+            case DownloadManager.STATUS_FAILED:     return "✕";
+            default:                                return "•";
+        }
+    }
+
+    private static int statusColor(int status) {
+        switch (status) {
+            case DownloadManager.STATUS_SUCCESSFUL: return COLOR_SUCCESS;
+            case DownloadManager.STATUS_RUNNING:
+            case DownloadManager.STATUS_PENDING:    return COLOR_ACCENT;
+            case DownloadManager.STATUS_PAUSED:     return COLOR_WARN;
+            case DownloadManager.STATUS_FAILED:     return COLOR_ERROR;
+            default:                                return COLOR_TEXT_DIM;
         }
     }
 
