@@ -7,7 +7,6 @@ import android.content.Context;
 import android.net.Uri;
 import android.os.Environment;
 import android.webkit.DownloadListener;
-import android.webkit.MimeTypeMap;
 import android.webkit.URLUtil;
 import android.webkit.WebView;
 import android.widget.Toast;
@@ -15,21 +14,27 @@ import android.widget.Toast;
 /**
  * Handles WebView download callbacks.
  *
- * 2026-09-30 (external download fix):
- *   - triggerExternalDownload no longer uses ACTION_VIEW. That intent
- *     routes http(s) URLs to the OS default browser, which is exactly
- *     the bug users were seeing: "downloads open in another chromium
- *     browser". It now hands off to the system DownloadManager, which
- *     is the semantically correct target for an "external download".
+ * 2026-10-03 (Option B — direct-to-MediaStore):
+ *   - enqueueDownload now forwards contentDisposition to the 6-arg
+ *     DownloadsController.enqueue(). DownloadNaming.resolve() owns all
+ *     filename derivation (RFC5987 CD -> simple CD -> URL basename ->
+ *     MIME->ext -> .bin). The old inline .bin-correction block was
+ *     deleted along with its MimeTypeMap import — that logic moved to
+ *     DownloadNaming.
+ *   - URLUtil.guessFileName is retained only as a display preview in the
+ *     confirm dialog and as the callerFileName fallback hint.
  *
- *   - onDownloadStart is now callable directly by AppWiring so the
+ * 2026-09-30 (external download fix):
+ *   - triggerExternalDownload no longer uses ACTION_VIEW. It hands off to
+ *     the system DownloadManager, which is the correct target for an
+ *     "external download".
+ *   - onDownloadStart is callable directly by AppWiring so the
  *     extension-regex path in SpoonWebViewClient can show the same
  *     dialog instead of bypassing the in-app engine.
  *
  * Earlier fixes retained:
  *   - enqueue delegated to DownloadsController (OkHttp engine).
  *   - Referer header captured from the current WebView.
- *   - Filename sanitization in DownloadsController.
  */
 public class DownloadHandler implements DownloadListener {
 
@@ -66,53 +71,25 @@ public class DownloadHandler implements DownloadListener {
         }
 
         try {
-            String targetFileName = URLUtil.guessFileName(url, contentDisposition, mimeType);
-            String lowerUrl = url.toLowerCase();
-
-            boolean isActuallyPdf =
-                    (mimeType != null && mimeType.equalsIgnoreCase("application/pdf"))
-                            || lowerUrl.contains(".pdf")
-                            || (contentDisposition != null
-                                && contentDisposition.toLowerCase().contains(".pdf"));
-
-            if (targetFileName.endsWith(".bin") || targetFileName.equals("downloadfile")) {
-                if (isActuallyPdf) {
-                    targetFileName = targetFileName.replace(".bin", "")
-                            .replace("downloadfile", "download") + ".pdf";
-                } else {
-                    String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType);
-                    if (ext != null) {
-                        targetFileName = targetFileName.replace(".bin", "")
-                                .replace("downloadfile", "download") + "." + ext;
-                    }
-                }
-            }
-
-            if (isActuallyPdf && !targetFileName.toLowerCase().endsWith(".pdf")) {
-                targetFileName += ".pdf";
-            }
-            if (targetFileName.startsWith(".")) {
-                targetFileName = targetFileName.substring(1) + ".txt";
-            }
-            if (lowerUrl.contains(".md") && !targetFileName.endsWith(".md"))     targetFileName += ".md";
-            if (lowerUrl.contains(".json") && !targetFileName.endsWith(".json")) targetFileName += ".json";
+            // Display-only preview for the confirm dialog. DownloadNaming
+            // will produce the real on-disk name inside the engine.
+            String previewName = URLUtil.guessFileName(url, contentDisposition, mimeType);
 
             String safeMime = (mimeType == null || mimeType.isEmpty())
                     ? "application/octet-stream"
                     : mimeType;
-            if (isActuallyPdf && safeMime.equals("application/octet-stream")) {
-                safeMime = "application/pdf";
-            }
 
-            final String finalName = targetFileName;
+            final String finalPreviewName = previewName;
             final String finalMime = safeMime;
             final String finalUserAgent = userAgent;
+            final String finalDisposition = contentDisposition;
 
             new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                     .setTitle("Download File")
-                    .setMessage("Do you want to download " + finalName + "?")
+                    .setMessage("Do you want to download " + finalPreviewName + "?")
                     .setPositiveButton("Download",
-                            (d, i) -> enqueueDownload(url, finalUserAgent, finalMime, finalName))
+                            (d, i) -> enqueueDownload(url, finalUserAgent, finalMime,
+                                    finalDisposition, finalPreviewName))
                     .setNeutralButton("System Downloader",
                             (d, i) -> triggerExternalDownload(url, finalMime))
                     .setNegativeButton("Cancel", null)
@@ -124,7 +101,11 @@ public class DownloadHandler implements DownloadListener {
         }
     }
 
-    private void enqueueDownload(String url, String userAgent, String mime, String fileName) {
+    private void enqueueDownload(String url,
+                                 String userAgent,
+                                 String mime,
+                                 String contentDisposition,
+                                 String callerFileName) {
         String referer = null;
         try {
             WebView wv = webViewProvider != null ? webViewProvider.get() : null;
@@ -138,7 +119,8 @@ public class DownloadHandler implements DownloadListener {
             return;
         }
 
-        long id = downloadsController.enqueue(url, userAgent, mime, fileName, referer);
+        long id = downloadsController.enqueue(
+                url, userAgent, mime, contentDisposition, callerFileName, referer);
         if (id == -1) {
             // enqueue already reported the error to the user.
         }
