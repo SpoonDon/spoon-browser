@@ -1,6 +1,7 @@
 package com.spoondon.browser;
 
 import android.content.Context;
+import android.os.Build;
 import android.os.Environment;
 
 import androidx.annotation.NonNull;
@@ -8,7 +9,6 @@ import androidx.annotation.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +24,19 @@ import okhttp3.OkHttpClient;
 /**
  * Central registry and lifecycle manager for all downloads.
  *
+ * 2026-10-03 refactor: enqueue now picks a {@link SeekableFile} impl based
+ * on API level:
+ *
+ *   API 29+   -> {@link MediaStoreFile} writes directly to the public
+ *                Downloads/Spoon/ collection via MediaStore.Downloads.
+ *                No staging, no permission prompt. Chromium-style.
+ *   API 24-28 -> {@link RealFile} writes to public
+ *                /sdcard/Download/Spoon/ (requires WRITE_EXTERNAL_STORAGE,
+ *                which the manifest already declares with maxSdkVersion=28).
+ *                Fallback when MediaStore insert fails on API 29+: RealFile
+ *                into the app-private staging dir (still shown in the UI,
+ *                just not visible in file managers).
+ *
  * Owns:
  *   - a shared OkHttpClient (one connection pool for the whole app)
  *   - a bounded chunk-executor: max 4 concurrent HTTP reads across all tasks
@@ -34,13 +47,13 @@ import okhttp3.OkHttpClient;
  * Persistence policy: on every state transition (add/start/pause/complete/
  * fail/cancel/remove) and on a 5s checkpoint while any task is RUNNING or
  * PAUSED. Progress byte-counts are NOT persisted per update — that would
- * hammer the disk. Worst case on crash: ~5s of download progress is lost and
- * the chunk re-fetches from its last checkpointed offset.
+ * hammer the disk.
  *
- * Restart behaviour: on construction we load persisted tasks. Anything that
- * was RUNNING or QUEUED comes back as PAUSED. We never auto-resume — that
- * would silently restart transfers on app launch, which is rude on mobile
- * data.
+ * Restart behaviour: on construction we load persisted tasks. Only
+ * COMPLETED records are restored (RealFile case) — in-flight resume on
+ * API 29+ is not yet implemented because MediaStoreFile lacks a
+ * reopen-existing method. In-flight tasks are dropped on restart; the
+ * MediaStore staging row is orphaned (future cleanup pass will sweep).
  */
 public final class DownloadEngine {
 
@@ -66,7 +79,7 @@ public final class DownloadEngine {
     private final Map<Long, DownloadTask> tasks = new LinkedHashMap<>();
 
     private volatile Listener listener;
-    private volatile File targetDir;
+    private volatile File legacyTargetDir;
     private volatile boolean shuttingDown = false;
 
     public DownloadEngine(@NonNull Context context) {
@@ -89,7 +102,7 @@ public final class DownloadEngine {
         this.checkpointScheduler = Executors.newSingleThreadScheduledExecutor(
                 namedFactory("spoon-dl-checkpoint"));
 
-        this.targetDir = defaultTargetDir();
+        this.legacyTargetDir = defaultLegacyDir();
 
         restoreFromDisk();
         startCheckpointLoop();
@@ -103,23 +116,39 @@ public final class DownloadEngine {
         this.listener = l;
     }
 
-    /** Override the directory downloads land in. */
-    public void setTargetDir(@NonNull File dir) {
+    /** Override the fallback directory used when MediaStore isn't available. */
+    public void setLegacyTargetDir(@NonNull File dir) {
         if (!dir.exists()) dir.mkdirs();
-        this.targetDir = dir;
+        this.legacyTargetDir = dir;
     }
 
     @NonNull
-    public File getTargetDir() {
-        return targetDir;
+    public File getLegacyTargetDir() {
+        return legacyTargetDir;
     }
 
+    /**
+     * Directory used only for API 24-28 real-file downloads or when a
+     * MediaStore insert fails on API 29+.
+     *
+     * API 24-28: public /sdcard/Download/Spoon/ so files land where the
+     *            user expects them. Requires WRITE_EXTERNAL_STORAGE.
+     * API 29+:   app-private Downloads/ as a safety net — MediaStore should
+     *            never fail, so this path only triggers on OEM weirdness.
+     */
     @NonNull
-    private File defaultTargetDir() {
-        File ext = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-        if (ext == null) ext = appContext.getFilesDir();
-        if (!ext.exists()) ext.mkdirs();
-        return ext;
+    private File defaultLegacyDir() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            File ext = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            if (ext == null) ext = appContext.getFilesDir();
+            if (!ext.exists()) ext.mkdirs();
+            return ext;
+        }
+        File pub = new File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                MediaStoreFile.SUBDIR);
+        if (!pub.exists()) pub.mkdirs();
+        return pub;
     }
 
     // ------------------------------------------------------------------------
@@ -128,13 +157,16 @@ public final class DownloadEngine {
 
     /**
      * Create and start a new download. Returns the task id, or -1 if the
-     * engine is shutting down. Never throws.
+     * engine is shutting down or the target could not be created.
      */
     public long enqueue(@NonNull DownloadSpec spec) {
         if (shuttingDown) return -1;
 
         long id = nextId.getAndIncrement();
-        File target = uniqueTargetFile(spec.fileName);
+        SeekableFile target = pickTarget(spec);
+        if (target == null) {
+            return -1;
+        }
 
         DownloadTask task = new DownloadTask(id, spec, target, client, taskListener);
         task.setWorkerPool(chunkPool);
@@ -149,7 +181,6 @@ public final class DownloadEngine {
         return id;
     }
 
-    /** Returns the task, or null if not found. */
     @Nullable
     public DownloadTask getTask(long id) {
         synchronized (tasks) {
@@ -157,7 +188,6 @@ public final class DownloadEngine {
         }
     }
 
-    /** Snapshot of all tasks, ordered oldest-first. Safe to iterate. */
     @NonNull
     public List<DownloadTask> getAll() {
         synchronized (tasks) {
@@ -195,23 +225,29 @@ public final class DownloadEngine {
         }
     }
 
-    /** Remove the task from the registry and delete its file. */
+    /** Remove the task from the registry and release its target. */
     public void remove(long id) {
         DownloadTask t;
         synchronized (tasks) {
             t = tasks.remove(id);
         }
         if (t != null) {
+            // cancel() is a no-op if COMPLETED (file belongs to the user).
+            // closeTarget() always releases the fd.
             t.cancel();
+            t.closeTarget();
             persistSoon();
             notifyRegistryChanged();
         }
     }
 
-    /** Delete every task and wipe the persisted store. */
+    /** Delete every in-flight task and wipe the persisted store. */
     public void removeAll() {
         List<DownloadTask> all = getAll();
-        for (DownloadTask t : all) t.cancel();
+        for (DownloadTask t : all) {
+            t.cancel();
+            t.closeTarget();
+        }
         synchronized (tasks) {
             tasks.clear();
         }
@@ -225,6 +261,9 @@ public final class DownloadEngine {
         checkpointScheduler.shutdownNow();
         orchPool.shutdownNow();
         chunkPool.shutdownNow();
+        for (DownloadTask t : getAll()) {
+            t.closeTarget();
+        }
         persistNow();
     }
 
@@ -257,13 +296,9 @@ public final class DownloadEngine {
     // ------------------------------------------------------------------------
 
     private void persistSoon() {
-        // Cheap debounce: the checkpoint loop will save within 5s. For
-        // state transitions that matter (add/remove/complete), we also call
-        // persistNow in the callers above via this method's sibling.
-        // Here we just mark dirty implicitly by doing nothing special — the
-        // checkpoint loop picks up changes. Callers that need immediate
-        // persistence should call persistNow().
-        // (Kept as a distinct method for clarity of intent.)
+        // No-op by design. The 5s checkpoint loop picks up state changes;
+        // shutdown() calls persistNow() directly. Kept as a distinct method
+        // so future debounce logic has a home.
     }
 
     private void persistNow() {
@@ -271,7 +306,14 @@ public final class DownloadEngine {
         synchronized (tasks) {
             for (DownloadTask t : tasks.values()) {
                 try {
-                    snapshots.add(t.snapshot());
+                    DownloadTaskState s = t.snapshot();
+                    // Record the MediaStore URI so we can reopen the row
+                    // after a restart. Empty for RealFile targets.
+                    SeekableFile target = t.getTarget();
+                    if (target instanceof MediaStoreFile) {
+                        s.targetUri = ((MediaStoreFile) target).getUri().toString();
+                    }
+                    snapshots.add(s);
                 } catch (Exception ignored) {
                 }
             }
@@ -293,6 +335,14 @@ public final class DownloadEngine {
     // Restore
     // ------------------------------------------------------------------------
 
+    /**
+     * Load persisted task records on cold start.
+     *
+     * Only COMPLETED records are restored. In-flight tasks are dropped —
+     * resuming partial transfers across process death is a separate feature
+     * that needs per-chunk integrity checks. Any orphaned MediaStore staging
+     * row (IS_PENDING=1) is left for a future cleanup pass.
+     */
     private void restoreFromDisk() {
         List<DownloadTaskState> saved = store.load();
         if (saved.isEmpty()) return;
@@ -302,20 +352,16 @@ public final class DownloadEngine {
             if (s.id <= 0) continue;
             if (s.id > maxId) maxId = s.id;
 
-            // Skip tasks that were in a terminal state at crash time.
             DownloadTask.State st;
             try {
                 st = DownloadTask.State.values()[s.state];
             } catch (Exception e) {
                 continue;
             }
-            if (st == DownloadTask.State.COMPLETED) {
-                // Keep the record (file still exists), but no need to restore
-                // chunks — completed tasks are read-only in the list.
-            } else if (st == DownloadTask.State.FAILED
-                    || st == DownloadTask.State.CANCELLED) {
-                continue;
-            }
+            if (st != DownloadTask.State.COMPLETED) continue;
+
+            SeekableFile target = reopenTarget(s);
+            if (target == null) continue;
 
             DownloadSpec spec = new DownloadSpec(
                     s.url,
@@ -325,7 +371,6 @@ public final class DownloadEngine {
                     emptyToNull(s.referer),
                     emptyToNull(s.cookies));
 
-            File target = new File(targetDir, s.fileName);
             DownloadTask task = new DownloadTask(s.id, spec, target, client, taskListener);
             task.setWorkerPool(chunkPool);
             task.restoreFrom(s);
@@ -337,23 +382,75 @@ public final class DownloadEngine {
         nextId.set(maxId + 1);
     }
 
+    /**
+     * Reopen the target for a restored task. Returns null if the target
+     * cannot be recovered — the caller skips the record.
+     *
+     * MediaStoreFile: reopen via ContentResolver using the persisted URI.
+     * RealFile:        open (or create) the file under legacyTargetDir.
+     */
     @Nullable
-    private static String emptyToNull(@Nullable String s) {
-        if (s == null || s.isEmpty()) return null;
-        return s;
+    private SeekableFile reopenTarget(@NonNull DownloadTaskState s) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                && s.targetUri != null && !s.targetUri.isEmpty()) {
+            try {
+                android.net.Uri uri = android.net.Uri.parse(s.targetUri);
+                MediaStoreFile ms = MediaStoreFile.reopen(
+                        appContext, uri, s.bytesDownloaded);
+                if (ms != null) return ms;
+            } catch (Exception ignored) {
+            }
+        }
+
+        String safeName = DownloadNaming.sanitize(s.fileName);
+        if (safeName.isEmpty()) return null;
+        File target = new File(legacyTargetDir, safeName);
+        return RealFile.create(target);
+    }
+
+    // ------------------------------------------------------------------------
+    // Target selection
+    // ------------------------------------------------------------------------
+
+    /**
+     * Pick the right {@link SeekableFile} impl for a new download.
+     *
+     * API 29+ : try MediaStore first. If the insert fails (rare), fall
+     *           through to a RealFile in the app-private staging dir.
+     * API 24-28: RealFile in public /sdcard/Download/Spoon/. Requires the
+     *           caller to have WRITE_EXTERNAL_STORAGE granted.
+     */
+    @Nullable
+    private SeekableFile pickTarget(@NonNull DownloadSpec spec) {
+        String safeName = DownloadNaming.sanitize(spec.fileName);
+        if (safeName.isEmpty()) safeName = "download.bin";
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStoreFile ms = MediaStoreFile.create(appContext, safeName, spec.mime);
+            if (ms != null) return ms;
+        }
+
+        File target = uniqueTargetFile(safeName);
+        return RealFile.create(target);
     }
 
     // ------------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------------
 
+    @Nullable
+    private static String emptyToNull(@Nullable String s) {
+        if (s == null || s.isEmpty()) return null;
+        return s;
+    }
+
     /**
-     * Return a file in targetDir whose name doesn't collide with an existing
-     * one. Appends " (1)", " (2)", ... before the extension.
+     * Return a file in legacyTargetDir whose name doesn't collide with an
+     * existing one. Appends " (1)", " (2)", ... before the extension.
      */
     @NonNull
     private File uniqueTargetFile(@NonNull String desiredName) {
-        File candidate = new File(targetDir, desiredName);
+        File candidate = new File(legacyTargetDir, desiredName);
         if (!candidate.exists()) return candidate;
 
         String base = desiredName;
@@ -364,11 +461,11 @@ public final class DownloadEngine {
             ext = desiredName.substring(dot);
         }
         for (int i = 1; i < 10000; i++) {
-            File next = new File(targetDir, base + " (" + i + ")" + ext);
+            File next = new File(legacyTargetDir, base + " (" + i + ")" + ext);
             if (!next.exists()) return next;
         }
-        // Extremely unlikely — fall back to the timestamped name.
-        return new File(targetDir, base + "-" + System.currentTimeMillis() + ext);
+        return new File(legacyTargetDir,
+                base + "-" + System.currentTimeMillis() + ext);
     }
 
     private static ThreadFactory namedFactory(@NonNull final String prefix) {
