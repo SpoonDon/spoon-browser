@@ -14,6 +14,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,6 +46,13 @@ import okhttp3.ResponseBody;
  * is one file per host in {@code getCacheDir()/favicons/}. In-flight dedup
  * prevents N parallel fetches for the same host when the home page is
  * rendered repeatedly while a fetch is still running.
+ *
+ * <p>Response reads are bounded: {@code ResponseBody.bytes()} is never
+ * called, because it allocates the entire response into memory regardless
+ * of size. A misbehaving server (chunked encoding, missing Content-Length,
+ * redirect to a huge resource) can otherwise push the app past its heap
+ * limit. Instead we stream into a bounded buffer and abort the moment the
+ * cap is exceeded.
  */
 public class FaviconStore {
 
@@ -67,6 +76,9 @@ public class FaviconStore {
 
     /** Small — the working set is the visible grid. */
     private static final int MEM_CACHE_SIZE = 48;
+
+    /** Read chunk for streaming body into a bounded buffer. */
+    private static final int READ_CHUNK = 4096;
 
     private final File dir;
     private final OkHttpClient http;
@@ -141,8 +153,8 @@ public class FaviconStore {
 
         // Disk read path.
         try (FileInputStream in = new FileInputStream(f)) {
-            byte[] bytes = readAll(in);
-            if (!looksLikeImage(bytes)) return null;
+            byte[] bytes = readFully(f.length(), in);
+            if (bytes == null || !looksLikeImage(bytes)) return null;
             String dataUrl = "data:" + sniffMime(bytes) + ";base64,"
                     + Base64.encodeToString(bytes, Base64.NO_WRAP);
             memCache.put(host, dataUrl);
@@ -206,11 +218,25 @@ public class FaviconStore {
                     ResponseBody body = resp.body();
                     if (body == null) return;
 
+                    // Cheap early reject: if the server honestly declares a
+                    // size over the cap, don't even open the stream.
                     long declared = body.contentLength();
                     if (declared > MAX_ICON_BYTES) return;
 
-                    byte[] bytes = body.bytes();
-                    if (bytes.length == 0 || bytes.length > MAX_ICON_BYTES) return;
+                    // Fast path for Content-Type abuse: a 200 with an HTML
+                    // body is almost certainly a redirect stubs page, not
+                    // a favicon. Skip the read entirely.
+                    String ctype = body.contentType() != null
+                            ? body.contentType().toString().toLowerCase()
+                            : "";
+                    if (ctype.startsWith("text/")) return;
+
+                    // Bounded read. Never use body.bytes() — that allocates
+                    // the entire response into memory and OOMs on any
+                    // misbehaving server that omits Content-Length or uses
+                    // chunked transfer encoding.
+                    byte[] bytes = readCapped(body, MAX_ICON_BYTES);
+                    if (bytes == null || bytes.length == 0) return;
                     if (!looksLikeImage(bytes)) return;
 
                     //noinspection ResultOfMethodCallIgnored
@@ -236,6 +262,62 @@ public class FaviconStore {
         });
     }
 
+    /**
+     * Stream {@code body} into memory, aborting the instant the total
+     * exceeds {@code cap}. Returns null on overflow, IO failure, or if
+     * the body is empty. This is what prevents an over-large or lying
+     * server from OOMing the app — we only ever hold {@code cap} bytes.
+     */
+    @Nullable
+    private static byte[] readCapped(@NonNull ResponseBody body, long cap) {
+        InputStream in = null;
+        try {
+            in = body.byteStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream(READ_CHUNK);
+            byte[] buf = new byte[READ_CHUNK];
+            long total = 0;
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                total += n;
+                if (total > cap) {
+                    // Cap exceeded — bail out early, don't finish the read.
+                    return null;
+                }
+                out.write(buf, 0, n);
+            }
+            return out.toByteArray();
+        } catch (IOException e) {
+            return null;
+        } finally {
+            if (in != null) {
+                try { in.close(); } catch (IOException ignored) {}
+            }
+        }
+    }
+
+    /**
+     * Read a local disk file of a known length. Used for the favicon disk
+     * cache where {@code f.length()} is authoritative and already capped
+     * before we get here.
+     */
+    @NonNull
+    private static byte[] readFully(long expectedLen, @NonNull FileInputStream in)
+            throws IOException {
+        int size = (int) Math.min(expectedLen, MAX_ICON_BYTES);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(size);
+        byte[] buf = new byte[READ_CHUNK];
+        int n;
+        int total = 0;
+        while ((n = in.read(buf)) > 0) {
+            total += n;
+            if (total > MAX_ICON_BYTES) {
+                throw new IOException("file too large");
+            }
+            out.write(buf, 0, n);
+        }
+        return out.toByteArray();
+    }
+
     @NonNull
     private File fileFor(@NonNull String host) {
         // Host strings are already safe (alphanumeric + dot + hyphen) but be
@@ -243,15 +325,6 @@ public class FaviconStore {
         // not be able to traverse the cache directory.
         String safe = host.replaceAll("[^a-zA-Z0-9.-]", "_");
         return new File(dir, safe);
-    }
-
-    @NonNull
-    private static byte[] readAll(@NonNull FileInputStream in) throws Exception {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(4096);
-        byte[] buf = new byte[4096];
-        int n;
-        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-        return out.toByteArray();
     }
 
     /** Magic-byte sniff. Rejects HTML error pages served with a 200. */
