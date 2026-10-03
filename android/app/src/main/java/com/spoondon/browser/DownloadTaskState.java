@@ -29,6 +29,8 @@ public final class DownloadTaskState {
     public String errorMessage;
     public long createdAt;
     public long completedAt;
+    /** MediaStore content:// URI on API 29+, or "" for RealFile targets. */
+    public String targetUri;
     public final List<Chunk> chunks = new ArrayList<>();
 
     /** One contiguous byte range. end is inclusive, or -1 if unknown. */
@@ -56,6 +58,7 @@ public final class DownloadTaskState {
             o.put("errorMessage", errorMessage == null ? "" : errorMessage);
             o.put("createdAt", createdAt);
             o.put("completedAt", completedAt);
+            o.put("targetUri", targetUri == null ? "" : targetUri);
 
             JSONArray arr = new JSONArray();
             for (Chunk c : chunks) {
@@ -89,6 +92,7 @@ public final class DownloadTaskState {
             s.errorMessage = o.optString("errorMessage");
             s.createdAt = o.optLong("createdAt");
             s.completedAt = o.optLong("completedAt");
+            s.targetUri = o.optString("targetUri");
 
             JSONArray arr = o.optJSONArray("chunks");
             if (arr != null) {
