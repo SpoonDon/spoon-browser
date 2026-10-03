@@ -3,10 +3,8 @@ package com.spoondon.browser;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -23,16 +21,21 @@ import okhttp3.ResponseBody;
  * One file download. Splits into N parallel byte-range chunks when the
  * server supports ranges, otherwise falls back to a single stream.
  *
- * Lifecycle: {@link #start(ExecutorService)} dispatches the work onto the
- * given pool. Each chunk runs to completion independently; progress is
- * accumulated into an AtomicLong. Pause/cancel are cooperative — a chunk
- * checks {@code paused}/{@code cancelled} between reads and returns cleanly,
- * leaving its byte offset saved in {@link Chunk#downloaded} so a later
- * {@link #resume(ExecutorService)} picks up where it stopped.
+ * 2026-10-03 refactor: writes go through {@link SeekableFile} using
+ * positional FileChannel writes instead of a per-chunk RandomAccessFile.
+ * This is what makes MediaStore-backed downloads possible (no staging
+ * copy — Chromium-style) and reduces fd churn. Concurrent chunk writes
+ * are safe: FileChannel.write with an explicit position does not touch
+ * any shared cursor.
  *
- * Thread safety: fields marked volatile are read by both the UI thread and
- * worker threads. The chunks list is only mutated on the dispatch thread
- * (start/resume), so no lock is needed.
+ * Lifecycle: {@link #start(ExecutorService)} dispatches the work onto
+ * the given orchestrator pool. Each chunk runs to completion independently;
+ * progress accumulates into an AtomicLong. Pause/cancel are cooperative —
+ * a chunk checks {@code paused}/{@code cancelled} between reads and returns
+ * cleanly, leaving its byte offset in {@link Chunk#downloaded}.
+ *
+ * The SeekableFile is owned by the caller (DownloadEngine), which creates
+ * it before construction and calls {@link #closeTarget()} after removal.
  */
 public final class DownloadTask {
 
@@ -46,13 +49,13 @@ public final class DownloadTask {
     }
 
     private static final long MIN_CHUNKED_SIZE = 4L * 1024 * 1024;   // 4 MB
-    private static final long CHUNK_SIZE      = 2L * 1024 * 1024;    // 2 MB per chunk
+    private static final long CHUNK_SIZE      = 2L * 1024 * 1024;    // 2 MB
     private static final int  MAX_CHUNKS      = 6;
-    private static final int  READ_BUFFER     = 64 * 1024;           // 64 KB reads
+    private static final int  READ_BUFFER     = 64 * 1024;
 
     private final long id;
     private final DownloadSpec spec;
-    private final File targetFile;
+    private final SeekableFile target;
     private final OkHttpClient client;
     private final Listener listener;
 
@@ -68,6 +71,7 @@ public final class DownloadTask {
     private volatile long completedAt;
 
     private volatile boolean rangeSupported = false;
+    private volatile ExecutorService workerPool;
 
     private static final class Chunk {
         final long start;
@@ -79,12 +83,12 @@ public final class DownloadTask {
 
     public DownloadTask(long id,
                         @NonNull DownloadSpec spec,
-                        @NonNull File targetFile,
+                        @NonNull SeekableFile target,
                         @NonNull OkHttpClient client,
                         @NonNull Listener listener) {
         this.id = id;
         this.spec = spec;
-        this.targetFile = targetFile;
+        this.target = target;
         this.client = client;
         this.listener = listener;
     }
@@ -95,11 +99,15 @@ public final class DownloadTask {
 
     public long getId() { return id; }
     public DownloadSpec getSpec() { return spec; }
-    public File getTargetFile() { return targetFile; }
+    @NonNull public SeekableFile getTarget() { return target; }
     @NonNull public State getState() { return state; }
     public long getBytesTotal() { return bytesTotal; }
     public long getBytesDownloaded() { return bytesDownloaded.get(); }
     @Nullable public String getErrorMessage() { return errorMessage; }
+
+    public void setWorkerPool(@NonNull ExecutorService pool) {
+        this.workerPool = pool;
+    }
 
     // ------------------------------------------------------------------------
     // Control
@@ -125,12 +133,26 @@ public final class DownloadTask {
         setState(State.PAUSED);
     }
 
+    /**
+     * Abort an in-flight task and delete its partial file.
+     *
+     * Terminal no-op when the task already COMPLETED — the file belongs
+     * to the user at that point and remove() must not destroy it.
+     */
     public void cancel() {
+        if (state == State.COMPLETED) return;
         cancelled.set(true);
         setState(State.CANCELLED);
-        try {
-            if (targetFile.exists()) targetFile.delete();
-        } catch (Exception ignored) {}
+        try { target.delete(); } catch (Exception ignored) {}
+        try { target.close(); } catch (Exception ignored) {}
+    }
+
+    /**
+     * Release the target's file descriptor. Safe to call after commit.
+     * Idempotent. Called by DownloadEngine.remove() for every task.
+     */
+    public void closeTarget() {
+        try { target.close(); } catch (Exception ignored) {}
     }
 
     // ------------------------------------------------------------------------
@@ -177,21 +199,21 @@ public final class DownloadTask {
 
         boolean allDone = true;
         for (Chunk c : chunks) if (!c.done.get()) { allDone = false; break; }
+
         if (allDone) {
+            try {
+                target.commit();
+            } catch (Exception e) {
+                fail("commit failed: "
+                        + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                return;
+            }
             completedAt = System.currentTimeMillis();
             setState(State.COMPLETED);
         } else {
             setState(State.FAILED);
             errorMessage = "Incomplete download";
         }
-    }
-
-    // Worker pool used for the chunk threads. Set by start()'s caller via
-    // a static holder is awkward; instead we keep a per-task reference.
-    private volatile ExecutorService workerPool;
-
-    public void setWorkerPool(@NonNull ExecutorService pool) {
-        this.workerPool = pool;
     }
 
     // ------------------------------------------------------------------------
@@ -211,8 +233,7 @@ public final class DownloadTask {
             try (ResponseBody body = resp.body()) {
                 int code = resp.code();
                 if (code != 200 && code != 206) {
-                    // Server rejected our ranged probe; fall back to a plain GET probe.
-                    if (code == 416) return false; // invalid range — bail
+                    if (code == 416) return false;
                 }
 
                 String ranges = resp.header("Accept-Ranges", "");
@@ -231,8 +252,6 @@ public final class DownloadTask {
                 } else if (contentLength != null && !contentLength.isEmpty()) {
                     try {
                         long len = Long.parseLong(contentLength);
-                        // On a 206 with Range: bytes=0-0 the Content-Length is 1, not the
-                        // total; only trust it for a plain 200.
                         if (code == 200) bytesTotal = len;
                     } catch (Exception ignored) {}
                 }
@@ -265,11 +284,10 @@ public final class DownloadTask {
 
     private boolean prepareTarget() {
         try {
-            File parent = targetFile.getParentFile();
-            if (parent != null && !parent.exists()) parent.mkdirs();
-            // Pre-allocate length when we know it, so RandomAccessFile writes past EOF work.
-            try (RandomAccessFile raf = new RandomAccessFile(targetFile, "rw")) {
-                if (bytesTotal > 0) raf.setLength(bytesTotal);
+            // Best-effort preallocation. MediaStoreFile ignores this (cannot
+            // extend via truncate) — parallel writes past EOF extend the file.
+            if (bytesTotal > 0) {
+                target.setLength(bytesTotal);
             }
             return true;
         } catch (Exception e) {
@@ -298,7 +316,7 @@ public final class DownloadTask {
     // ------------------------------------------------------------------------
 
     private void downloadChunk(@NonNull Chunk c) {
-        try (RandomAccessFile raf = new RandomAccessFile(targetFile, "rw")) {
+        try {
             while (true) {
                 if (cancelled.get()) return;
                 if (paused.get()) return;
@@ -338,8 +356,8 @@ public final class DownloadTask {
                     int read;
                     while ((read = in.read(buf)) != -1) {
                         if (cancelled.get() || paused.get()) return;
-                        raf.seek(c.start + c.downloaded);
-                        raf.write(buf, 0, read);
+                        // Positioned write — no seek, no shared cursor mutation.
+                        target.writeAt(c.start + c.downloaded, buf, 0, read);
                         c.downloaded += read;
                         bytesDownloaded.addAndGet(read);
                         listener.onProgress(id);
@@ -381,6 +399,9 @@ public final class DownloadTask {
     private void fail(String msg) {
         errorMessage = msg;
         setState(State.FAILED);
+        // Partial file is useless — roll it back so the user doesn't see a
+        // truncated artifact in their file manager.
+        try { target.delete(); } catch (Exception ignored) {}
     }
 
     // ------------------------------------------------------------------------
